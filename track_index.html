@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#064e3b">
+<title>GPS Tracker — Driver</title>
+<link rel="manifest" href="manifest.json">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;display:flex;flex-direction:column}
+.topbar{background:#064e3b;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.topbar h1{font-size:16px;font-weight:700;color:#fff}
+.topbar .ver{font-size:10px;color:#6ee7b7;opacity:.7}
+.card{background:#1e293b;border-radius:16px;padding:18px;margin:14px 14px 0}
+.card-title{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+.plat-big{font-size:28px;font-weight:800;color:#34d399;font-family:monospace;letter-spacing:.05em}
+.driver-name{font-size:14px;color:#94a3b8;margin-top:2px}
+.status-bar{display:flex;align-items:center;gap:8px;margin-top:12px;padding:10px 14px;border-radius:10px;background:#0f172a}
+.status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.status-dot.idle{background:#64748b}
+.status-dot.active{background:#22c55e;animation:blink 1.5s infinite}
+.status-dot.done{background:#3b82f6}
+.status-dot.error{background:#ef4444}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.status-text{font-size:13px;font-weight:600}
+.km-display{text-align:center;padding:24px 0 16px}
+.km-number{font-size:56px;font-weight:800;font-family:monospace;color:#34d399;line-height:1}
+.km-unit{font-size:16px;color:#64748b;margin-top:4px}
+.km-sub{font-size:11px;color:#475569;margin-top:6px}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.info-item{background:#0f172a;border-radius:10px;padding:10px 12px}
+.info-label{font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:.06em}
+.info-value{font-size:15px;font-weight:700;color:#cbd5e1;margin-top:3px;font-family:monospace}
+.btn-main{width:calc(100% - 28px);margin:16px 14px;padding:18px;border-radius:16px;border:none;font-size:17px;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:10px;letter-spacing:.02em}
+.btn-start{background:#059669;color:#fff}
+.btn-start:active{background:#047857;transform:scale(.98)}
+.btn-stop{background:#dc2626;color:#fff}
+.btn-stop:active{background:#b91c1c;transform:scale(.98)}
+.btn-stop:disabled{background:#374151;color:#64748b;cursor:not-allowed}
+.stop-list{margin:0 14px 14px}
+.stop-item{background:#1e293b;border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:flex-start;gap:10px}
+.stop-num{width:24px;height:24px;border-radius:50%;background:#334155;color:#94a3b8;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.stop-info .cust{font-size:12px;font-weight:600;color:#e2e8f0}
+.stop-info .addr{font-size:10px;color:#64748b;margin-top:2px}
+.stop-info .do{font-size:9px;color:#475569;font-family:monospace}
+.alert-box{margin:0 14px;padding:12px 14px;border-radius:10px;font-size:12px;line-height:1.6}
+.alert-warn{background:#292400;border:1px solid #713f12;color:#fbbf24}
+.alert-ok{background:#052e16;border:1px solid #14532d;color:#86efac}
+.alert-err{background:#2d0a0a;border:1px solid #7f1d1d;color:#fca5a5}
+#log{margin:0 14px 14px;padding:10px 12px;background:#0f172a;border-radius:10px;font-size:10px;color:#475569;font-family:monospace;max-height:80px;overflow-y:auto;line-height:1.7}
+.loading-spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.completed-card{text-align:center;padding:30px 14px}
+.completed-icon{font-size:56px;margin-bottom:12px}
+.completed-title{font-size:20px;font-weight:700;color:#34d399}
+.completed-sub{font-size:13px;color:#64748b;margin-top:6px;line-height:1.6}
+.km-final{font-size:40px;font-weight:800;color:#34d399;font-family:monospace;margin:16px 0 4px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>🚛 GPS Tracker Driver</h1>
+  <span class="ver" id="ver-info">Memuat...</span>
+</div>
+
+<!-- Alert area -->
+<div id="alert-area" style="margin:12px 14px 0"></div>
+
+<!-- Vehicle info card -->
+<div class="card" id="card-vehicle" style="display:none">
+  <div class="card-title">Kendaraan Hari Ini</div>
+  <div class="plat-big" id="disp-plat">—</div>
+  <div class="driver-name" id="disp-driver">—</div>
+  <div class="status-bar">
+    <div class="status-dot idle" id="status-dot"></div>
+    <span class="status-text" id="status-text">Siap berangkat</span>
+  </div>
+</div>
+
+<!-- KM display -->
+<div class="card" id="card-km" style="display:none">
+  <div class="card-title">Kilometer Perjalanan</div>
+  <div class="km-display">
+    <div class="km-number" id="km-display">0.0</div>
+    <div class="km-unit">kilometer</div>
+    <div class="km-sub" id="km-sub">Belum mulai</div>
+  </div>
+  <div class="info-grid">
+    <div class="info-item">
+      <div class="info-label">Durasi</div>
+      <div class="info-value" id="disp-durasi">—</div>
+    </div>
+    <div class="info-item">
+      <div class="info-label">Speed sekarang</div>
+      <div class="info-value" id="disp-speed">— km/h</div>
+    </div>
+    <div class="info-item">
+      <div class="info-label">Stop selesai</div>
+      <div class="info-value" id="disp-stops">0 / —</div>
+    </div>
+    <div class="info-item">
+      <div class="info-label">Est. KM routing</div>
+      <div class="info-value" id="disp-km-est">— km</div>
+    </div>
+  </div>
+</div>
+
+<!-- Stop list -->
+<div class="card" id="card-stops" style="display:none">
+  <div class="card-title" id="stop-list-title">Daftar Stop Hari Ini</div>
+  <div id="stop-list" style="margin-top:8px"></div>
+</div>
+
+<!-- Main action button -->
+<button class="btn-main btn-start" id="btn-main" onclick="handleMainBtn()">
+  📍 Mulai Perjalanan
+</button>
+
+<!-- Log -->
+<div id="log"></div>
+
+<!-- Completed state (hidden by default) -->
+<div id="completed-view" style="display:none;padding:14px">
+  <div class="card completed-card">
+    <div class="completed-icon">✅</div>
+    <div class="completed-title">Perjalanan Selesai!</div>
+    <div class="km-final" id="final-km">0 km</div>
+    <div class="completed-sub" id="final-summary">Data tersimpan otomatis.<br>Terimakasih sudah menggunakan GPS Tracker.</div>
+  </div>
+  <button class="btn-main btn-start" onclick="location.reload()" style="margin-top:8px">↩ Mulai Hari Baru</button>
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+const GAS_URL = '%%GAS_URL%%'; // Diganti saat generate link dari app
+
+// ── STATE ───────────────────────────────────────────────────────────────────
+let state = {
+  plat       : '',
+  driver     : '',
+  gudang     : '',
+  km_est     : 0,
+  stops      : [],
+  do_date    : '',
+  trip_state : 'idle',   // idle | active | completed
+  km_total   : 0,
+  start_time : null,
+  gps_watch  : null,
+  last_pos   : null,
+  pos_history: [],       // [{lat,lng,t}] untuk hitung jarak
+  update_interval: null,
+  stops_done : 0,
+};
+
+// ── INIT ────────────────────────────────────────────────────────────────────
+function init() {
+  // Baca params dari URL
+  const p = new URLSearchParams(location.search);
+  state.plat    = p.get('plat') || '';
+  state.driver  = p.get('driver') || '';
+  state.gudang  = p.get('gudang') || '';
+  state.km_est  = parseFloat(p.get('km_est')) || 0;
+  state.do_date = p.get('date') || today();
+
+  // Parse stops dari URL (base64 encoded JSON)
+  try {
+    const stopsB64 = p.get('stops');
+    if (stopsB64) state.stops = JSON.parse(atob(stopsB64));
+  } catch(e) {}
+
+  document.getElementById('ver-info').textContent =
+    state.do_date + ' · ' + (state.plat||'?');
+
+  if (!state.plat) {
+    showAlert('err', '⚠ Link tidak valid. Hubungi dispatcher untuk link baru.');
+    return;
+  }
+
+  // Tampilkan info kendaraan
+  document.getElementById('disp-plat').textContent = state.plat;
+  document.getElementById('disp-driver').textContent = state.driver || 'Driver';
+  document.getElementById('disp-km-est').textContent = state.km_est + ' km';
+  document.getElementById('card-vehicle').style.display = '';
+  document.getElementById('card-km').style.display = '';
+
+  // Tampilkan daftar stop
+  if (state.stops.length) {
+    document.getElementById('card-stops').style.display = '';
+    document.getElementById('stop-list-title').textContent =
+      `Daftar Stop (${state.stops.length} tujuan)`;
+    document.getElementById('stop-list').innerHTML = state.stops.map((s,i)=>`
+      <div class="stop-item">
+        <div class="stop-num">${i+1}</div>
+        <div class="stop-info">
+          <div class="cust">${s.customer||'—'}</div>
+          <div class="addr">${(s.kirim||'').slice(0,60)}</div>
+          <div class="do">DO: ${s.doc_no||'—'} · ${s.qty||0} DUS</div>
+        </div>
+      </div>`).join('');
+  }
+
+  // Cek apakah trip sudah aktif (resume)
+  checkExistingTrip();
+
+  addLog('App siap. Plat: ' + state.plat);
+}
+
+async function checkExistingTrip() {
+  try {
+    const r = await gasGet('getTrip', { plat: state.plat, date: state.do_date });
+    if (r.data && r.data.status === 'active') {
+      // Resume trip yang sudah dimulai
+      state.trip_state = 'active';
+      state.km_total = r.data.km_actual || 0;
+      state.start_time = new Date(r.data.start_time) || new Date();
+      showAlert('warn', '⚡ Trip sudah aktif sebelumnya. Melanjutkan tracking...');
+      startGPS();
+      updateBtn('stop');
+    } else if (r.data && r.data.status === 'completed') {
+      showCompleted(r.data.km_actual, r.data.durasi_min);
+    }
+  } catch(e) { addLog('Cek trip: ' + e.message); }
+}
+
+// ── MAIN BUTTON ─────────────────────────────────────────────────────────────
+async function handleMainBtn() {
+  if (state.trip_state === 'idle') {
+    await doStartTrip();
+  } else if (state.trip_state === 'active') {
+    await doEndTrip();
+  }
+}
+
+async function doStartTrip() {
+  updateBtn('loading');
+  showAlert('warn', '⏳ Meminta izin lokasi...');
+
+  try {
+    const pos = await getPosition();
+    state.last_pos  = pos;
+    state.start_time = new Date();
+    state.trip_state = 'active';
+    state.pos_history = [{ lat: pos.lat, lng: pos.lng, t: Date.now() }];
+
+    // Kirim startTrip ke GAS
+    await gasPost({ action:'startTrip',
+      plat: state.plat, driver: state.driver,
+      gudang: state.gudang, date: state.do_date,
+      lat: pos.lat, lng: pos.lng,
+      stops: state.stops.length, km_est: state.km_est,
+    });
+
+    showAlert('ok', '✅ Tracking GPS aktif. Jangan tutup app ini!');
+    startGPS();
+    updateBtn('stop');
+    addLog('Trip dimulai. Lat:' + pos.lat.toFixed(4) + ' Lng:' + pos.lng.toFixed(4));
+  } catch(err) {
+    showAlert('err', '❌ Gagal: ' + err.message);
+    updateBtn('start');
+  }
+}
+
+async function doEndTrip() {
+  if (!confirm('Yakin perjalanan sudah selesai?')) return;
+  updateBtn('loading');
+
+  try {
+    const pos = await getPosition().catch(()=>state.last_pos||{lat:0,lng:0});
+    stopGPS();
+
+    await gasPost({ action:'endTrip',
+      plat: state.plat, date: state.do_date,
+      lat: pos.lat, lng: pos.lng,
+      km_total: state.km_total.toFixed(1),
+    });
+
+    state.trip_state = 'completed';
+    showCompleted(state.km_total, getElapsedMin());
+    addLog('Trip selesai. Total KM: ' + state.km_total.toFixed(1));
+  } catch(err) {
+    showAlert('err', '❌ Gagal simpan: ' + err.message + '. Coba lagi.');
+    updateBtn('stop');
+  }
+}
+
+// ── GPS TRACKING ─────────────────────────────────────────────────────────────
+function startGPS() {
+  setStatusDot('active', '📍 GPS Tracking Aktif');
+  updateKMDisplay();
+
+  // Watch position — update tiap posisi berubah
+  if (navigator.geolocation) {
+    state.gps_watch = navigator.geolocation.watchPosition(
+      onGPSUpdate, onGPSError,
+      { enableHighAccuracy: true, timeout: 30000, maximumAge: 5000 }
+    );
+  }
+
+  // Kirim update ke GAS tiap 3 menit (bukan tiap detik untuk hemat quota)
+  state.update_interval = setInterval(sendGPSUpdate, 3 * 60 * 1000);
+
+  // Update display tiap 5 detik
+  setInterval(updateKMDisplay, 5000);
+}
+
+function stopGPS() {
+  if (state.gps_watch !== null) {
+    navigator.geolocation.clearWatch(state.gps_watch);
+    state.gps_watch = null;
+  }
+  if (state.update_interval) {
+    clearInterval(state.update_interval);
+    state.update_interval = null;
+  }
+  setStatusDot('done', '✅ Selesai');
+}
+
+function onGPSUpdate(position) {
+  const { latitude: lat, longitude: lng, speed } = position.coords;
+  const speedKmh = speed ? Math.round(speed * 3.6) : 0;
+
+  // Hitung jarak dari posisi terakhir
+  if (state.last_pos) {
+    const dist = haversineKm(state.last_pos.lat, state.last_pos.lng, lat, lng);
+    // Filter: jangan tambah jarak jika terlalu jauh (GPS jump) atau terlalu kecil
+    if (dist > 0.01 && dist < 5) {
+      state.km_total += dist;
+    }
+  }
+
+  state.last_pos = { lat, lng };
+  state.pos_history.push({ lat, lng, t: Date.now() });
+
+  // Keep hanya 100 point terakhir
+  if (state.pos_history.length > 100) state.pos_history.shift();
+
+  // Update speed display
+  document.getElementById('disp-speed').textContent = speedKmh + ' km/h';
+  document.getElementById('km-display').textContent = state.km_total.toFixed(1);
+}
+
+function onGPSError(err) {
+  addLog('GPS error: ' + err.message);
+  setStatusDot('error', '⚠ GPS lemah — tetap jalan');
+}
+
+async function sendGPSUpdate() {
+  if (!state.last_pos || state.trip_state !== 'active') return;
+  try {
+    await gasPost({ action:'updateGPS',
+      plat: state.plat, date: state.do_date,
+      lat: state.last_pos.lat, lng: state.last_pos.lng,
+      km_total: state.km_total.toFixed(1),
+    });
+    addLog('GPS sync: ' + state.km_total.toFixed(1) + 'km');
+  } catch(e) { addLog('GPS sync gagal: ' + e.message); }
+}
+
+// ── UI HELPERS ───────────────────────────────────────────────────────────────
+function updateKMDisplay() {
+  document.getElementById('km-display').textContent = state.km_total.toFixed(1);
+  const elMin = getElapsedMin();
+  const h = Math.floor(elMin/60), m = elMin%60;
+  document.getElementById('disp-durasi').textContent =
+    elMin > 0 ? (h>0 ? h+'j '+m+'m' : m+' menit') : '—';
+  document.getElementById('km-sub').textContent =
+    state.trip_state==='active' ? '⏱ Tracking aktif' :
+    state.trip_state==='completed' ? '✅ Selesai' : 'Belum dimulai';
+}
+
+function updateBtn(mode) {
+  const btn = document.getElementById('btn-main');
+  btn.disabled = false;
+  if (mode==='start') {
+    btn.className='btn-main btn-start';
+    btn.innerHTML='📍 Mulai Perjalanan';
+  } else if (mode==='stop') {
+    btn.className='btn-main btn-stop';
+    btn.innerHTML='🏁 Selesai Perjalanan';
+  } else if (mode==='loading') {
+    btn.disabled=true;
+    btn.innerHTML='<div class="loading-spin"></div> Memproses...';
+  }
+}
+
+function showCompleted(kmTotal, durasiMin) {
+  document.querySelector('.card')&&
+    document.querySelectorAll('.card').forEach(c=>c.style.display='none');
+  document.getElementById('btn-main').style.display='none';
+  document.getElementById('log').style.display='none';
+  document.getElementById('completed-view').style.display='';
+  document.getElementById('final-km').textContent = parseFloat(kmTotal||0).toFixed(1) + ' km';
+  const h=Math.floor((durasiMin||0)/60), m=(durasiMin||0)%60;
+  document.getElementById('final-summary').innerHTML =
+    `Durasi: ${h>0?h+'j ':''} ${m} menit<br>Data KM tersimpan otomatis ke Google Sheets.<br>Terima kasih sudah menggunakan GPS Tracker! 🙏`;
+}
+
+function setStatusDot(cls, txt) {
+  const dot = document.getElementById('status-dot');
+  dot.className = 'status-dot ' + cls;
+  document.getElementById('status-text').textContent = txt;
+}
+
+function showAlert(type, msg) {
+  const cls = type==='err'?'alert-err':type==='ok'?'alert-ok':'alert-warn';
+  document.getElementById('alert-area').innerHTML =
+    `<div class="alert-box ${cls}">${msg}</div>`;
+}
+
+function addLog(msg) {
+  const el = document.getElementById('log');
+  const t  = new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  el.textContent = t + ' ' + msg + '\n' + el.textContent;
+}
+
+// ── UTILS ────────────────────────────────────────────────────────────────────
+function getElapsedMin() {
+  if (!state.start_time) return 0;
+  return Math.floor((Date.now() - state.start_time.getTime()) / 60000);
+}
+
+function today() {
+  return new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'/');
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLon = (lon2-lon1) * Math.PI/180;
+  const a = Math.sin(dLat/2)**2 +
+    Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function getPosition() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('HP tidak support GPS'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      e => reject(new Error(
+        e.code===1?'Izin GPS ditolak — tap Allow/Izinkan':
+        e.code===2?'GPS tidak tersedia — coba di luar ruangan':
+        'GPS timeout — pastikan sinyal kuat'
+      )),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  });
+}
+
+async function gasGet(action, params={}) {
+  if (!GAS_URL || GAS_URL.includes('%%')) return { data: null };
+  const qs = new URLSearchParams({ action, ...params });
+  const r  = await fetch(`${GAS_URL}?${qs}`, { redirect:'follow' });
+  return r.json();
+}
+
+async function gasPost(body) {
+  if (!GAS_URL || GAS_URL.includes('%%')) {
+    addLog('[DEMO] POST: ' + body.action);
+    return { status:'ok' };
+  }
+  const r = await fetch(GAS_URL, {
+    method: 'POST', redirect:'follow',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  return r.json();
+}
+
+// Mulai
+init();
+</script>
+</body>
+</html>
