@@ -135,7 +135,12 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#0f172a;color:#e2e8f0;mi
 
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────────────────
-const GAS_URL = '%%GAS_URL%%'; // Diganti saat generate link dari app
+// Baca GAS URL dari parameter link (dikirim dari routing optimizer via WA Blast)
+// Format: ?gas=https://script.google.com/macros/s/.../exec
+const _gasParam = new URLSearchParams(location.search).get('gas');
+const GAS_URL = _gasParam || localStorage.getItem('gps_gas_url') || '';
+// Simpan ke localStorage agar tersedia jika driver refresh halaman
+if (_gasParam) localStorage.setItem('gps_gas_url', _gasParam);
 
 // ── STATE ───────────────────────────────────────────────────────────────────
 let state = {
@@ -177,6 +182,13 @@ function init() {
   if (!state.plat) {
     showAlert('err', '⚠ Link tidak valid. Hubungi dispatcher untuk link baru.');
     return;
+  }
+
+  // Tampilkan status koneksi GAS
+  if (!GAS_URL) {
+    showAlert('warn', '⚠ Link tracking tidak terkoneksi ke server. Hubungi dispatcher untuk generate link baru dari app.');
+  } else {
+    addLog('GAS URL: ' + GAS_URL.slice(0,50) + '...');
   }
 
   // Tampilkan info kendaraan
@@ -454,7 +466,10 @@ function getPosition() {
 }
 
 async function gasGet(action, params={}) {
-  if (!GAS_URL || GAS_URL.includes('%%')) return { data: null };
+  if (!GAS_URL || GAS_URL.includes('%%')) {
+    addLog('[DEMO MODE] GAS URL tidak ada - tracking tidak tersimpan ke Sheets');
+    return { data: null };
+  }
   const qs = new URLSearchParams({ action, ...params });
   const r  = await fetch(`${GAS_URL}?${qs}`, { redirect:'follow' });
   return r.json();
@@ -462,7 +477,7 @@ async function gasGet(action, params={}) {
 
 async function gasPost(body) {
   if (!GAS_URL || GAS_URL.includes('%%')) {
-    addLog('[DEMO] POST: ' + body.action);
+    addLog('[DEMO] POST: ' + body.action + ' (GAS URL belum set)');
     return { status:'ok' };
   }
   const r = await fetch(GAS_URL, {
