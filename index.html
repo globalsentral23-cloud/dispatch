@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>GST Logistics — Driver App v3.5</title>
+<title>GST Logistics — Driver App v3.6</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <style>
 :root{
@@ -671,7 +671,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v3.5';
+const APP_VERSION    = 'v3.6';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -1405,7 +1405,7 @@ async function capturePhoto(type, inputEl) {
     img.onload = function() {
       const canvas = document.getElementById('canvas-foto-'+type);
       // Max 1000px width for balance of quality vs size
-      const maxW = 800; // Dikurangi dari 1000 → proses lebih cepat
+      const maxW = 600; // C: kompres lebih kecil → transfer cepat // Dikurangi dari 1000 → proses lebih cepat
       let w = img.width, h = img.height;
       if (w > maxW) { h = h*(maxW/w); w = maxW; }
       canvas.width = w; canvas.height = h;
@@ -1447,7 +1447,7 @@ async function capturePhoto(type, inputEl) {
         ctx.fillStyle='#fff'; ctx.font='11px Arial';
         let ty=boxY+20;
         lines.forEach(l=>{ ty=drawWrappedText(ctx,l,textX,ty,maxTW,lh); });
-        const b64=canvas.toDataURL('image/jpeg',0.72); // Quality 0.82→0.72 lebih cepat
+        const b64=canvas.toDataURL('image/jpeg',0.65); // C: quality → 0.65
         setPhotoResult(type, b64);
         inputEl.value='';
       };
@@ -1531,24 +1531,25 @@ async function submitSelesai() {
     timestamp   : new Date().toISOString(),
   };
 
-  showSubmitOverlay('Mengirim laporan selesai...');
-  const ok = await gasPost(payload);
-  hideSubmitOverlay();
+  // ── FIRE AND FORGET: langsung lanjut, tidak tunggu response ──────────────
+  // Kirim di background — driver tidak perlu nunggu upload foto selesai
+  gasPost(payload); // no await
 
+  // Update UI langsung tanpa tunggu server
+  lastTasksSnap[modalCtx.doc_no] = 'Selesai';
+  stopsDone++;
   btn.disabled = false;
   closeModal('m-selesai');
 
-  if (ok) {
-    lastTasksSnap[modalCtx.doc_no] = 'Selesai';
-    stopsDone++;
-    addNotification({
-      type:'self', icon:'change',
-      title:'✅ Laporan Terkirim',
-      msg:`DO ${modalCtx.doc_no} — Selesai · ${modalCtx.qty_terima} DUS diterima`,
-      doc_no: modalCtx.doc_no,
-    });
-  }
+  // Notif langsung
+  addNotification({
+    type:'self', icon:'change',
+    title:'✅ Laporan Dikirim',
+    msg:`DO ${modalCtx.doc_no} — ${modalCtx.qty_terima} DUS · mengirim ke server...`,
+    doc_no: modalCtx.doc_no,
+  });
 
+  // Reload tugas langsung (optimistic — anggap sukses)
   await loadTasks(false);
   checkAllDone();
 }
@@ -1580,22 +1581,19 @@ async function submitGagal() {
     is_urgent    : alasan==='Kendaraan Rusak'||alasan==='Bencana Alam/Banjir'?'1':'0',
   };
 
-  showSubmitOverlay('Mengirim laporan gagal...');
-  const ok = await gasPost(payload);
-  hideSubmitOverlay();
+  // ── FIRE AND FORGET ──────────────────────────────────────────────────────
+  gasPost(payload); // no await — tidak tunggu server
 
+  lastTasksSnap[modalCtx.doc_no] = 'Gagal Kirim';
   btn.disabled = false;
   closeModal('m-gagal');
 
-  if (ok) {
-    lastTasksSnap[modalCtx.doc_no] = 'Gagal Kirim';
-    addNotification({
-      type:'self', icon: payload.is_urgent==='1'?'alert':'change',
-      title: payload.is_urgent==='1'?'🚨 Alert Urgent Terkirim':'✅ Laporan Gagal Terkirim',
-      msg: `DO ${modalCtx.doc_no} — ${alasan}`,
-      doc_no: modalCtx.doc_no,
-    });
-  }
+  addNotification({
+    type:'self', icon: payload.is_urgent==='1'?'alert':'change',
+    title: payload.is_urgent==='1'?'🚨 Alert Urgent Dikirim':'✅ Laporan Gagal Dikirim',
+    msg: `DO ${modalCtx.doc_no} — ${alasan} · mengirim ke server...`,
+    doc_no: modalCtx.doc_no,
+  });
 
   await loadTasks(false);
 }
@@ -2018,7 +2016,7 @@ async function processAndSetPhoto(type, rawB64) {
   const canvas = document.getElementById('canvas-foto-'+type) || document.createElement('canvas');
   const img    = new Image();
   img.onload = function() {
-    const maxW = 800;
+    const maxW = 600; // C: kompres lebih kecil → transfer cepat
     let w = img.width, h = img.height;
     if (w > maxW) { h = Math.round(h*(maxW/w)); w = maxW; }
     canvas.width = w; canvas.height = h;
@@ -2048,7 +2046,7 @@ async function processAndSetPhoto(type, rawB64) {
     const done = () => {
       ctx.fillStyle='#fff'; ctx.font='11px Arial';
       let ty=boxY+18; lines.forEach(l=>{ ty=drawWrappedText(ctx,l,textX,ty,maxTW,lh); });
-      const b64=canvas.toDataURL('image/jpeg',0.75);
+      const b64=canvas.toDataURL('image/jpeg',0.65); // C: quality 0.75→0.65
       setPhotoResult(type, b64);
     };
     logo.onload=function(){
