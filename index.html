@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>GST Logistics — Driver App v3.3</title>
+<title>GST Logistics — Driver App v3.4</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <style>
 :root{
@@ -223,6 +222,40 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 .submit-overlay .spin{font-size:36px;color:#fff;animation:spin 1s linear infinite}
 .submit-overlay .msg{color:#fff;font-size:14px;font-weight:600}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── CAMERA OVERLAY ── */
+.camera-overlay{display:none;position:fixed;inset:0;background:#000;z-index:99999;flex-direction:column}
+.camera-overlay.show{display:flex}
+.camera-video{width:100%;flex:1;object-fit:cover;background:#000}
+.camera-frame{position:absolute;inset:0;pointer-events:none}
+.camera-guide{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:88%;aspect-ratio:1.414/1;border:2px solid rgba(255,255,255,.7);border-radius:4px}
+.camera-guide::before,.camera-guide::after{content:'';position:absolute;
+  width:20px;height:20px;border-color:#3b82f6;border-style:solid}
+.camera-guide::before{top:-2px;left:-2px;border-width:3px 0 0 3px}
+.camera-guide::after{bottom:-2px;right:-2px;border-width:0 3px 3px 0}
+.camera-label{position:absolute;top:calc(50% - (88vw/1.414/2) - 28px);left:50%;
+  transform:translateX(-50%);color:#fff;font-size:11px;font-weight:600;
+  background:rgba(0,0,0,.5);padding:3px 10px;border-radius:10px;white-space:nowrap}
+.camera-bottom{background:#000;padding:16px 20px 28px;display:flex;
+  align-items:center;justify-content:space-between}
+.camera-shutter{width:64px;height:64px;border-radius:50%;background:#fff;
+  border:4px solid #3b82f6;cursor:pointer;display:flex;align-items:center;
+  justify-content:center;font-size:24px;box-shadow:0 0 0 3px rgba(59,130,246,.3)}
+.camera-shutter:active{transform:scale(.9)}
+.camera-cancel{color:#fff;background:rgba(255,255,255,.15);border:none;
+  border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer}
+.camera-retake{color:#3b82f6;background:rgba(59,130,246,.15);border:none;
+  border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;display:none}
+.camera-preview-wrap{display:none;position:absolute;inset:0;background:#000;
+  flex-direction:column;align-items:center;justify-content:center}
+.camera-preview-wrap.show{display:flex}
+.camera-preview-img{width:100%;max-height:70vh;object-fit:contain}
+.camera-preview-actions{display:flex;gap:12px;padding:16px;width:100%}
+.camera-use-btn{flex:1;background:#16a34a;color:#fff;border:none;border-radius:10px;
+  padding:13px;font-size:14px;font-weight:700;cursor:pointer}
+.camera-retake-btn{flex:1;background:#1e293b;color:#fff;border:none;border-radius:10px;
+  padding:13px;font-size:14px;font-weight:600;cursor:pointer}
 </style>
 </head>
 <body>
@@ -424,35 +457,31 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 
     <div class="form-group">
       <label class="form-label">1. Foto Bukti Kirim / DO <span class="req">*wajib</span></label>
-      <div class="photo-guide-wrap" id="wrap-foto-do">
-        <div style="position:relative;width:100%;padding-top:70.7%;background:#f8fafc;border-radius:8px;overflow:hidden">
-          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
-            <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
-            <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
-            <div class="photo-guide-icon" id="icon-foto-do"><i class="fas fa-camera"></i></div>
-            <div class="photo-guide-text" id="txt-foto-do" style="font-size:11px;color:#64748b;margin-top:6px;text-align:center;padding:0 20px">
-              📄 Posisikan DO dalam bingkai<br>Nomor DO harus terbaca jelas
-            </div>
+      <div class="photo-guide-wrap" id="wrap-foto-do" onclick="openCamera('do')"
+        style="cursor:pointer;position:relative;width:100%;padding-top:70.7%;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;overflow:hidden">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
+          <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
+          <div class="photo-guide-icon" id="icon-foto-do"><i class="fas fa-camera" style="font-size:28px;color:#94a3b8"></i></div>
+          <div id="txt-foto-do" style="font-size:11px;color:#64748b;margin-top:6px;text-align:center;padding:0 20px">
+            Tap untuk ambil foto DO
           </div>
-          <img id="prev-foto-do" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none">
-          <input type="file" accept="image/*" capture="environment" id="input-foto-do" onchange="capturePhoto('do',this)"
-            style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer">
         </div>
+        <img id="prev-foto-do" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none">
       </div>
+      <canvas id="canvas-foto-do" style="display:none"></canvas>
       <canvas id="canvas-foto-do" style="display:none"></canvas>
     </div>
 
     <div class="form-group" id="group-foto-rusak" style="display:none">
       <label class="form-label">Foto Barang Rusak <span class="req">*wajib jika ada kerusakan</span></label>
-      <div class="photo-guide-wrap" id="wrap-foto-rusak">
-        <div class="photo-guide-inner">
-          <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
-          <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
-          <div class="photo-guide-icon" id="icon-foto-rusak"><i class="fas fa-camera"></i></div>
-          <div class="photo-guide-text" id="txt-foto-rusak">Foto kerusakan dari dekat · pastikan jelas</div>
-        </div>
-        <img id="prev-foto-rusak" class="photo-preview" style="display:none">
-        <input type="file" accept="image/*" capture="environment" id="input-foto-rusak" onchange="capturePhoto('rusak',this)">
+      <div class="photo-guide-wrap" id="wrap-foto-rusak" onclick="openCamera('rusak')"
+        style="cursor:pointer;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;min-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden">
+        <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
+        <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
+        <div class="photo-guide-icon" id="icon-foto-rusak"><i class="fas fa-camera" style="font-size:26px;color:#94a3b8"></i></div>
+        <div id="txt-foto-rusak" style="font-size:11px;color:#64748b;margin-top:6px">Tap untuk foto kerusakan</div>
+        <img id="prev-foto-rusak" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none">
       </div>
       <canvas id="canvas-foto-rusak" style="display:none"></canvas>
     </div>
@@ -483,15 +512,13 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
         </div>
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">Foto SJ yang Dititip <span class="req">*wajib</span></label>
-          <div class="photo-guide-wrap" id="wrap-foto-sj">
-            <div class="photo-guide-inner" style="min-height:90px">
-              <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
-              <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
-              <div class="photo-guide-icon" id="icon-foto-sj"><i class="fas fa-camera"></i></div>
-              <div class="photo-guide-text" id="txt-foto-sj">Foto SJ sebelum ditinggal</div>
-            </div>
-            <img id="prev-foto-sj" class="photo-preview" style="display:none">
-            <input type="file" accept="image/*" capture="environment" id="input-foto-sj" onchange="capturePhoto('sj',this)">
+          <div class="photo-guide-wrap" id="wrap-foto-sj" onclick="openCamera('sj')"
+            style="cursor:pointer;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;min-height:90px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden">
+            <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
+            <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
+            <div class="photo-guide-icon" id="icon-foto-sj"><i class="fas fa-camera" style="font-size:24px;color:#94a3b8"></i></div>
+            <div id="txt-foto-sj" style="font-size:11px;color:#64748b;margin-top:6px">Tap untuk foto SJ</div>
+            <img id="prev-foto-sj" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none">
           </div>
           <canvas id="canvas-foto-sj" style="display:none"></canvas>
         </div>
@@ -514,15 +541,13 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 
     <div class="form-group">
       <label class="form-label">1. Foto Bukti Gagal Kirim <span class="req">*wajib</span></label>
-      <div class="photo-guide-wrap" id="wrap-foto-gagal">
-        <div class="photo-guide-inner" style="min-height:110px">
-          <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
-          <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
-          <div class="photo-guide-icon" id="icon-foto-gagal"><i class="fas fa-camera"></i></div>
-          <div class="photo-guide-text" id="txt-foto-gagal">Foto kondisi lokasi / bukti gagal kirim</div>
-        </div>
-        <img id="prev-foto-gagal" class="photo-preview" style="display:none">
-        <input type="file" accept="image/*" capture="environment" id="input-foto-gagal" onchange="capturePhoto('gagal',this)">
+      <div class="photo-guide-wrap" id="wrap-foto-gagal" onclick="openCamera('gagal')"
+        style="cursor:pointer;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;min-height:110px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden">
+        <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
+        <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
+        <div class="photo-guide-icon" id="icon-foto-gagal"><i class="fas fa-camera" style="font-size:26px;color:#94a3b8"></i></div>
+        <div id="txt-foto-gagal" style="font-size:11px;color:#64748b;margin-top:6px">Tap untuk foto bukti gagal</div>
+        <img id="prev-foto-gagal" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none">
       </div>
       <canvas id="canvas-foto-gagal" style="display:none"></canvas>
     </div>
@@ -620,7 +645,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v3.3';
+const APP_VERSION    = 'v3.4';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -1859,11 +1884,196 @@ function drawWrappedText(ctx,text,x,y,maxW,lh){
   ctx.fillText(line,x,y); return y+lh;
 }
 
+// ═══════════════════════════════════════════════════════
+// CAMERA API — getUserMedia (langsung buka kamera, no file picker)
+// ═══════════════════════════════════════════════════════
+let cameraStream   = null;
+let cameraType     = null; // 'do','rusak','sj','gagal'
+let capturedB64    = null;
+
+async function openCamera(type) {
+  cameraType  = type;
+  capturedB64 = null;
+
+  // Label per jenis foto
+  const labels = {
+    do    : '📄 Posisikan DO dalam bingkai',
+    rusak : '📦 Foto kerusakan barang',
+    sj    : '📋 Foto Surat Jalan',
+    gagal : '📍 Foto bukti gagal kirim',
+  };
+  const lbl = document.getElementById('camera-label');
+  if (lbl) lbl.textContent = labels[type] || '📷 Ambil foto';
+
+  // Reset preview
+  document.getElementById('camera-preview-wrap').classList.remove('show');
+  document.getElementById('camera-video').style.display = 'block';
+  document.querySelector('.camera-bottom').style.display = 'flex';
+
+  // Minta akses kamera belakang
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' }, // kamera belakang
+        width:  { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+      audio: false,
+    });
+    const video = document.getElementById('camera-video');
+    video.srcObject = cameraStream;
+    await video.play();
+    document.getElementById('camera-overlay').classList.add('show');
+  } catch(e) {
+    // Fallback ke file input jika getUserMedia tidak support
+    console.warn('[Camera] getUserMedia gagal:', e.message, '— fallback ke file input');
+    fallbackFileInput(type);
+  }
+}
+
+function fallbackFileInput(type) {
+  // Buat input file sementara sebagai fallback
+  const inp = document.createElement('input');
+  inp.type    = 'file';
+  inp.accept  = 'image/*';
+  inp.capture = 'environment';
+  inp.style.display = 'none';
+  inp.onchange = function() { capturePhoto(type, inp); document.body.removeChild(inp); };
+  document.body.appendChild(inp);
+  inp.click();
+}
+
+function captureFrame() {
+  const video  = document.getElementById('camera-video');
+  const canvas = document.getElementById('camera-canvas');
+
+  // Ambil frame dari video
+  const W = video.videoWidth  || 1280;
+  const H = video.videoHeight || 720;
+  canvas.width  = Math.min(W, 1000);
+  canvas.height = Math.round(H * (canvas.width / W));
+
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  capturedB64 = canvas.toDataURL('image/jpeg', 0.78);
+
+  // Tampilkan preview
+  document.getElementById('camera-preview-img').src = capturedB64;
+  document.getElementById('camera-preview-wrap').classList.add('show');
+  document.getElementById('camera-video').style.display = 'none';
+  document.querySelector('.camera-bottom').style.display = 'none';
+}
+
+function retakePhoto() {
+  capturedB64 = null;
+  document.getElementById('camera-preview-wrap').classList.remove('show');
+  document.getElementById('camera-video').style.display = 'block';
+  document.querySelector('.camera-bottom').style.display = 'flex';
+}
+
+async function usePhoto() {
+  if (!capturedB64) return;
+
+  // Proses watermark (non-blocking GPS geocode)
+  closeCamera();
+  await processAndSetPhoto(cameraType, capturedB64);
+}
+
+async function processAndSetPhoto(type, rawB64) {
+  // Koordinat GPS
+  const coords = modalCtx.gps_coords || (tripState.last_pos
+    ? tripState.last_pos.lat.toFixed(6)+','+tripState.last_pos.lng.toFixed(6) : '');
+
+  const canvas = document.getElementById('canvas-foto-'+type) || document.createElement('canvas');
+  const img    = new Image();
+  img.onload = function() {
+    const maxW = 800;
+    let w = img.width, h = img.height;
+    if (w > maxW) { h = Math.round(h*(maxW/w)); w = maxW; }
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+
+    // Watermark
+    const now   = new Date().toLocaleString('id-ID',{timeZone:'Asia/Jakarta'});
+    const lines = [
+      'Plat         : '+driverState.plat,
+      'Driver       : '+driverState.driver,
+      'Koordinat    : '+(coords||'-'),
+      'DO           : '+modalCtx.doc_no,
+      'Waktu        : '+now,
+    ];
+    const pad=16,lh=16,textX=90,maxTW=w-textX-14;
+    ctx.font='11px Arial';
+    let totalH=0; lines.forEach(l=>{ totalH+=getTextH(ctx,l,maxTW,lh); });
+    const boxH=Math.max(totalH,44)+pad;
+    const boxY=h-boxH;
+    const grad=ctx.createLinearGradient(0,boxY,0,h);
+    grad.addColorStop(0,'rgba(0,0,0,.87)'); grad.addColorStop(1,'rgba(0,0,0,.7)');
+    ctx.fillStyle=grad; ctx.fillRect(0,boxY,w,boxH);
+
+    const logo=new Image(); logo.crossOrigin='anonymous';
+    logo.src='https://globalsentral.id/z/data/Logo.avif';
+    const done = () => {
+      ctx.fillStyle='#fff'; ctx.font='11px Arial';
+      let ty=boxY+18; lines.forEach(l=>{ ty=drawWrappedText(ctx,l,textX,ty,maxTW,lh); });
+      const b64=canvas.toDataURL('image/jpeg',0.75);
+      setPhotoResult(type, b64);
+    };
+    logo.onload=function(){
+      const lh2=40,lw=logo.width*(lh2/logo.height);
+      ctx.globalAlpha=.85; ctx.drawImage(logo,12,boxY+(boxH-lh2)/2,lw,lh2); ctx.globalAlpha=1;
+      done();
+    };
+    logo.onerror=done;
+  };
+  img.src = rawB64;
+}
+
+function closeCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  document.getElementById('camera-overlay').classList.remove('show');
+  document.getElementById('camera-video').srcObject = null;
+}
+
 // Close overlays on outside tap
 document.addEventListener('click', function(e) {
   const overlay=document.getElementById('settings-overlay');
   if (e.target===overlay) closeSettings();
 });
 </script>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- CAMERA OVERLAY — getUserMedia direct camera        -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="camera-overlay" id="camera-overlay">
+  <!-- Live preview -->
+  <video id="camera-video" class="camera-video" autoplay playsinline muted></video>
+  <!-- Frame guide -->
+  <div class="camera-frame">
+    <div class="camera-guide"></div>
+    <div class="camera-label" id="camera-label">📄 Posisikan dokumen dalam bingkai</div>
+  </div>
+  <!-- Controls -->
+  <div class="camera-bottom">
+    <button class="camera-cancel" onclick="closeCamera()">✕ Batal</button>
+    <button class="camera-shutter" onclick="captureFrame()">📷</button>
+    <div style="width:72px"></div>
+  </div>
+  <!-- Preview setelah ambil foto -->
+  <div class="camera-preview-wrap" id="camera-preview-wrap">
+    <img id="camera-preview-img" class="camera-preview-img">
+    <div class="camera-preview-actions">
+      <button class="camera-retake-btn" onclick="retakePhoto()">🔄 Ambil Ulang</button>
+      <button class="camera-use-btn" onclick="usePhoto()">✓ Gunakan Foto</button>
+    </div>
+  </div>
+  <canvas id="camera-canvas" style="display:none"></canvas>
+</div>
+
 </body>
 </html>
