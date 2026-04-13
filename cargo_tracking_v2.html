@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sales View — Pengiriman GlobalSentral</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+:root{
+  --navy:#0b1f3a;--blue:#2563eb;--bg:#f4f7fb;--card:#fff;
+  --border:#e2e8f0;--text:#0f172a;--muted:#64748b;
+  --green:#15803d;--red:#dc2626;--amber:#d97706;--purple:#7c3aed;
+  --green-bg:#f0fdf4;--red-bg:#fef2f2;--amber-bg:#fffbeb;
+}
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',sans-serif}
+body{background:var(--bg);color:var(--text);min-height:100vh}
+
+/* TOP BAR */
+.topbar{background:var(--navy);color:#fff;padding:0 20px;height:54px;
+  display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.brand{display:flex;align-items:center;gap:12px}
+.brand h1{font-size:14px;font-weight:700;letter-spacing:.04em}
+.brand .sub{font-size:10px;color:#94a3b8;margin-top:1px}
+.gs-dot{width:8px;height:8px;border-radius:50%;background:#ef4444;flex-shrink:0;transition:background .3s}
+.gs-dot.ok{background:#22c55e}
+.gs-txt{font-size:11px;color:#94a3b8}
+
+/* KPI ROW */
+.kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;padding:16px 20px 0}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+.kpi-l{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.kpi-v{font-size:22px;font-weight:800;line-height:1}
+.kpi-s{font-size:10px;color:var(--muted);margin-top:2px}
+.kpi.success .kpi-v{color:var(--green)}
+.kpi.retry .kpi-v{color:var(--amber)}
+.kpi.fail .kpi-v{color:var(--red)}
+.kpi.process .kpi-v{color:var(--blue)}
+
+/* FILTERS */
+.filter-row{display:flex;gap:8px;padding:12px 20px;flex-wrap:wrap;align-items:center}
+.finp{padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;
+  font-size:12px;color:var(--text);background:#fff;cursor:pointer}
+.finp:focus{outline:none;border-color:var(--blue)}
+.btn{padding:7px 14px;border-radius:8px;border:none;font-size:12px;
+  font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{background:#1d4ed8}
+.btn-ghost{background:#f1f5f9;color:#334155;border:1px solid var(--border)}
+.btn-ghost:hover{background:#e2e8f0}
+.btn-sm{padding:4px 10px;font-size:11px}
+
+/* CARDS LIST */
+.list{padding:0 20px 20px;display:flex;flex-direction:column;gap:10px}
+
+/* DO CARD */
+.do-card{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:box-shadow .15s}
+.do-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.08)}
+.do-card.selesai{border-left:4px solid #22c55e}
+.do-card.gagal{border-left:4px solid #ef4444}
+.do-card.process{border-left:4px solid var(--blue)}
+.do-card.baru{border-left:4px solid #94a3b8}
+
+.card-head{padding:12px 16px;display:flex;justify-content:space-between;align-items:flex-start;cursor:pointer;user-select:none}
+.card-head:hover{background:#fafbfc}
+.doc-no{font-size:13px;font-weight:800;color:var(--text);font-family:monospace}
+.customer{font-size:12px;font-weight:600;color:var(--text);margin-top:2px}
+.alamat{font-size:11px;color:var(--muted);margin-top:1px;max-width:420px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0;margin-left:12px}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;
+  border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap}
+.b-selesai{background:#dcfce7;color:#15803d;border:1px solid #86efac}
+.b-process{background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd}
+.b-gagal{background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5}
+.b-baru{background:#f1f5f9;color:#475569;border:1px solid #cbd5e1}
+.b-try{background:#fef9c3;color:#854d0e;border:1px solid #fde68a;font-size:9px}
+.b-2nd{background:#fef3c7;color:#92400e}
+.b-3rd{background:#ffedd5;color:#9a3412}
+.b-nth{background:#fee2e2;color:#b91c1c}
+.b-muat{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
+
+/* ATTEMPTS TIMELINE */
+.attempts{display:none;border-top:1px solid var(--border);padding:12px 16px;
+  background:#fafbfc;flex-direction:column;gap:8px}
+.attempts.open{display:flex}
+
+.attempt-item{background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px 14px}
+.attempt-item.sukses{border-color:#86efac;background:#f0fdf4}
+.attempt-item.gagal{border-color:#fca5a5;background:#fef2f2}
+.attempt-item.process{border-color:#93c5fd;background:#eff6ff}
+
+.attempt-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.attempt-num{font-size:11px;font-weight:800;color:var(--muted);width:52px;flex-shrink:0}
+.attempt-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-size:11px}
+.ag-label{color:var(--muted);font-size:10px;margin-bottom:1px}
+.ag-val{font-weight:600;color:var(--text)}
+.foto-link{display:inline-flex;align-items:center;gap:4px;color:var(--blue);
+  font-size:11px;font-weight:600;text-decoration:none}
+.foto-link:hover{text-decoration:underline}
+
+/* EMPTY */
+.empty{text-align:center;padding:56px 20px;color:#94a3b8}
+.empty i{font-size:40px;margin-bottom:12px;display:block}
+.empty p{font-size:13px}
+
+/* LOADING */
+.spinner{display:inline-block;width:18px;height:18px;border:2.5px solid #e2e8f0;
+  border-top-color:var(--blue);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.load-bar{text-align:center;padding:40px;color:var(--muted);font-size:13px}
+
+/* TOOLTIP try number */
+.try-badge-wrap{position:relative;cursor:help}
+.try-tooltip{display:none;position:absolute;right:0;top:110%;background:#0f172a;
+  color:#fff;font-size:10px;padding:4px 8px;border-radius:6px;white-space:nowrap;z-index:10}
+.try-badge-wrap:hover .try-tooltip{display:block}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="brand">
+    <img src="https://globalsentral.id/z/data/Logo.avif" height="36" alt="" onerror="this.style.display='none'">
+    <div>
+      <div class="brand h1">PENGIRIMAN GRANITE</div>
+      <div class="sub">Sales View · GlobalSentral Transport</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <div class="gs-dot" id="gs-dot"></div>
+    <span class="gs-txt" id="gs-txt">Menghubungkan...</span>
+    <button class="btn btn-ghost btn-sm" onclick="loadData()" style="margin-left:8px">
+      <i class="fas fa-sync-alt" id="refresh-icon"></i> Refresh
+    </button>
+  </div>
+</div>
+
+<!-- KPI ROW -->
+<div class="kpi-row">
+  <div class="kpi success">
+    <div class="kpi-l">✅ Berhasil</div>
+    <div class="kpi-v" id="k-sukses">—</div>
+    <div class="kpi-s">DO terkirim</div>
+  </div>
+  <div class="kpi" style="border-left:3px solid #d97706">
+    <div class="kpi-l">📦 Muat Kargo</div>
+    <div class="kpi-v" style="color:#d97706" id="k-muat">—</div>
+    <div class="kpi-s">sedang dimuat</div>
+  </div>
+  <div class="kpi process">
+    <div class="kpi-l">🚚 On Process</div>
+    <div class="kpi-v" id="k-process">—</div>
+    <div class="kpi-s">sedang diantar</div>
+  </div>
+  <div class="kpi fail">
+    <div class="kpi-l">❌ Gagal</div>
+    <div class="kpi-v" id="k-gagal">—</div>
+    <div class="kpi-s">perlu retry</div>
+  </div>
+  <div class="kpi retry">
+    <div class="kpi-l">🔄 Multi-try</div>
+    <div class="kpi-v" id="k-retry">—</div>
+    <div class="kpi-s">lebih dari 1 attempt</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-l">📦 Total DUS</div>
+    <div class="kpi-v" id="k-dus">—</div>
+    <div class="kpi-s">berhasil diterima</div>
+  </div>
+</div>
+
+<!-- FILTERS -->
+<div class="filter-row">
+  <input class="finp" type="date" id="f-from" onchange="loadData()" title="Dari tanggal">
+  <span style="font-size:11px;color:var(--muted)">s/d</span>
+  <input class="finp" type="date" id="f-to" onchange="loadData()" title="Sampai tanggal">
+  <select class="finp" id="f-status" onchange="renderList()">
+    <option value="">Semua Status</option>
+    <option value="Selesai">✅ Selesai</option>
+    <option value="Muat Kargo">📦 Muat Kargo</option>
+    <option value="On Process">🚚 On Process</option>
+    <option value="Gagal Kirim">❌ Gagal Kirim</option>
+    <option value="Baru">Baru</option>
+  </select>
+  <select class="finp" id="f-gudang" onchange="renderList()">
+    <option value="">Semua Gudang</option>
+    <option>DAAN MOGOT</option>
+    <option>DOYONG</option>
+    <option>CIKUDA</option>
+  </select>
+  <select class="finp" id="f-try" onchange="renderList()">
+    <option value="">Semua Attempt</option>
+    <option value="1">1st (pertama kali)</option>
+    <option value="2">2nd try+</option>
+    <option value="3">3rd try+</option>
+  </select>
+  <input class="finp" type="text" id="f-search" placeholder="Cari DO / Customer..." oninput="renderList()" style="width:200px">
+  <button class="btn btn-ghost" onclick="resetFilters()">↺ Reset</button>
+</div>
+
+<!-- LIST -->
+<div class="list" id="main-list">
+  <div class="load-bar"><div class="spinner" style="margin:0 auto 10px"></div>Menghubungkan ke data...</div>
+</div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzWW4NJXYEZxcG5jiygObB6sitBmuQFi0m22C9vH2Wp2vnchw3lGv99I9E1mJ5uPXChNA/exec';
+let allData   = [];
+let connected = false;
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+window.onload = () => {
+  // Default: hari ini
+  const today = toInputDate(new Date());
+  document.getElementById('f-from').value = today;
+  document.getElementById('f-to').value   = today;
+  init();
+};
+
+async function init() {
+  try {
+    const r = await fetch(GAS_URL+'?action=ping', {redirect:'follow'});
+    const d = await r.json();
+    if (d.status === 'ok') {
+      connected = true;
+      setStatus(true, 'Terhubung');
+      await loadData();
+    } else throw new Error(d.error||'ping gagal');
+  } catch(e) {
+    setStatus(false, 'Gagal connect: '+e.message);
+    showEmpty('Tidak bisa terhubung ke server. Coba refresh halaman.');
+  }
+}
+
+// ── LOAD DATA ─────────────────────────────────────────────────────────────────
+async function loadData() {
+  if (!connected) { await init(); return; }
+  const from = document.getElementById('f-from').value;
+  const to   = document.getElementById('f-to').value;
+
+  // Convert YYYY-MM-DD → DD/MM/YYYY untuk Apps Script
+  const fmtDate = v => v ? v.split('-').reverse().join('/') : '';
+
+  setRefreshing(true);
+  showLoading();
+  try {
+    const qs  = new URLSearchParams({action:'getSalesView', dateFrom:fmtDate(from), dateTo:fmtDate(to)});
+    const r   = await fetch(GAS_URL+'?'+qs, {redirect:'follow'});
+    const d   = await r.json();
+    allData   = d.data || [];
+    renderKPI();
+    renderList();
+  } catch(e) {
+    showEmpty('Gagal memuat data: '+e.message);
+  }
+  setRefreshing(false);
+}
+
+// ── KPI ───────────────────────────────────────────────────────────────────────
+function renderKPI() {
+  const sukses  = allData.filter(d=>d.status==='Selesai').length;
+  const muat    = allData.filter(d=>d.status==='Muat Kargo').length;
+  const process = allData.filter(d=>d.status==='On Process').length;
+  const gagal   = allData.filter(d=>d.status==='Gagal Kirim').length;
+  const retry   = allData.filter(d=>d.total_try>1).length;
+  const dus     = allData.filter(d=>d.status==='Selesai').reduce((a,d)=>a+(d.qty_terima||0),0);
+
+  document.getElementById('k-sukses').textContent  = sukses;
+  if(document.getElementById('k-muat')) document.getElementById('k-muat').textContent = muat;
+  document.getElementById('k-process').textContent = process;
+  document.getElementById('k-gagal').textContent   = gagal;
+  document.getElementById('k-retry').textContent   = retry;
+  document.getElementById('k-dus').textContent     = dus;
+}
+
+// ── RENDER LIST ───────────────────────────────────────────────────────────────
+function renderList() {
+  const fStatus  = document.getElementById('f-status').value;
+  const fGudang  = document.getElementById('f-gudang').value;
+  const fTry     = document.getElementById('f-try').value;
+  const fSearch  = document.getElementById('f-search').value.toLowerCase();
+
+  let list = allData;
+  if (fStatus) list = list.filter(d=>d.status===fStatus);
+  if (fGudang) list = list.filter(d=>d.gudang===fGudang);
+  if (fTry)    list = list.filter(d=>d.total_try>=parseInt(fTry));
+  if (fSearch) list = list.filter(d=>
+    (d.doc_no||'').includes(fSearch) ||
+    (d.customer||'').toLowerCase().includes(fSearch)
+  );
+
+  const el = document.getElementById('main-list');
+  if (!list.length) {
+    el.innerHTML = `<div class="empty"><i class="fas fa-box-open"></i>
+      <p>Tidak ada data pengiriman untuk filter yang dipilih</p></div>`;
+    return;
+  }
+
+  el.innerHTML = list.map(d => cardHtml(d)).join('');
+}
+
+// ── CARD HTML ─────────────────────────────────────────────────────────────────
+function cardHtml(d) {
+  const cls    = d.status==='Selesai'?'selesai':d.status==='Muat Kargo'?'process':d.status==='On Process'?'process':d.status==='Gagal Kirim'?'gagal':'baru';
+  const sbadge = statusBadge(d.status);
+  const tbadge = tryBadge(d.total_try, d.status);
+
+  const attempts = (d.attempts||[]).map((a,i) => {
+    const acls = a.status==='Selesai'?'sukses':a.status==='Muat Kargo'?'process':a.status==='On Process'?'process':a.status==='Gagal Kirim'?'gagal':'';
+    const tryLbl = tryLabel(a.try_no, d.total_try);
+
+    return `<div class="attempt-item ${acls}">
+      <div class="attempt-head">
+        <span class="attempt-num">${tryLbl}</span>
+        ${statusBadge(a.status)}
+        <span style="font-size:11px;color:var(--muted);margin-left:auto">${esc(a.tgl_do||'')} · ${esc(a.driver||'—')} · ${esc(a.plat||'')}</span>
+      </div>
+      <div class="attempt-grid">
+        <div><div class="ag-label">Kirim</div><div class="ag-val">${a.qty_kirim||0} DUS</div></div>
+        <div><div class="ag-label">Diterima</div><div class="ag-val" style="color:${a.qty_terima>0?'var(--green)':'var(--muted)'}">${a.qty_terima||0} DUS</div></div>
+        <div><div class="ag-label">Rusak</div><div class="ag-val" style="color:${a.qty_rusak>0?'var(--red)':'var(--muted)'}">${a.qty_rusak||0} DUS</div></div>
+        <div>
+          ${a.foto_do
+            ? `<div class="ag-label">Foto DO</div><a href="${esc(a.foto_do)}" target="_blank" class="foto-link"><i class="fas fa-image"></i> Lihat foto</a>`
+            : `<div class="ag-label">Foto</div><span style="font-size:11px;color:#94a3b8">—</span>`}
+        </div>
+      </div>
+      ${a.status==='Gagal Kirim' && a.alasan_gagal
+        ? `<div style="margin-top:6px;font-size:10px;background:#fef2f2;border-radius:5px;padding:4px 8px;color:#b91c1c">
+             ❌ Alasan: ${esc(a.alasan_gagal||a.alasan_log||'—')}</div>`:''}
+    </div>`;
+  }).join('');
+
+  return `<div class="do-card ${cls}" id="card-${d.doc_no}">
+    <div class="card-head" onclick="toggleCard('${d.doc_no}')">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="doc-no">${esc(d.doc_no)}</span>
+          ${d.total_try>1?`<span class="badge b-try">🔄 ${d.total_try}x try</span>`:''}
+        </div>
+        <div class="customer">${esc(d.customer||'—')}</div>
+        <div class="alamat">${esc(d.alamat||'—')}</div>
+        <div style="margin-top:5px;font-size:10px;color:var(--muted)">
+          ${esc(d.gudang||'')} · ${esc(d.driver||'—')} · ${esc(d.plat||'')}
+          · Tgl: ${esc(d.tgl_terakhir||'—')}
+          ${d.qty_kirim?`· ${d.qty_kirim} DUS`:''}
+        </div>
+      </div>
+      <div class="card-right">
+        ${sbadge}
+        ${tbadge}
+        <span style="font-size:10px;color:#94a3b8;margin-top:2px">${esc(d.jam_update||'')}</span>
+        <i class="fas fa-chevron-down" id="chevron-${d.doc_no}" style="font-size:10px;color:#94a3b8;margin-top:4px;transition:transform .2s"></i>
+      </div>
+    </div>
+    <div class="attempts" id="attempts-${d.doc_no}">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">
+        Riwayat Pengiriman (${d.total_try} attempt)
+      </div>
+      ${attempts}
+    </div>
+  </div>`;
+}
+
+// ── TOGGLE CARD ───────────────────────────────────────────────────────────────
+function toggleCard(docNo) {
+  const att = document.getElementById('attempts-'+docNo);
+  const chv = document.getElementById('chevron-'+docNo);
+  if (!att) return;
+  const open = att.classList.toggle('open');
+  if (chv) chv.style.transform = open ? 'rotate(180deg)' : '';
+}
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+function statusBadge(s) {
+  const map = {
+    'Selesai'    : 'b-selesai',
+    'Muat Kargo'  : 'b-muat',
+    'On Process'  : 'b-process',
+    'Gagal Kirim': 'b-gagal',
+    'Baru'       : 'b-baru',
+  };
+  return `<span class="badge ${map[s]||'b-baru'}">${s||'—'}</span>`;
+}
+
+function tryBadge(n, status) {
+  if (n <= 1) return '';
+  const cls = n===2?'b-2nd':n===3?'b-3rd':'b-nth';
+  const icon = status==='Selesai' ? '✅' : '🔄';
+  return `<span class="badge ${cls}">${icon} ${tryLabel(n,n)}</span>`;
+}
+
+function tryLabel(tryNo, total) {
+  const sfx = ['','st','nd','rd'];
+  const s   = sfx[tryNo] || 'th';
+  if (tryNo === 1 && total === 1) return '1st';
+  if (tryNo === 1) return '1st';
+  return `${tryNo}${s} try`;
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function toInputDate(d) { return d.toISOString().slice(0,10); }
+
+function setStatus(ok, msg) {
+  document.getElementById('gs-dot').className = 'gs-dot'+(ok?' ok':'');
+  document.getElementById('gs-txt').textContent = msg;
+}
+function setRefreshing(on) {
+  const ic = document.getElementById('refresh-icon');
+  if (ic) ic.className = on ? 'fas fa-sync-alt fa-spin' : 'fas fa-sync-alt';
+}
+function showLoading() {
+  document.getElementById('main-list').innerHTML =
+    `<div class="load-bar"><div class="spinner" style="margin:0 auto 10px"></div>Memuat data pengiriman...</div>`;
+}
+function showEmpty(msg) {
+  document.getElementById('main-list').innerHTML =
+    `<div class="empty"><i class="fas fa-box-open"></i><p>${msg}</p></div>`;
+}
+function resetFilters() {
+  const today = toInputDate(new Date());
+  document.getElementById('f-from').value   = today;
+  document.getElementById('f-to').value     = today;
+  document.getElementById('f-status').value = '';
+  document.getElementById('f-gudang').value = '';
+  document.getElementById('f-try').value    = '';
+  document.getElementById('f-search').value = '';
+  loadData();
+}
+</script>
+</body>
+</html>
