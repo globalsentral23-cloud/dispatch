@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>GST Logistics — Driver App v3.2</title>
+<title>GST Logistics — Driver App v3.3</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <style>
 :root{
@@ -425,14 +425,19 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
     <div class="form-group">
       <label class="form-label">1. Foto Bukti Kirim / DO <span class="req">*wajib</span></label>
       <div class="photo-guide-wrap" id="wrap-foto-do">
-        <div class="photo-guide-inner">
-          <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
-          <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
-          <div class="photo-guide-icon" id="icon-foto-do"><i class="fas fa-camera"></i></div>
-          <div class="photo-guide-text" id="txt-foto-do">Letakkan DO dalam bingkai · nomor DO harus terbaca</div>
+        <div style="position:relative;width:100%;padding-top:70.7%;background:#f8fafc;border-radius:8px;overflow:hidden">
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+            <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
+            <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
+            <div class="photo-guide-icon" id="icon-foto-do"><i class="fas fa-camera"></i></div>
+            <div class="photo-guide-text" id="txt-foto-do" style="font-size:11px;color:#64748b;margin-top:6px;text-align:center;padding:0 20px">
+              📄 Posisikan DO dalam bingkai<br>Nomor DO harus terbaca jelas
+            </div>
+          </div>
+          <img id="prev-foto-do" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none">
+          <input type="file" accept="image/*" capture="environment" id="input-foto-do" onchange="capturePhoto('do',this)"
+            style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer">
         </div>
-        <img id="prev-foto-do" class="photo-preview" style="display:none">
-        <input type="file" accept="image/*" capture="environment" id="input-foto-do" onchange="capturePhoto('do',this)">
       </div>
       <canvas id="canvas-foto-do" style="display:none"></canvas>
     </div>
@@ -615,7 +620,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v3.2';
+const APP_VERSION    = 'v3.3';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -900,7 +905,6 @@ function buildCard(t) {
         <button class="btn-start" onclick="startJob('${escHtml(t.doc_no)}')">
           <i class="fas fa-play"></i> START JALAN
         </button>
-        <button class="btn-batal" onclick="confirmBatal('${escHtml(t.doc_no)}')">✕ BATAL</button>
        </div>`
     : isProc
     ? `<div class="action-row">
@@ -1327,16 +1331,17 @@ async function capturePhoto(type, inputEl) {
   const file = inputEl.files[0];
   if (!file) return;
 
-  let gpsAddr = 'Lokasi tidak tersedia';
+  // Koordinat GPS — tidak tunggu reverse geocoding (lambat ~1-2 detik)
+  // Koordinat raw sudah cukup untuk watermark
   const coords = modalCtx.gps_coords || (tripState.last_pos
     ? tripState.last_pos.lat.toFixed(6)+','+tripState.last_pos.lng.toFixed(6) : '');
+  let gpsAddr = coords || 'Lokasi tidak tersedia';
+  // Geocoding async di background (tidak blocking)
   if (coords) {
-    try {
-      const [lat,lng] = coords.split(',');
-      const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
-      const d = await r.json();
-      if (d.display_name) gpsAddr = d.display_name.slice(0,80);
-    } catch(e) {}
+    const [lat,lng] = coords.split(',');
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+      .then(r=>r.json()).then(d=>{if(d.display_name) gpsAddr=d.display_name.slice(0,80);})
+      .catch(()=>{});
   }
 
   const reader = new FileReader();
@@ -1345,7 +1350,7 @@ async function capturePhoto(type, inputEl) {
     img.onload = function() {
       const canvas = document.getElementById('canvas-foto-'+type);
       // Max 1000px width for balance of quality vs size
-      const maxW = 1000;
+      const maxW = 800; // Dikurangi dari 1000 → proses lebih cepat
       let w = img.width, h = img.height;
       if (w > maxW) { h = h*(maxW/w); w = maxW; }
       canvas.width = w; canvas.height = h;
@@ -1387,7 +1392,7 @@ async function capturePhoto(type, inputEl) {
         ctx.fillStyle='#fff'; ctx.font='11px Arial';
         let ty=boxY+20;
         lines.forEach(l=>{ ty=drawWrappedText(ctx,l,textX,ty,maxTW,lh); });
-        const b64=canvas.toDataURL('image/jpeg',0.82);
+        const b64=canvas.toDataURL('image/jpeg',0.72); // Quality 0.82→0.72 lebih cepat
         setPhotoResult(type, b64);
         inputEl.value='';
       };
