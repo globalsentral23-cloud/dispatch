@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>GST Logistics — Driver App v3.8</title>
+<title>GST Logistics — Driver App v3.9</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <style>
 :root{
@@ -674,7 +675,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v3.8';
+const APP_VERSION    = 'v3.9';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -1005,6 +1006,7 @@ function buildCard(t) {
     </div>
     <div onclick="toggleDetail('${t.doc_no}')" style="padding:8px 14px;text-align:center;border-bottom:1px solid var(--border);cursor:pointer;color:var(--accent);font-size:12px;font-weight:600">
       Detail &nbsp;<i class="fas fa-chevron-down"></i>
+      ${t.eta_est ? `<span style="float:left;font-size:10px;color:#64748b;font-weight:400">ETA: ${t.eta_est}</span>` : ''}
     </div>
     <div class="do-detail" id="detail-${t.doc_no}" style="display:none">
       <div class="detail-section">
@@ -1303,7 +1305,10 @@ function renderHistoryContent(tasks, dateStr) {
 // JOB ACTIONS
 // ═══════════════════════════════════════════════════════
 async function startJob(docNo) {
-  if (!confirm('Mulai perjalanan untuk DO '+docNo+'?')) return;
+  // Cari QTY dari task list untuk verifikasi
+  const task = currentTasks.find(t => t.doc_no === docNo);
+  const qtyInfo = task ? `\nQTY yang akan dikirim: ${task.qty||0} DUS\nCustomer: ${task.customer||'—'}` : '';
+  if (!confirm(`Mulai perjalanan untuk DO ${docNo}?${qtyInfo}\n\nPastikan barang sudah dimuat dengan benar.`)) return;
   tripState.started    = true;
   tripState.start_time = Date.now();
   document.getElementById('km-bar').style.display = 'flex';
