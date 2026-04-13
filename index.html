@@ -1,1717 +1,2264 @@
-/**
- * ROUTING OPTIMIZER — Google Apps Script
- * Versi: 3.4 | April 2026
- * Cocok untuk: routing_optimizer_v4.24+ / driver_app_v3
- *
- * ── CARA PASANG ──────────────────────────────────────────────────────────────
- * 1. Google Sheets → Extensions → Apps Script
- * 2. Hapus semua kode lama → Paste kode ini → Save (Ctrl+S)
- * 3. Deploy → New Deployment
- *    · Type       : Web App
- *    · Execute as : Me
- *    · Who access : Anyone   ← WAJIB
- * 4. Copy URL → Paste ke app → Connect
- *
- * ── CHANGELOG v3.0 ───────────────────────────────────────────────────────────
- * + BBM berbasis km/liter (pisah dari UJ driver)
- * + Field: bbm_liter_est, bbm_km_per_l, bbm_harga_per_l di Settlement
- * + updateHargaSolar() — update harga solar di Konfigurasi + notif
- * + getKonfigurasi() — endpoint baca config saja (lebih cepat)
- * + Settlement sheet v2: kolom liter & harga solar terpisah
- * + testPing() & testUpdateHargaSolar() untuk verifikasi
- *
- * ── CHANGELOG v3.1 ───────────────────────────────────────────────────────────
- * + doPost: submitSelesai, submitGagal, submitStruk, populateDoStatus
- *
- * ── CHANGELOG v3.2 ───────────────────────────────────────────────────────────
- * + getDriverTasks: date matching lebih toleran
- *   → handle dd.MM.yy (titik, 2-digit year) dari WA Blast lama
- *   → expand 6-digit → 8-digit otomatis
- *   → fallback: jika tidak match, coba tanggal hari ini
- *   → Fix: driver_app_v3 kirim foto via POST (no-cors) bukan GET params
- *   → GET params terbatas ~2KB, foto base64 bisa 50-200KB → POST wajib
- *
- * ── CARA UPDATE HARGA SOLAR ──────────────────────────────────────────────────
- * Opsi A: Edit langsung Sheet "Konfigurasi" → baris "Harga solar per liter"
- * Opsi B: Jalankan testUpdateHargaSolar() dari Apps Script editor
- * Opsi C: POST { action:'updateHargaSolar', harga:7500 } dari app
- * → Setelah update, reconnect di app → BBM otomatis recalculate
- */
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>GST Logistics — Driver App v3.8</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+:root{
+  --nav:#0b1f3a;--accent:#2563eb;--bg:#f4f7fb;--border:#dbe3f0;
+  --text-main:#0f172a;--text-muted:#64748b;
+  --green:#16a34a;--red:#dc2626;--amber:#d97706;--notif-red:#ef4444;
+}
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',sans-serif;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
+.driver-app{max-width:500px;margin:0 auto;min-height:100vh;background:#fff;box-shadow:0 0 30px rgba(15,23,42,.08)}
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// MULTI-SPREADSHEET CONFIG
-// ═══════════════════════════════════════════════════════════════════════════════
-//
-// Saat ini semua pakai 1 spreadsheet (active). Untuk pisah nanti:
-// 1. Buat spreadsheet baru di Google Drive
-// 2. Copy Spreadsheet ID dari URL: docs.google.com/spreadsheets/d/[ID]/edit
-// 3. Isi ID di bawah sesuai kategori
-// 4. Deploy ulang Apps Script
-//
-// Roadmap pemisahan:
-//   Sekarang : SS_MASTER saja (semua sheet di 1 spreadsheet)
-//   3 bln    : SS_OPERASIONAL dipisah (DO Status, Stop Log, GPS Log)
-//   6 bln    : SS_ANALITIK dipisah (Routing Log, Settlement, Trip Summary)
-//   Opsional : SS_GEO_CACHE dipisah (Geo Cache)
+/* HEADER */
+.driver-header{background:var(--nav);color:#fff;display:flex;justify-content:space-between;align-items:center;padding:12px 18px;position:sticky;top:0;z-index:100}
+.driver-header h2{font-size:17px;font-weight:700;margin-bottom:2px}
+.driver-header .plat{font-size:11px;opacity:.8}
+.hdr-right{display:flex;align-items:center;gap:8px}
+.settings-btn{background:none;border:none;color:#6ee7b7;font-size:18px;cursor:pointer;padding:4px 8px;border-radius:6px}
+.settings-btn:active{background:rgba(255,255,255,.1)}
+.notif-btn{position:relative;background:none;border:none;color:#93c5fd;font-size:18px;cursor:pointer;padding:4px 8px;border-radius:6px}
+.notif-btn:active{background:rgba(255,255,255,.1)}
+.notif-badge{position:absolute;top:0;right:0;background:var(--notif-red);color:#fff;font-size:9px;font-weight:700;min-width:16px;height:16px;border-radius:8px;display:none;align-items:center;justify-content:center;padding:0 3px}
 
-const SS_IDS = {
-  MASTER      : '',   // ← kosong = pakai active spreadsheet (default sekarang)
-  OPERASIONAL : '',   // ← isi ID spreadsheet operasional kalau sudah dipisah
-  ANALITIK    : '',   // ← isi ID spreadsheet analitik kalau sudah dipisah
-  GEO_CACHE   : '',   // ← isi ID spreadsheet geo cache kalau sudah dipisah
+/* OFFLINE NOTICE */
+.offline-notice{background:#fef2f2;border-bottom:2px solid #fecaca;color:#b91c1c;font-size:11px;padding:6px 14px;text-align:center;display:none}
+
+/* STATUS BAR */
+.status-bar{background:#1e3a5f;color:#93c5fd;font-size:11px;padding:5px 18px;display:flex;justify-content:space-between;align-items:center}
+.gps-dot{width:7px;height:7px;border-radius:50%;background:#64748b;display:inline-block;margin-right:5px}
+.gps-dot.active{background:#22c55e;animation:blink 1.5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* KM BAR */
+.km-bar{background:#1e3a5f;padding:7px 18px;display:flex;gap:16px;font-size:11px;color:#93c5fd}
+.km-val{font-size:14px;font-weight:700;color:#fff;font-family:monospace}
+
+/* POLLING INDICATOR */
+.poll-bar{background:#0f2d4e;color:#64748b;font-size:10px;padding:3px 18px;display:flex;justify-content:space-between;align-items:center}
+.poll-dot{width:5px;height:5px;border-radius:50%;background:#22c55e;display:inline-block;margin-right:4px;animation:blink 2s infinite}
+
+/* SECTION */
+.section-pad{padding:14px 14px 0}
+.section-title{font-size:13px;font-weight:700;color:#334155;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.refresh-btn{background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;padding:2px 6px;border-radius:4px;font-weight:600}
+.refresh-btn:active{background:#eff6ff}
+
+/* CARDS */
+.do-card{background:#fff;border-radius:12px;border:1px solid var(--border);margin-bottom:10px;box-shadow:0 2px 8px rgba(37,99,235,.05);overflow:hidden;transition:border-color .3s}
+.do-card.changed{border-color:#f59e0b;animation:card-pulse .6s 3}
+@keyframes card-pulse{0%,100%{box-shadow:0 2px 8px rgba(37,99,235,.05)}50%{box-shadow:0 0 16px rgba(245,158,11,.4)}}
+.do-card-head{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start}
+.do-no{font-size:14px;font-weight:700;color:var(--text-main)}
+.do-sub{font-size:10px;color:var(--text-muted);margin-top:1px}
+.do-badge{font-size:10px;padding:3px 10px;border-radius:20px;font-weight:600;white-space:nowrap}
+.badge-baru{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}
+.badge-process{background:#ecfdf5;color:#15803d;border:1px solid #86efac}
+.badge-selesai{background:#f0fdf4;color:#15803d}
+.badge-gagal{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
+
+/* BARCODE */
+.barcode-wrap{padding:10px 14px;text-align:center;border-bottom:1px solid var(--border);cursor:pointer}
+.barcode-lines{display:flex;gap:2px;height:42px;align-items:flex-end;justify-content:center;margin-bottom:3px}
+.barcode-lines span{background:#0f172a;width:2px;display:inline-block}
+.barcode-num{font-size:11px;font-family:monospace;color:var(--text-muted);letter-spacing:2px}
+
+/* DO DETAIL */
+.do-detail{padding:10px 14px}
+.detail-section{margin-bottom:10px}
+.detail-label{font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:5px;margin-bottom:4px}
+.detail-value{font-size:13px;font-weight:600;color:var(--text-main)}
+.detail-value.addr{font-size:12px;font-weight:400;color:#334155;line-height:1.5}
+.detail-row{display:flex;justify-content:space-between;align-items:center;margin-top:3px}
+.qty-chip{background:#eff6ff;color:#1d4ed8;border-radius:8px;padding:3px 10px;font-size:12px;font-weight:700}
+.btn-maps{display:flex;align-items:center;gap:6px;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:12px;font-weight:600;cursor:pointer;width:100%;margin-top:7px;justify-content:center}
+
+/* ACTION BUTTONS */
+.action-row{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--border)}
+.btn-start{flex:1;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:11px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px}
+.btn-batal{flex:1;background:#fff;color:#64748b;border:1px solid var(--border);border-radius:8px;padding:11px;font-size:12px;font-weight:600;cursor:pointer}
+.btn-selesai{flex:1;background:var(--green);color:#fff;border:none;border-radius:8px;padding:11px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px}
+.btn-gagal{flex:1;background:#1e293b;color:#fff;border:none;border-radius:8px;padding:11px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px}
+
+/* BOTTOM NAV */
+.bottom-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:500px;background:#fff;border-top:1px solid var(--border);display:grid;grid-template-columns:repeat(4,1fr);z-index:200}
+.nav-btn{padding:10px 4px 8px;text-align:center;border:none;background:none;cursor:pointer;color:var(--text-muted);font-size:9px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:2px;transition:color .2s;position:relative}
+.nav-btn i{font-size:19px}
+.nav-btn.active{color:var(--accent)}
+.nav-btn.danger{color:#ef4444}
+.nav-notif-badge{position:absolute;top:6px;right:14px;background:var(--notif-red);color:#fff;font-size:8px;font-weight:700;min-width:14px;height:14px;border-radius:7px;display:none;align-items:center;justify-content:center;padding:0 2px}
+
+/* EMPTY STATE */
+.empty-state{text-align:center;padding:50px 20px;color:#cbd5e1}
+.empty-state i{font-size:38px;margin-bottom:10px;display:block}
+.empty-state p{font-size:13px}
+
+/* NOTIFICATION TAB */
+.notif-item{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.notif-item.unread{background:#fffbeb}
+.notif-item.unread::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--amber);flex-shrink:0;margin-top:6px}
+.notif-item.read::before{content:'';width:6px;height:6px;border-radius:50%;background:transparent;flex-shrink:0;margin-top:6px}
+.notif-icon{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.notif-icon.new{background:#dbeafe;color:#1d4ed8}
+.notif-icon.change{background:#fef9c3;color:#a16207}
+.notif-icon.alert{background:#fee2e2;color:#b91c1c}
+.notif-body{flex:1}
+.notif-title{font-size:12px;font-weight:700;color:var(--text-main);margin-bottom:2px}
+.notif-msg{font-size:11px;color:var(--text-muted);line-height:1.5}
+.notif-time{font-size:10px;color:#94a3b8;margin-top:2px}
+.notif-actions-bar{padding:8px 14px;display:flex;gap:8px;border-bottom:1px solid var(--border)}
+.notif-clear-btn{background:none;border:1px solid var(--border);color:var(--text-muted);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer}
+
+/* HISTORY TAB */
+.history-date-row{display:flex;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border);align-items:center}
+.history-date-input{flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-main)}
+.history-date-input:focus{outline:none;border-color:var(--accent)}
+.history-go-btn{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer}
+.history-summary{padding:10px 14px;background:#f8fafc;border-bottom:1px solid var(--border);font-size:12px;color:var(--text-muted)}
+.history-do-item{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.history-do-no{font-size:12px;font-weight:700;color:var(--text-main)}
+.history-do-cust{font-size:11px;color:var(--text-muted)}
+.history-do-status{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
+.hs-selesai{background:#f0fdf4;color:#15803d}
+.hs-gagal{background:#fef2f2;color:#b91c1c}
+.hs-baru{background:#eff6ff;color:#1d4ed8}
+.hs-process{background:#ecfdf5;color:#15803d;border:1px solid #86efac}
+
+/* SETTINGS MODAL */
+.settings-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:flex-end;justify-content:center}
+.settings-overlay.show{display:flex}
+.settings-box{background:#fff;border-radius:20px 20px 0 0;padding:20px 18px 36px;width:100%;max-width:500px}
+.settings-title{font-size:16px;font-weight:700;color:var(--text-main);margin-bottom:4px}
+.settings-sub{font-size:12px;color:var(--text-muted);margin-bottom:16px}
+.settings-close{float:right;background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;margin-top:-2px}
+.settings-field{margin-bottom:12px}
+.settings-label{display:block;font-size:11px;font-weight:600;color:#334155;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.settings-input{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-main)}
+.settings-input:focus{outline:none;border-color:var(--accent)}
+.btn-save-settings{width:100%;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px}
+.change-log{background:#f8fafc;border-radius:8px;padding:10px 12px;margin-top:8px;font-size:11px;color:#64748b;line-height:1.6}
+
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;justify-content:center;align-items:flex-end}
+.modal-overlay.show{display:flex}
+.modal-box{background:#fff;border-radius:20px 20px 0 0;padding:18px 16px 30px;width:100%;max-width:500px;max-height:92vh;overflow-y:auto}
+.modal-title{font-size:16px;font-weight:700;color:var(--text-main);margin-bottom:3px}
+.modal-sub{font-size:12px;color:var(--text-muted);margin-bottom:14px}
+.modal-close{float:right;background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;line-height:1;margin-top:-2px}
+
+/* FORM */
+.form-group{margin-bottom:13px}
+.form-label{display:block;font-size:12px;font-weight:700;color:#334155;margin-bottom:5px}
+.form-label .req{color:var(--red)}
+.form-input{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-main);background:#fff}
+.form-input:focus{outline:none;border-color:var(--accent)}
+.form-select{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-main);background:#fff;appearance:none;cursor:pointer}
+.form-select:focus{outline:none;border-color:var(--accent)}
+
+/* QTY */
+.qty-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+.qty-box{background:var(--bg);border-radius:10px;padding:10px 6px;text-align:center;border:1.5px solid var(--border)}
+.qty-box-label{font-size:9px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:5px}
+.qty-val{font-size:20px;font-weight:800;font-family:monospace;color:var(--text-main)}
+.qty-val.terima{color:var(--green)}.qty-val.rusak{color:var(--red)}
+.qty-ctrl{display:flex;gap:5px;justify-content:center;margin-top:5px}
+.qty-btn{width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border);background:#fff;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-main)}
+.qty-btn:active{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+/* PHOTO CAPTURE */
+.photo-guide-wrap{position:relative;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;overflow:hidden;cursor:pointer}
+.photo-guide-wrap.has-photo{border-color:var(--green);background:#f0fdf4}
+.photo-guide-inner{padding:18px;text-align:center;position:relative;min-height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.photo-guide-corner{position:absolute;width:14px;height:14px;border-color:var(--accent);border-style:solid}
+.photo-guide-corner.tl{top:10px;left:10px;border-width:2px 0 0 2px}
+.photo-guide-corner.tr{top:10px;right:10px;border-width:2px 2px 0 0}
+.photo-guide-corner.bl{bottom:10px;left:10px;border-width:0 0 2px 2px}
+.photo-guide-corner.br{bottom:10px;right:10px;border-width:0 2px 2px 0}
+.photo-guide-text{font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5}
+.photo-guide-icon{font-size:26px;color:#94a3b8;margin-bottom:3px}
+.photo-preview{width:100%;height:150px;object-fit:cover;display:block}
+.photo-wrap input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+
+/* TITIP SJ */
+.titip-extra{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;margin-top:8px;display:none}
+.titip-extra.show{display:block}
+
+/* STRUK GRID */
+.struk-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:8px}
+.struk-item{text-align:center}
+.struk-btn{width:100%;aspect-ratio:1;border-radius:10px;border:2px dashed #cbd5e1;background:#f8fafc;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;color:var(--text-muted);position:relative;overflow:hidden}
+.struk-btn.done{border-color:var(--green);background:#f0fdf4;color:var(--green)}
+.struk-btn i{font-size:20px}
+.struk-btn img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.struk-btn input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.struk-lbl{font-size:11px;font-weight:600;color:var(--text-muted);margin-top:4px}
+
+/* SUBMIT */
+.btn-submit{width:100%;padding:13px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:7px}
+.btn-submit.green{background:var(--green);color:#fff}
+.btn-submit.red{background:var(--red);color:#fff}
+.btn-back{width:100%;padding:9px;border:none;background:none;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;margin-top:6px}
+.btn-submit:disabled{opacity:.6;cursor:not-allowed}
+
+/* ── BULK SELECT ── */
+.bulk-bar{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;
+  padding:10px 14px;margin-bottom:10px;display:none;align-items:center;gap:10px}
+.bulk-bar.show{display:flex}
+.bulk-count{font-size:12px;font-weight:700;color:#1d4ed8;flex:1}
+.bulk-btn{background:#16a34a;color:#fff;border:none;border-radius:8px;
+  padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer}
+.do-checkbox{width:20px;height:20px;cursor:pointer;accent-color:#2563eb}
+
+/* ALERTS */
+.alert{padding:9px 12px;border-radius:8px;font-size:11px;margin:8px 0;line-height:1.5}
+.alert-warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e}
+.alert-ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d}
+.alert-err{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c}
+.alert-info{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
+
+/* EXTRA GAGAL */
+.extra-gagal-field{display:none;margin-bottom:12px}
+.extra-gagal-field.show{display:block}
+
+/* SUBMIT OVERLAY */
+.submit-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+.submit-overlay.show{display:flex}
+.submit-overlay .spin{font-size:36px;color:#fff;animation:spin 1s linear infinite}
+.submit-overlay .msg{color:#fff;font-size:14px;font-weight:600}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── CAMERA OVERLAY ── */
+.camera-overlay{display:none;position:fixed;inset:0;background:#000;z-index:99999;
+  flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0px)}
+.camera-overlay.show{display:flex}
+.camera-video{width:100%;flex:1;object-fit:cover;background:#000;
+  max-height:calc(100vh - 140px)} /* Sisakan ruang untuk tombol shutter */
+.camera-frame{position:absolute;inset:0;pointer-events:none}
+.camera-guide{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:88%;aspect-ratio:1.414/1;border:2px solid rgba(255,255,255,.7);border-radius:4px}
+.camera-guide::before,.camera-guide::after{content:'';position:absolute;
+  width:22px;height:22px;border-color:#3b82f6;border-style:solid}
+.camera-guide::before{top:-2px;left:-2px;border-width:3px 0 0 3px}
+.camera-guide::after{bottom:-2px;right:-2px;border-width:0 3px 3px 0}
+/* Extra corners via box-shadow trick */
+.camera-guide-tr{position:absolute;top:-2px;right:-2px;width:22px;height:22px;
+  border-top:3px solid #3b82f6;border-right:3px solid #3b82f6}
+.camera-guide-bl{position:absolute;bottom:-2px;left:-2px;width:22px;height:22px;
+  border-bottom:3px solid #3b82f6;border-left:3px solid #3b82f6}
+.camera-label{position:absolute;top:calc(50% - (88vw/1.414/2) - 28px);left:50%;
+  transform:translateX(-50%);color:#fff;font-size:11px;font-weight:600;
+  background:rgba(0,0,0,.5);padding:3px 10px;border-radius:10px;white-space:nowrap}
+.camera-bottom{background:#000;padding:16px 20px;
+  padding-bottom:max(20px, env(safe-area-inset-bottom,20px));
+  display:flex;align-items:center;justify-content:space-between;
+  min-height:100px;flex-shrink:0} /* flex-shrink:0 = tidak tergencet video */
+.camera-shutter{width:64px;height:64px;border-radius:50%;background:#fff;
+  border:4px solid #3b82f6;cursor:pointer;display:flex;align-items:center;
+  justify-content:center;font-size:24px;box-shadow:0 0 0 3px rgba(59,130,246,.3)}
+.camera-shutter:active{transform:scale(.9)}
+.camera-cancel{color:#fff;background:rgba(255,255,255,.15);border:none;
+  border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer}
+.camera-retake{color:#3b82f6;background:rgba(59,130,246,.15);border:none;
+  border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;display:none}
+.camera-preview-wrap{display:none;position:absolute;inset:0;background:#000;
+  flex-direction:column;align-items:center;justify-content:center}
+.camera-preview-wrap.show{display:flex}
+.camera-preview-img{width:100%;max-height:70vh;object-fit:contain}
+.camera-preview-actions{display:flex;gap:12px;padding:16px;width:100%;
+  padding-bottom:max(16px, env(safe-area-inset-bottom,16px))}
+.camera-use-btn{flex:1;background:#16a34a;color:#fff;border:none;border-radius:10px;
+  padding:13px;font-size:14px;font-weight:700;cursor:pointer}
+.camera-retake-btn{flex:1;background:#1e293b;color:#fff;border:none;border-radius:10px;
+  padding:13px;font-size:14px;font-weight:600;cursor:pointer}
+.btn-muat{background:#d97706;color:#fff;border:none;border-radius:10px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;width:100%;margin-top:6px}
+.badge-muat{background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+</style>
+</head>
+<body>
+<div class="driver-app">
+
+  <!-- HEADER -->
+  <div class="driver-header">
+    <div>
+      <h2 id="hdr-name">Memuat...</h2>
+      <div class="plat"><i class="fas fa-truck"></i> <span id="hdr-plat">—</span></div>
+    </div>
+    <div class="hdr-right">
+      <button class="notif-btn" onclick="switchTab('notif')" title="Notifikasi">
+        <i class="fas fa-bell"></i>
+        <div class="notif-badge" id="hdr-notif-badge">0</div>
+      </button>
+      <button class="settings-btn" onclick="openSettings()" title="Pengaturan">
+        <i class="fas fa-cog"></i>
+      </button>
+      <img src="https://globalsentral.id/z/data/Logo.avif" alt="GST"
+        style="height:56px;width:auto;object-fit:contain"
+        onerror="this.style.display='none'">
+    </div>
+  </div>
+
+  <!-- OFFLINE NOTICE -->
+  <div class="offline-notice" id="offline-notice">
+    <i class="fas fa-wifi-slash"></i> Offline — data akan terkirim saat sinyal ada
+  </div>
+
+  <!-- STATUS BAR -->
+  <div class="status-bar">
+    <span><span class="gps-dot" id="gps-dot"></span><span id="gps-txt">GPS tidak aktif</span></span>
+    <span id="date-txt">—</span>
+  </div>
+
+  <!-- KM BAR -->
+  <div class="km-bar" id="km-bar" style="display:none">
+    <div><div class="km-val" id="km-val">0.0</div><div>km tercatat</div></div>
+    <div><div class="km-val" id="wakelock-val" style="font-size:10px;color:#86efac">●</div><div>layar aktif</div></div>
+    <div id="dur-muat-wrap" style="display:none"><div class="km-val" id="dur-muat-val" style="font-size:10px;color:#fcd34d">—</div><div>muat mnt</div></div>
+    <div><div class="km-val" id="dur-val">0 mnt</div><div>durasi</div></div>
+    <div><div class="km-val"><span id="stop-done">0</span>/<span id="stop-total">0</span></div><div>stop selesai</div></div>
+  </div>
+
+  <!-- POLL BAR -->
+  <div class="poll-bar" id="poll-bar" style="display:none">
+    <span><span class="poll-dot"></span>Auto-refresh aktif</span>
+    <span id="last-poll-txt">—</span>
+  </div>
+
+  <!-- ─── TAB: TUGAS ─── -->
+  <div id="tab-tugas" class="section-pad">
+    <div class="section-title">
+      Tugas Aktif
+      <button class="refresh-btn" onclick="loadTasks(true)"><i class="fas fa-sync-alt"></i> Refresh</button>
+    </div>
+    <!-- Bulk complete bar -->
+    <div class="bulk-bar" id="bulk-bar">
+      <span class="bulk-count" id="bulk-count">0 DO dipilih</span>
+      <button class="bulk-btn" onclick="openBulkSelesai()">
+        <i class="fas fa-check-circle"></i> Selesai Semua
+      </button>
+    </div>
+    <div id="task-list">
+      <div class="empty-state">
+        <i class="fas fa-spinner fa-spin"></i>
+        <p>Memuat tugas...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── TAB: NOTIF ─── -->
+  <div id="tab-notif" style="display:none">
+    <div class="section-pad" style="padding-bottom:0">
+      <div class="section-title" style="margin-bottom:0">
+        <i class="fas fa-bell" style="color:var(--amber)"></i> Notifikasi
+      </div>
+    </div>
+    <div class="notif-actions-bar">
+      <button class="notif-clear-btn" onclick="markAllRead()">
+        <i class="fas fa-check-double"></i> Tandai semua terbaca
+      </button>
+      <button class="notif-clear-btn" onclick="clearAllNotif()">
+        <i class="fas fa-trash"></i> Hapus semua
+      </button>
+    </div>
+    <div id="notif-list"></div>
+  </div>
+
+  <!-- ─── TAB: RIWAYAT ─── -->
+  <div id="tab-riwayat" style="display:none">
+    <div class="section-pad" style="padding-bottom:0">
+      <div class="section-title" style="margin-bottom:10px">
+        <i class="fas fa-history" style="color:#7c3aed"></i> Riwayat Pengiriman
+      </div>
+    </div>
+    <div class="history-date-row">
+      <input type="date" class="history-date-input" id="history-date" value="">
+      <button class="history-go-btn" onclick="loadHistory()">
+        <i class="fas fa-search"></i> Lihat
+      </button>
+    </div>
+    <div id="history-content">
+      <div class="empty-state" style="padding:40px 20px">
+        <i class="fas fa-calendar-alt"></i>
+        <p>Pilih tanggal untuk melihat riwayat</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <div class="bottom-nav">
+    <button class="nav-btn active" id="nav-tugas" onclick="switchTab('tugas')">
+      <i class="fas fa-home"></i>Tugas
+    </button>
+    <button class="nav-btn" id="nav-notif" onclick="switchTab('notif')" style="position:relative">
+      <i class="fas fa-bell"></i>Notif
+      <div class="nav-notif-badge" id="nav-notif-badge">0</div>
+    </button>
+    <button class="nav-btn" id="nav-riwayat" onclick="switchTab('riwayat')">
+      <i class="fas fa-history"></i>Riwayat
+    </button>
+    <button class="nav-btn danger" onclick="confirmLogout()">
+      <i class="fas fa-power-off"></i>Logout
+    </button>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="settings-overlay" id="settings-overlay">
+  <div class="settings-box">
+    <button class="settings-close" onclick="closeSettings()">×</button>
+    <div class="settings-title">⚙ Pengaturan Driver</div>
+    <div class="settings-sub">v3.2 · GlobalSentral Transport</div>
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:11px;color:#92400e;line-height:1.7">
+      <strong>⚡ Tips GPS tidak mati saat layar terkunci:</strong><br>
+      Pengaturan → Aplikasi → Chrome → Baterai → <strong>"Tidak ada batasan"</strong><br>
+      Pengaturan → Baterai → Optimasi baterai → Chrome → <strong>"Jangan optimalkan"</strong>
+    </div>
+    <div class="settings-field">
+      <label class="settings-label">Nomor Plat Kendaraan</label>
+      <input class="settings-input" id="s-plat" type="text" placeholder="Contoh: B9648MJ"
+        style="font-family:monospace;text-transform:uppercase">
+    </div>
+    <div class="settings-field">
+      <label class="settings-label">Nama Driver</label>
+      <input class="settings-input" id="s-driver" type="text" placeholder="Nama lengkap driver">
+    </div>
+    <div class="settings-field">
+      <label class="settings-label">Gudang</label>
+      <select class="settings-input" id="s-gudang">
+        <option value="">— pilih gudang —</option>
+        <option value="DAAN MOGOT">Daan Mogot</option>
+        <option value="DOYONG">Doyong</option>
+        <option value="CIKUDA">Cikuda</option>
+      </select>
+    </div>
+    <div class="settings-field">
+      <label class="settings-label">URL Apps Script (dari Admin)</label>
+      <input class="settings-input" id="s-gas" type="url"
+        placeholder="https://script.google.com/macros/s/.../exec"
+        style="font-size:11px;font-family:monospace">
+    </div>
+    <div class="change-log" id="s-changelog" style="display:none">
+      <strong>Perubahan terakhir:</strong><br>
+      <span id="s-changelog-txt">—</span>
+    </div>
+    <button class="btn-save-settings" onclick="saveSettings()">
+      <i class="fas fa-save"></i> Simpan Perubahan
+    </button>
+  </div>
+</div>
+
+<!-- MODAL: SELESAI -->
+<div class="modal-overlay" id="m-selesai">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('m-selesai')">×</button>
+    <div class="modal-title">Laporan Selesai</div>
+    <div class="modal-sub" id="m-selesai-info">—</div>
+
+    <div class="form-group">
+      <label class="form-label">Kondisi Barang</label>
+      <div class="qty-row">
+        <div class="qty-box">
+          <div class="qty-box-label">Dikirim</div>
+          <div class="qty-val" id="qty-kirim">0</div>
+        </div>
+        <div class="qty-box">
+          <div class="qty-box-label">Diterima</div>
+          <div class="qty-val terima" id="qty-terima-disp">0</div>
+          <div class="qty-ctrl">
+            <button class="qty-btn" onclick="adjQty('terima',-1)">−</button>
+            <button class="qty-btn" onclick="adjQty('terima',1)">+</button>
+          </div>
+        </div>
+        <div class="qty-box">
+          <div class="qty-box-label">Rusak</div>
+          <div class="qty-val rusak" id="qty-rusak-disp">0</div>
+          <div class="qty-ctrl">
+            <button class="qty-btn" onclick="adjQty('rusak',-1)">−</button>
+            <button class="qty-btn" onclick="adjQty('rusak',1)">+</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">1. Foto Bukti Kirim / DO <span class="req">*wajib</span></label>
+      <div class="photo-guide-wrap" id="wrap-foto-do" onclick="openCamera('do')"
+        style="cursor:pointer;position:relative;width:100%;padding-top:70.7%;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;overflow:hidden">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
+          <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
+          <div class="photo-guide-icon" id="icon-foto-do"><i class="fas fa-camera" style="font-size:28px;color:#94a3b8"></i></div>
+          <div id="txt-foto-do" style="font-size:11px;color:#64748b;margin-top:6px;text-align:center;padding:0 20px">
+            Tap untuk ambil foto DO
+          </div>
+        </div>
+        <img id="prev-foto-do" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none">
+      </div>
+      <canvas id="canvas-foto-do" style="display:none"></canvas>
+      <canvas id="canvas-foto-do" style="display:none"></canvas>
+    </div>
+
+    <div class="form-group" id="group-foto-rusak" style="display:none">
+      <label class="form-label">Foto Barang Rusak <span class="req">*wajib jika ada kerusakan</span></label>
+      <div class="photo-guide-wrap" id="wrap-foto-rusak" onclick="openCamera('rusak')"
+        style="cursor:pointer;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;min-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden">
+        <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
+        <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
+        <div class="photo-guide-icon" id="icon-foto-rusak"><i class="fas fa-camera" style="font-size:26px;color:#94a3b8"></i></div>
+        <div id="txt-foto-rusak" style="font-size:11px;color:#64748b;margin-top:6px">Tap untuk foto kerusakan</div>
+        <img id="prev-foto-rusak" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none">
+      </div>
+      <canvas id="canvas-foto-rusak" style="display:none"></canvas>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">2. Catatan Penerima</label>
+      <textarea class="form-input" id="catatan-selesai" rows="2"
+        placeholder="Contoh: Diterima oleh Bpk. Budi, SPG toko..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">3. Titip Surat Jalan Asli?</label>
+      <select class="form-select" id="titip-sj" onchange="toggleTitipSJ(this.value)">
+        <option value="Tidak">Tidak (Dibawa Kembali)</option>
+        <option value="Ya">Ya, Dititip di Lokasi</option>
+      </select>
+      <div class="titip-extra" id="titip-extra">
+        <div class="form-group" style="margin-bottom:8px">
+          <label class="form-label">Nama Penerima SJ <span class="req">*wajib</span></label>
+          <input type="text" class="form-input" id="nama-spg" placeholder="Nama SPG / Staff">
+        </div>
+        <div class="form-group" style="margin-bottom:8px">
+          <label class="form-label">Jabatan</label>
+          <select class="form-select" id="jabatan-spg">
+            <option>SPG</option><option>Staff Toko</option><option>Kasir</option>
+            <option>Kepala Toko</option><option>Lainnya</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Foto SJ yang Dititip <span class="req">*wajib</span></label>
+          <div class="photo-guide-wrap" id="wrap-foto-sj" onclick="openCamera('sj')"
+            style="cursor:pointer;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;min-height:90px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden">
+            <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
+            <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
+            <div class="photo-guide-icon" id="icon-foto-sj"><i class="fas fa-camera" style="font-size:24px;color:#94a3b8"></i></div>
+            <div id="txt-foto-sj" style="font-size:11px;color:#64748b;margin-top:6px">Tap untuk foto SJ</div>
+            <img id="prev-foto-sj" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none">
+          </div>
+          <canvas id="canvas-foto-sj" style="display:none"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn-submit green" id="btn-submit-selesai" onclick="submitSelesai()">
+      <i class="fas fa-check-circle"></i> Kirim Laporan
+    </button>
+    <button class="btn-back" onclick="closeModal('m-selesai')">Kembali</button>
+  </div>
+</div>
+
+<!-- MODAL: GAGAL -->
+<div class="modal-overlay" id="m-gagal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('m-gagal')">×</button>
+    <div class="modal-title" style="color:#b91c1c">Laporan Gagal Kirim</div>
+    <div class="modal-sub">Pastikan foto dan alasan sudah sesuai sebelum mengirim.</div>
+
+    <div class="form-group">
+      <label class="form-label">1. Foto Bukti Gagal Kirim <span class="req">*wajib</span></label>
+      <div class="photo-guide-wrap" id="wrap-foto-gagal" onclick="openCamera('gagal')"
+        style="cursor:pointer;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;min-height:110px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden">
+        <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
+        <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
+        <div class="photo-guide-icon" id="icon-foto-gagal"><i class="fas fa-camera" style="font-size:26px;color:#94a3b8"></i></div>
+        <div id="txt-foto-gagal" style="font-size:11px;color:#64748b;margin-top:6px">Tap untuk foto bukti gagal</div>
+        <img id="prev-foto-gagal" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none">
+      </div>
+      <canvas id="canvas-foto-gagal" style="display:none"></canvas>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">2. Alasan Gagal Kirim <span class="req">*wajib</span></label>
+      <select class="form-select" id="alasan-gagal" onchange="onAlasanChange(this.value)">
+        <option value="">-- Pilih Alasan --</option>
+        <option>Titip Gudang Lain</option><option>Toko Tutup</option>
+        <option>CS Minta Reschedule</option><option>CS Minta Cancel</option>
+        <option>Kendaraan Rusak</option><option>Bencana Alam/Banjir</option>
+        <option>Akses Jalan Ditutup</option><option>Waktu Tidak Cukup</option>
+        <option>Ganjil/Genap</option><option>Lain-lain</option>
+      </select>
+    </div>
+
+    <div id="extra-titip-gudang" class="extra-gagal-field">
+      <label class="form-label">Nama Gudang yang Dititip</label>
+      <input type="text" class="form-input" id="nama-gudang-titip" placeholder="Nama gudang / ekspedisi">
+    </div>
+    <div id="extra-reschedule" class="extra-gagal-field">
+      <label class="form-label">Tanggal Reschedule</label>
+      <input type="date" class="form-input" id="tgl-reschedule">
+    </div>
+    <div id="extra-cancel" class="extra-gagal-field">
+      <label class="form-label">Nama Sales yang Cancel</label>
+      <input type="text" class="form-input" id="nama-sales-cancel" placeholder="Nama sales">
+    </div>
+    <div id="extra-lainlain" class="extra-gagal-field">
+      <label class="form-label">Keterangan <span class="req">*wajib</span></label>
+      <textarea class="form-input" id="ket-lainlain" rows="2" placeholder="Jelaskan alasan gagal..."></textarea>
+    </div>
+
+    <div id="alert-musibah" class="alert alert-err" style="display:none">
+      <i class="fas fa-exclamation-triangle"></i>
+      <strong>ALERT URGENT!</strong> Laporan musibah akan langsung dikirim ke dispatcher.
+      Hubungi dispatcher setelah submit!
+    </div>
+
+    <button class="btn-submit red" id="btn-submit-gagal" onclick="submitGagal()">
+      <i class="fas fa-paper-plane"></i> Kirim Laporan
+    </button>
+    <button class="btn-back" onclick="closeModal('m-gagal')">Kembali</button>
+  </div>
+</div>
+
+<!-- MODAL: STRUK -->
+<div class="modal-overlay" id="m-struk">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('m-struk')">×</button>
+    <div class="modal-title">Foto Struk Perjalanan</div>
+    <div class="modal-sub">Struk tol, parkir, dan solar. Yang tidak ada boleh dilewati.</div>
+    <div class="struk-grid">
+      <div class="struk-item">
+        <div class="struk-btn" id="struk-btn-tol">
+          <i class="fas fa-road"></i><span>Tol</span>
+          <input type="file" accept="image/*" capture="environment" onchange="captureStruk('tol',this)">
+        </div>
+        <div class="struk-lbl">Struk Tol</div>
+      </div>
+      <div class="struk-item">
+        <div class="struk-btn" id="struk-btn-parkir">
+          <i class="fas fa-parking"></i><span>Parkir</span>
+          <input type="file" accept="image/*" capture="environment" onchange="captureStruk('parkir',this)">
+        </div>
+        <div class="struk-lbl">Struk Parkir</div>
+      </div>
+      <div class="struk-item">
+        <div class="struk-btn" id="struk-btn-bensin">
+          <i class="fas fa-gas-pump"></i><span>Solar</span>
+          <input type="file" accept="image/*" capture="environment" onchange="captureStruk('bensin',this)">
+        </div>
+        <div class="struk-lbl">Solar/Bensin</div>
+      </div>
+    </div>
+    <div class="alert alert-warn" style="margin:12px 0 0">
+      <i class="fas fa-info-circle"></i>
+      Foto diambil langsung dari kamera. Struk yang tidak ada boleh dilewati.
+    </div>
+    <button class="btn-submit green" onclick="submitStruk()" style="margin-top:14px">
+      <i class="fas fa-flag-checkered"></i> Selesai Perjalanan
+    </button>
+    <button class="btn-back" onclick="closeModal('m-struk')">Kembali</button>
+  </div>
+</div>
+
+<!-- SUBMIT OVERLAY -->
+<div class="submit-overlay" id="submit-overlay">
+  <i class="fas fa-circle-notch spin"></i>
+  <div class="msg" id="submit-overlay-msg">Mengirim laporan...</div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// CONSTANTS & STATE
+// ═══════════════════════════════════════════════════════
+const GSHEET_ID_KEY  = 'gs_url';
+const APP_VERSION    = 'v3.8';
+const POLL_INTERVAL  = 60 * 1000;   // 60 detik
+const MAX_NOTIF      = 50;
+
+// Runtime GAS URL
+const _gasParam = new URLSearchParams(location.search).get('gas');
+let   GAS_URL   = _gasParam || localStorage.getItem('gps_gas_url') || '';
+if (_gasParam) localStorage.setItem('gps_gas_url', _gasParam);
+
+// Driver state (from URL or localStorage)
+const driverState = {
+  plat  : new URLSearchParams(location.search).get('plat')   || localStorage.getItem('drv_plat')   || '',
+  driver: new URLSearchParams(location.search).get('driver') || localStorage.getItem('drv_driver') || '',
+  gudang: new URLSearchParams(location.search).get('gudang') || localStorage.getItem('drv_gudang') || '',
+  date  : new URLSearchParams(location.search).get('date')   || today(),
 };
 
-// ── HELPER: Ambil spreadsheet sesuai kategori ─────────────────────────────────
-// Kalau ID kosong → pakai active spreadsheet (backward compatible)
-function getSS(category) {
-  const id = SS_IDS[category] || '';
-  if (id) {
-    return SpreadsheetApp.openById(id);
+if (driverState.plat)   localStorage.setItem('drv_plat',   driverState.plat);
+if (driverState.driver) localStorage.setItem('drv_driver', driverState.driver);
+if (driverState.gudang) localStorage.setItem('drv_gudang', driverState.gudang);
+
+// App state
+let currentTab    = 'tugas';
+let currentTasks  = [];
+let lastTasksSnap = {};   // snapshot for change detection {doc_no: status}
+let pollTimer     = null;
+let notifications = JSON.parse(localStorage.getItem('notif_list') || '[]');
+let unreadCount   = notifications.filter(n => !n.read).length;
+let offlineQueue  = JSON.parse(localStorage.getItem('offline_q') || '[]');
+let stopsDone     = 0;
+
+let tripState = {
+  started: false, start_time: null, km_total: 0,
+  last_pos: null, pos_hist: [], gps_watch: null, gps_timer: null,
+};
+
+let modalCtx = {
+  doc_no:'', qty_kirim:0, qty_terima:0, qty_rusak:0,
+  foto_do:null, foto_rusak:null, foto_sj:null, foto_gagal:null,
+  gps_coords:'', gps_address:'',
+};
+
+let strukPhotos = { tol:null, parkir:null, bensin:null };
+let wakeLock = null;  // Wake Lock API — cegah layar mati saat trip
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+window.onload = async function() {
+  document.getElementById('hdr-name').textContent = driverState.driver || 'Driver';
+  document.getElementById('hdr-plat').textContent = driverState.plat   || '—';
+  document.getElementById('date-txt').textContent = driverState.date;
+
+  // Set default history date to today
+  const historyDateInput = document.getElementById('history-date');
+  if (historyDateInput) {
+    const [d,m,y] = (driverState.date||today()).split('/');
+    historyDateInput.value = y && m && d ? `${y}-${m}-${d}` : new Date().toISOString().slice(0,10);
   }
-  return SpreadsheetApp.getActiveSpreadsheet();
-}
 
-// ── HELPER: Ambil sheet dari spreadsheet yang tepat ───────────────────────────
-function getSheet(sheetName, category) {
-  const ss = getSS(category || sheetCategoryMap[sheetName] || 'MASTER');
-  const sh = ss.getSheetByName(sheetName);
-  return sh;
-}
+  if (!driverState.plat) { showSetupForm(); return; }
 
-// ── MAPPING: Sheet name → kategori spreadsheet ────────────────────────────────
-// Ini yang perlu diupdate saat nanti dipisah
-const sheetCategoryMap = {
-  // SS1 — DATA MASTER (statis)
-  'Kendaraan'           : 'MASTER',
-  'Gudang'              : 'MASTER',
-  'Kecamatan'           : 'MASTER',
-  'Window Penerimaan'   : 'MASTER',
-  'Konfigurasi'         : 'MASTER',
-  'Vendor'              : 'MASTER',
-  'Spesifikasi Produk'  : 'MASTER',
-  'Users'               : 'MASTER',
-  'Audit Log'           : 'MASTER',
-  'Panduan'             : 'MASTER',
+  // Request notification permission
+  requestNotifPermission();
 
-  // SS2 — OPERASIONAL HARIAN (load tinggi, real-time)
-  'DO Status'           : 'OPERASIONAL',
-  'Stop Log'            : 'OPERASIONAL',
-  'Photo Log'           : 'OPERASIONAL',
-  'Dispatch Log'        : 'OPERASIONAL',
-  'GPS Log'             : 'OPERASIONAL',
-  'Trip Summary'        : 'OPERASIONAL',
+  checkOnline();
+  setInterval(checkOnline, 15000);
 
-  // SS3 — ANALITIK & HISTORY (tumbuh perlahan)
-  'Routing Log'         : 'ANALITIK',
-  'Settlement Harian'   : 'ANALITIK',
+  await loadTasks(false);
+  startPolling();
+  startGPSWatch();
+  setInterval(updateKMDisplay, 5000);
+  setInterval(flushOfflineQueue, 30000);
 
-  // SS4 — GEO CACHE (opsional)
-  'Geo Cache'           : 'GEO_CACHE',
+  renderNotifBadge();
 };
 
-// ── SHEET NAMES ────────────────────────────────────────────────────────────────
-const SHEETS = {
-  kendaraan    : 'Kendaraan',
-  gudang       : 'Gudang',
-  kecamatan    : 'Kecamatan',
-  window       : 'Window Penerimaan',
-  konfigurasi  : 'Konfigurasi',
-  vendor       : 'Vendor',
-  spesifikasi  : 'Spesifikasi Produk',
-  settlement   : 'Settlement Harian',
-  geo_cache    : 'Geo Cache',
-  routing_log  : 'Routing Log',
-  users        : 'Users',
-  audit_log    : 'Audit Log',
-  do_status    : 'DO Status',        // ← status per DO (untuk driver app + client tracking)
-  stop_log     : 'Stop Log',         // ← laporan per DO dari driver
-  photo_log    : 'Photo Log',        // ← link foto dari Google Drive
+// ═══════════════════════════════════════════════════════
+// TAB MANAGEMENT
+// ═══════════════════════════════════════════════════════
+function switchTab(tab) {
+  currentTab = tab;
+  ['tugas','notif','riwayat'].forEach(t => {
+    const el = document.getElementById('tab-'+t);
+    if (el) el.style.display = t === tab ? 'block' : 'none';
+    const nav = document.getElementById('nav-'+t);
+    if (nav) nav.classList.toggle('active', t === tab);
+  });
+  if (tab === 'notif') { markAllRead(); renderNotifList(); }
+  if (tab === 'riwayat') renderHistoryContent(null);
+}
+
+// ═══════════════════════════════════════════════════════
+// SETUP FORM (jika belum ada plat)
+// ═══════════════════════════════════════════════════════
+function showSetupForm() {
+  const savedUrl = GAS_URL || localStorage.getItem('gps_gas_url') || '';
+  document.getElementById('tab-tugas').innerHTML = `
+    <div style="padding:8px">
+      <div style="background:#fff;border-radius:12px;border:1px solid var(--border);padding:20px;box-shadow:0 2px 8px rgba(37,99,235,.06)">
+        <h3 style="font-size:15px;font-weight:700;margin-bottom:4px">Setup Awal Driver App</h3>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Isi sekali saja — data disimpan di HP.</p>
+        <div style="margin-bottom:12px">
+          <label style="font-size:11px;font-weight:600;color:#334155;display:block;margin-bottom:4px">Nomor Plat Kendaraan</label>
+          <input id="setup-plat" type="text" placeholder="Contoh: B9648MJ"
+            style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:monospace;text-transform:uppercase"
+            value="${driverState.plat||''}">
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:11px;font-weight:600;color:#334155;display:block;margin-bottom:4px">Nama Driver</label>
+          <input id="setup-driver" type="text" placeholder="Nama lengkap"
+            style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px"
+            value="${driverState.driver||''}">
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="font-size:11px;font-weight:600;color:#334155;display:block;margin-bottom:4px">URL Apps Script (dari admin)</label>
+          <input id="setup-gas" type="url" placeholder="https://script.google.com/macros/s/.../exec"
+            style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:11px;font-family:monospace"
+            value="${savedUrl}">
+        </div>
+        <button onclick="saveSetup()"
+          style="width:100%;padding:13px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">
+          ✓ Simpan &amp; Mulai
+        </button>
+      </div>
+    </div>`;
+}
+
+function saveSetup() {
+  const plat   = document.getElementById('setup-plat')?.value.trim().toUpperCase();
+  const driver = document.getElementById('setup-driver')?.value.trim();
+  const gas    = document.getElementById('setup-gas')?.value.trim();
+  if (!plat)   { alert('Nomor plat wajib diisi'); return; }
+  if (!driver) { alert('Nama driver wajib diisi'); return; }
+  if (!gas || !gas.startsWith('https://script.google.com')) {
+    alert('URL Apps Script tidak valid'); return; }
+  localStorage.setItem('drv_plat', plat);
+  localStorage.setItem('drv_driver', driver);
+  localStorage.setItem('gps_gas_url', gas);
+  localStorage.setItem(GSHEET_ID_KEY, gas);
+  location.reload();
+}
+
+// ═══════════════════════════════════════════════════════
+// GPS TRACKING
+// ═══════════════════════════════════════════════════════
+window.onNativeGPS = function(lat, lng, km) {
+  tripState.last_pos = {lat, lng};
+  tripState.km_total = km;
+  modalCtx.gps_coords = lat.toFixed(6)+','+lng.toFixed(6);
+  updateKMDisplay();
 };
 
-const SETTLE_COLS = 27;
+function isNativeApp() { return typeof window.NativeGPS !== 'undefined'; }
 
-// ── GET (doGet) ────────────────────────────────────────────────────────────────
-function doGet(e) {
-  const action = (e && e.parameter && e.parameter.action) || 'getMasterData';
-  const date   =  e && e.parameter && e.parameter.date;
-  const plat   =  e && e.parameter && e.parameter.plat;
-  try {
-    let r;
-    switch (action) {
-      case 'getMasterData':  r = getMasterData();        break;
-      case 'getGeoCache':    r = getGeoCache();          break;
-      case 'getSettlement':  r = getSettlement(date);    break;
-      case 'getKonfigurasi': r = getKonfigurasi();       break;
-      case 'getUsers':       r = getUsers();             break;
-      // Login via GET (untuk file:// protocol compatibility)
-      case 'login':
-        r = doLogin({
-          username: e.parameter.username,
-          password: e.parameter.password,
-        }); break;
-      // Audit Log via GET
-      case 'saveAuditLog':
-        _writeAudit(
-          getSS('MASTER'),
-          e.parameter.username||'',
-          e.parameter.nama||'',
-          e.parameter.role||'',
-          e.parameter.gudang||'',
-          e.parameter.auditAction||e.parameter.action||'',
-          e.parameter.detail||''
-        );
-        r = { status:'ok' }; break;
-      // GPS via GET (dari GitHub Pages — tidak bisa POST karena CORS)
-      case 'startTrip':
-        r = startTrip({
-          plat   : e.parameter.plat,
-          driver : e.parameter.driver,
-          gudang : e.parameter.gudang,
-          date   : e.parameter.date,
-          lat    : e.parameter.lat,
-          lng    : e.parameter.lng,
-          stops  : e.parameter.stops,
-          km_est : e.parameter.km_est,
-        }); break;
-      case 'updateGPS':
-        r = updateGPS({
-          plat      : e.parameter.plat,
-          date      : e.parameter.date,
-          lat       : e.parameter.lat,
-          lng       : e.parameter.lng,
-          km_total  : e.parameter.km_total,
-          speed_kmh : e.parameter.speed_kmh,
-          timestamp : e.parameter.timestamp,
-        }); break;
-      case 'endTrip':
-        r = endTrip({
-          plat     : e.parameter.plat,
-          date     : e.parameter.date,
-          lat      : e.parameter.lat,
-          lng      : e.parameter.lng,
-          km_total : e.parameter.km_total,
-          notes    : e.parameter.notes,
-        }); break;
-      // GPS Tracking
-      case 'getTrip':        r = getTrip(plat, date);   break;
-      case 'getTripList':    r = getTripList(date);      break;
-      case 'getKMActual':    r = getKMActual(plat,date); break;
-      // Driver App v2 endpoints
-      case 'getDriverTasks': r = getDriverTasks(e.parameter.plat, e.parameter.date); break;
-      case 'getFailedDOs':   r = getFailedDOs(e.parameter.date);   break;  // carry-over
-      case 'getRoutingLog':  r = getRoutingLog(e.parameter.date);  break;  // history
-      // Sesi 5 — Realtime monitoring
-      case 'getBatchDoStatus': r = getBatchDoStatus(e.parameter.doc_nos, e.parameter.date); break;
-      case 'getGPSPositions' : r = getGPSPositions(e.parameter.plats, e.parameter.date);   break;
-      // Sync DO dari routing optimizer ke sheet DO Status (via GET)
-      case 'populateDoStatus':
-        try {
-          const rows = JSON.parse(e.parameter.rows || '[]');
-          r = populateDoStatus({ doDate: e.parameter.doDate, rows });
-        } catch(ex) { r = { error: 'Invalid rows JSON: ' + ex.message }; }
-        break;
-      case 'startJob':       r = startJob(e.parameter);  break;
-      case 'cancelJob':      r = cancelJob(e.parameter); break;
-      case 'submitSelesai':  r = submitSelesai(e.parameter); break;
-      case 'submitGagal':    r = submitGagal(e.parameter);   break;
-      case 'submitStruk':    r = submitStruk(e.parameter);   break;
-      case 'getDoStatus':    r = getDoStatus(e.parameter.doc_no); break;
-      case 'ping':           r = {
-        status:'ok', version:'4.2',
-        timestamp: new Date().toISOString(),
-        sheets: Object.values(SHEETS),
-        gps_sheets: Object.values(SHEETS_GPS),
-      }; break;
-      default: r = { error: 'Unknown action: ' + action };
+function startGPSWatch() {
+  if (isNativeApp()) {
+    const gasUrl = GAS_URL || localStorage.getItem('gps_gas_url') || '';
+    window.NativeGPS.startGPS(driverState.plat, driverState.driver, gasUrl);
+    setGPSDot(true, 'GPS Native Aktif');
+    return;
+  }
+  if (!navigator.geolocation) return;
+  tripState.gps_watch = navigator.geolocation.watchPosition(onGPSUpdate, onGPSError,
+    { enableHighAccuracy:true, timeout:30000, maximumAge:5000 });
+  tripState.gps_timer = setInterval(sendGPSUpdate, 3*60*1000);
+}
+
+function onGPSUpdate(pos) {
+  const {latitude:lat, longitude:lng} = pos.coords;
+  setGPSDot(true, 'GPS aktif');
+  if (tripState.started && tripState.last_pos) {
+    const d = haversineKm(tripState.last_pos.lat, tripState.last_pos.lng, lat, lng);
+    if (d > 0.01 && d < 5) tripState.km_total += d;
+  }
+  tripState.last_pos = {lat, lng};
+  if (tripState.pos_hist.length > 100) tripState.pos_hist.shift();
+  tripState.pos_hist.push({lat, lng, t:Date.now()});
+  modalCtx.gps_coords = lat.toFixed(6)+','+lng.toFixed(6);
+}
+
+function onGPSError() { setGPSDot(false, 'GPS lemah'); }
+
+function setGPSDot(active, txt) {
+  document.getElementById('gps-dot').className = 'gps-dot'+(active?' active':'');
+  document.getElementById('gps-txt').textContent = txt;
+}
+
+async function sendGPSUpdate() {
+  if (!tripState.started || !tripState.last_pos) return;
+  await gasGet('updateGPS', {
+    plat:driverState.plat, date:driverState.date,
+    lat:tripState.last_pos.lat, lng:tripState.last_pos.lng,
+    km_total:tripState.km_total.toFixed(1),
+  });
+}
+
+function updateKMDisplay() {
+  if (!tripState.started) return;
+  document.getElementById('km-val').textContent  = tripState.km_total.toFixed(1);
+  const elMin = Math.floor((Date.now() - tripState.start_time)/60000);
+  document.getElementById('dur-val').textContent = elMin + ' mnt';
+  document.getElementById('stop-done').textContent = stopsDone;
+  // Update wake lock indicator
+  const wlEl = document.getElementById('wakelock-val');
+  if (wlEl) wlEl.textContent = wakeLock ? '● ON' : '○ OFF';
+  if (wlEl) wlEl.style.color = wakeLock ? '#86efac' : '#fca5a5';
+  // Tampilkan durasi muat
+  const muatIso = localStorage.getItem('_muat_done_ts_'+driverState.plat);
+  const jalanTs = tripState.start_time;
+  const durWrap = document.getElementById('dur-muat-wrap');
+  const durVal  = document.getElementById('dur-muat-val');
+  if (muatIso && jalanTs && durWrap && durVal) {
+    const durMnt = Math.round((jalanTs - new Date(muatIso).getTime()) / 60000);
+    if (durMnt >= 0 && durMnt < 600) {
+      durWrap.style.display = '';
+      durVal.textContent    = durMnt + ' mnt';
     }
-    return jsonResponse(r);
-  } catch(err) { return jsonResponse({ error: err.message }); }
+  }
+  // Auto re-acquire jika lepas
+  if (!wakeLock && tripState.started) requestWakeLock();
 }
 
-// ── POST (doPost) ──────────────────────────────────────────────────────────────
-function doPost(e) {
-  try {
-    const body   = JSON.parse(e.postData.contents);
-    const action = body.action || '';
-    let r;
-    switch (action) {
-      case 'syncGeoCache':     r = syncGeoCache(body.data);      break;
-      case 'saveRoutingLog':   r = saveRoutingLog(body.data);    break;
-      case 'saveSettlement':   r = saveSettlement(body.data);    break;
-      case 'updateHargaSolar': r = updateHargaSolar(body.harga); break;
-      case 'login':            r = doLogin(body);                break;  // ← NEW
-      case 'saveAuditLog':     r = saveAuditLog(body);           break;  // ← NEW
-      case 'resetPassword':    r = resetPassword(body);          break;  // ← NEW
-      // GPS Tracking
-      case 'startTrip':        r = startTrip(body);              break;
-      case 'updateGPS':        r = updateGPS(body);              break;
-      case 'endTrip':          r = endTrip(body);                break;
-      case 'saveDispatch':     r = saveDispatch(body);           break;
-      // Driver App v3 — foto upload via POST (no-cors, bypass URL length limit)
-      case 'submitSelesai':    r = submitSelesai(body);           break;
-      case 'submitGagal':      r = submitGagal(body);             break;
-      case 'submitStruk':      r = submitStruk(body);             break;
-      case 'populateDoStatus': r = populateDoStatus(body);        break;
-      default: r = { error: 'Unknown action: ' + action };
-    }
-    return jsonResponse(r);
-  } catch(err) { return jsonResponse({ error: err.message }); }
-}
+// ═══════════════════════════════════════════════════════
+// TASK LOADING & RENDERING
+// ═══════════════════════════════════════════════════════
+async function loadTasks(showSpinner = true) {
+  if (showSpinner) {
+    document.getElementById('task-list').innerHTML =
+      '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Memuat tugas...</p></div>';
+  }
 
-// ── GET MASTER DATA ────────────────────────────────────────────────────────────
-function getMasterData() {
-  const ss = getSS('MASTER'); // SS1: Data Master
-  const result = {};
-  [SHEETS.kendaraan, SHEETS.gudang, SHEETS.kecamatan,
-   SHEETS.window, SHEETS.konfigurasi, SHEETS.vendor,
-   SHEETS.spesifikasi, SHEETS.geo_cache, SHEETS.settlement]
-  .forEach(name => {
-    const sheet = ss.getSheetByName(name);
-    if (!sheet) { result[name] = []; return; }
-    const lr = sheet.getLastRow(), lc = sheet.getLastColumn();
-    if (lr < 1 || lc < 1) { result[name] = []; return; }
-    result[name] = sheet.getRange(1, 1, lr, lc).getValues().map(row =>
-      row.map(cell => {
-        if (cell instanceof Date)
-          return Utilities.formatDate(cell, 'Asia/Jakarta', 'dd/MM/yyyy HH:mm');
-        return cell === null || cell === undefined ? '' : cell;
-      })
-    );
+  const data = await gasGet('getDriverTasks', {
+    plat: driverState.plat, date: driverState.date
   });
-  return { status:'ok', data:result, timestamp:new Date().toISOString() };
-}
 
-// ── GET KONFIGURASI (hanya baca 1 sheet — lebih cepat) ────────────────────────
-function getKonfigurasi() {
-  const ss    = getSS('MASTER'); // SS1: Data Master
-  const sheet = ss.getSheetByName(SHEETS.konfigurasi);
-  if (!sheet) return { status:'ok', data:[] };
-  const lr = sheet.getLastRow(), lc = Math.max(sheet.getLastColumn(), 4);
-  if (lr < 1) return { status:'ok', data:[] };
-  const data = sheet.getRange(1, 1, lr, lc).getValues().map(row =>
-    row.map(cell => {
-      if (cell instanceof Date)
-        return Utilities.formatDate(cell, 'Asia/Jakarta', 'dd/MM/yyyy HH:mm');
-      return cell === null || cell === undefined ? '' : cell;
-    })
-  );
-  return { status:'ok', data };
-}
+  // Update poll indicator
+  document.getElementById('poll-bar').style.display = GAS_URL ? 'flex' : 'none';
+  document.getElementById('last-poll-txt').textContent =
+    'Update: ' + new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
 
-// ── UPDATE HARGA SOLAR ─────────────────────────────────────────────────────────
-// Cari baris "Harga solar per liter" di Konfigurasi → update nilainya
-// Bisa dipanggil:
-//   A) Manual dari editor: jalankan testUpdateHargaSolar()
-//   B) Via app: POST { action:'updateHargaSolar', harga:7500 }
-function updateHargaSolar(hargaBaru) {
-  const h = parseFloat(hargaBaru);
-  if (!h || isNaN(h) || h < 1000 || h > 99999)
-    return { error: 'Harga tidak valid (harus antara 1000–99999)' };
-
-  const ss    = getSS('MASTER'); // SS1
-  const sheet = ss.getSheetByName(SHEETS.konfigurasi);
-  if (!sheet) return { error: 'Sheet Konfigurasi tidak ditemukan' };
-
-  const vals   = sheet.getRange(1, 1, sheet.getLastRow(), 2).getValues();
-  let   rowIdx = -1;
-
-  for (let i = 0; i < vals.length; i++) {
-    const param = String(vals[i][0] || '').toLowerCase();
-    if (param.includes('harga solar') || param.includes('harga bbm') ||
-        param.includes('bbm harga')) {
-      rowIdx = i + 1;
-      break;
-    }
+  if (!data || data.error || !data.tasks || !data.tasks.length) {
+    currentTasks = [];
+    document.getElementById('task-list').innerHTML =
+      '<div class="empty-state"><i class="fas fa-check-circle"></i><p>'+
+      (GAS_URL ? 'Tidak ada tugas aktif hari ini' : '⚠ GAS URL belum dikonfigurasi')+'</p></div>';
+    document.getElementById('stop-total').textContent = 0;
+    return;
   }
 
-  if (rowIdx > 0) {
-    sheet.getRange(rowIdx, 2).setValue(h);
-  } else {
-    // Belum ada → tambah baris baru
-    sheet.appendRow([
-      'Harga solar per liter', h, 'Rp/liter',
-      'UPDATE INI KALAU HARGA SOLAR BERUBAH → otomatis recalc semua BBM',
-    ]);
+  // Detect changes vs snapshot
+  if (Object.keys(lastTasksSnap).length > 0) {
+    detectChanges(data.tasks);
   }
 
-  const now = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm');
-  return {
-    status  : 'ok',
-    message : 'Harga solar diupdate ke Rp ' + h.toLocaleString() + ' pada ' + now,
-    harga   : h,
-    row     : rowIdx > 0 ? rowIdx : 'baru ditambahkan',
-  };
-}
+  // Update snapshot
+  data.tasks.forEach(t => { lastTasksSnap[t.doc_no] = t.status; });
+  currentTasks = data.tasks;
 
-// ── GEO CACHE ──────────────────────────────────────────────────────────────────
-function getGeoCache() {
-  const ss    = getSS('GEO_CACHE'); // SS4: Geo Cache
-  const sheet = ss.getSheetByName(SHEETS.geo_cache);
-  if (!sheet) return { status:'ok', data:{} };
-  const lr = sheet.getLastRow();
-  if (lr < 2) return { status:'ok', data:{} };
-  const cache = {};
-  sheet.getRange(2, 1, lr - 1, 7).getValues().forEach(row => {
-    const addr = String(row[0] || '').trim();
-    if (!addr) return;
-    cache[addr] = { lat:parseFloat(row[1])||null, lng:parseFloat(row[2])||null,
-      kecamatan:String(row[3]||''), zona:String(row[4]||''),
-      source:String(row[5]||'manual'), updated:String(row[6]||'') };
-  });
-  return { status:'ok', data:cache };
-}
+  // Update stop counter
+  const allTasks = data.tasks;
+  stopsDone = allTasks.filter(t => t.status==='Selesai'||t.status==='Gagal Kirim'||t.status==='Batal').length;
+  document.getElementById('stop-total').textContent = allTasks.length;
+  document.getElementById('stop-done').textContent  = stopsDone;
 
-function syncGeoCache(data) {
-  if (!data || typeof data !== 'object') return { error:'No data' };
-  const ss = getSS('GEO_CACHE'); // SS4: Geo Cache
-  let sheet = ss.getSheetByName(SHEETS.geo_cache);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEETS.geo_cache);
-    const hdr = sheet.getRange(1, 1, 1, 7);
-    hdr.setValues([['Alamat (KIRIM)','Lat','Lng','Kecamatan','Zona','Source','Updated']]);
-    hdr.setFontWeight('bold').setBackground('#1F4E79').setFontColor('#FFFFFF');
-    sheet.setColumnWidth(1, 300);
-  }
-  const existing = {};
-  const lr = sheet.getLastRow();
-  if (lr >= 2)
-    sheet.getRange(2,1,lr-1,1).getValues()
-      .forEach((r,i) => { if (r[0]) existing[String(r[0]).trim()] = i+2; });
-
-  const now = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm');
-  let added = 0, updated = 0;
-  Object.entries(data).forEach(([addr, info]) => {
-    const row = [addr, info.lat||'', info.lng||'', info.kecamatan||'',
-                 info.zona||'', info.source||'app', now];
-    if (existing[addr]) { sheet.getRange(existing[addr],1,1,7).setValues([row]); updated++; }
-    else                { sheet.appendRow(row); added++; }
-  });
-  return { status:'ok', added, updated };
-}
-
-// ── ROUTING LOG ────────────────────────────────────────────────────────────────
-function saveRoutingLog(data) {
-  if (!data) return { error:'No data' };
-  const ss = getSS('ANALITIK'); // SS3: Analitik
-  let sheet = ss.getSheetByName(SHEETS.routing_log);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEETS.routing_log);
-    const h = [['Tanggal Routing','Tanggal DO','Gudang','Plat','Driver','Tipe',
-      'Route No','Trip No','Total DO','Total DUS','Volume (m³)',
-      'KM Estimasi','Util Berat (%)','Util Vol (%)','ETA Selesai','ETA Ok','Flag']];
-    const hdr = sheet.getRange(1,1,1,h[0].length);
-    hdr.setValues(h).setFontWeight('bold').setBackground('#1F4E79').setFontColor('#FFFFFF');
-  }
-  const now  = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm');
-  const rows = (data.routes||[]).map(r => [
-    now, data.doDate||'', (r.wh||'').replace('GUDANG ',''),
-    r.plat||'', r.driver||'', r.tipe||'',
-    r.route_no||1, r.trip_no||'-',
-    r.total_do||0, r.total_qty||0, r.total_vol||0,
-    r.total_km||0, r.util_berat||0, r.util_vol||0,
-    r.eta_selesai||'', r.eta_ok?'Y':'N', r.flag||'',
-  ]);
-  if (rows.length > 0)
-    sheet.getRange(sheet.getLastRow()+1, 1, rows.length, rows[0].length).setValues(rows);
-  return { status:'ok', saved:rows.length };
-}
-
-// ── SETTLEMENT UANG JALAN ──────────────────────────────────────────────────────
-function getSettlement(date) {
-  const ss    = getSS('ANALITIK'); // SS3: Analitik
-  const sheet = ss.getSheetByName(SHEETS.settlement);
-  if (!sheet) return { status:'ok', data:[] };
-  const lr = sheet.getLastRow();
-  if (lr < 6) return { status:'ok', data:[] };
-
-  // Data mulai baris 6 (1=title, 2=sub, 3=group, 4=subhdr, 5=note)
-  let data = sheet.getRange(6, 1, lr-5, SETTLE_COLS).getValues()
-    .filter(r => r[1])
-    .map(r => ({
-      no:r[0], plat:r[1], driver:r[2], tipe:r[3], gudang:r[4],
-      tanggal: r[5] instanceof Date
-        ? Utilities.formatDate(r[5],'Asia/Jakarta','dd/MM/yyyy') : String(r[5]||''),
-      km_est:r[6], km_aktual:r[7],
-      uj_est:r[8], uj_aktual:r[9],
-      bbm_est:r[10], bbm_aktual:r[11],
-      bbm_liter_est:r[12], bbm_liter_aktual:r[13],
-      bbm_km_per_l:r[14], bbm_harga:r[15],
-      tol_est:r[16], tol_aktual:r[17],
-      parkir_est:r[18], parkir_aktual:r[19],
-      makan:r[20], mel:r[21], mel_ket:r[22],
-      dp_total:r[23], total_aktual:r[24],
-      selisih:r[25], status:r[26],
-    }));
-
-  if (date) data = data.filter(d => d.tanggal === date);
-  return { status:'ok', data, count:data.length };
-}
-
-function saveSettlement(data) {
-  if (!data || !Array.isArray(data.rows)) return { error:'No data' };
-
-  const ss = getSS('ANALITIK'); // SS3: Analitik
-  let sheet = ss.getSheetByName(SHEETS.settlement);
-  if (!sheet) { sheet = ss.insertSheet(SHEETS.settlement); _setupSettlementSheet(sheet); }
-
-  const now  = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy');
-  const rows = data.rows.map((r,i) => [
-    i+1,
-    r.plat||'', r.driver||'', r.tipe||'', r.gudang||'',
-    data.doDate||now,
-    r.km_est||0,   r.km_aktual||'',
-    r.uj_est||0,   r.uj_aktual||'',
-    r.bbm_est||0,  r.bbm_aktual||'',
-    r.bbm_liter_est||'', r.bbm_liter_aktual||'',
-    r.bbm_km_per_l||'',  r.bbm_harga||'',
-    r.tol_est||0,  r.tol_aktual||'',
-    r.parkir_est||0, r.parkir_aktual||'',
-    r.makan||0, r.mel||0, r.mel_ket||'',
-    r.dp_total||0, r.total_aktual||'',
-    r.selisih||'', r.status||'pending',
-  ]);
-
-  // Replace data tanggal yang sama
-  const lr = sheet.getLastRow();
-  if (lr >= 6 && data.doDate) {
-    const dates = sheet.getRange(6, 6, lr-5, 1).getValues();
-    const del   = [];
-    dates.forEach((d,i) => { if (String(d[0]).includes(data.doDate)) del.push(i+6); });
-    del.reverse().forEach(r => sheet.deleteRow(r));
+  // KM bar
+  const hasActive = allTasks.some(t => t.status==='On Process');
+  document.getElementById('km-bar').style.display = hasActive ? 'flex' : 'none';
+  if (hasActive && !tripState.started) {
+    tripState.started = true;
+    tripState.start_time = Date.now();
   }
 
-  const insertRow = sheet.getLastRow() + 1;
-  if (rows.length > 0) {
-    sheet.getRange(insertRow, 1, rows.length, SETTLE_COLS).setValues(rows);
-    // Format Rp
-    [9,10,11,12,17,18,19,20,21,22,24,25,26].forEach(c =>
-      sheet.getRange(insertRow,c,rows.length,1).setNumberFormat('#,##0'));
-    // Format liter
-    [13,14].forEach(c =>
-      sheet.getRange(insertRow,c,rows.length,1).setNumberFormat('0.00'));
-    // Format km & harga
-    [7,8].forEach(c =>
-      sheet.getRange(insertRow,c,rows.length,1).setNumberFormat('0'));
-    sheet.getRange(insertRow,16,rows.length,1).setNumberFormat('#,##0');
-
-    // Warna merah jika selisih negatif (kolom 26)
-    const selRange = sheet.getRange(insertRow, 26, rows.length, 1);
-    const rules = sheet.getConditionalFormatRules();
-    rules.push(SpreadsheetApp.newConditionalFormatRule()
-      .whenNumberLessThan(0).setFontColor('#C0392B')
-      .setRanges([selRange]).build());
-    sheet.setConditionalFormatRules(rules);
-  }
-
-  return { status:'ok', saved:rows.length, date:data.doDate };
+  document.getElementById('task-list').innerHTML = allTasks.map(t => buildCard(t)).join('');
 }
 
-function _setupSettlementSheet(sheet) {
-  const N='#1F4E79', B='#2E75B6', G='#1D9E75', A='#E67E22';
+function buildCard(t) {
+  const isNew  = t.status==='Baru'||t.status==='New';
+  const isProc = t.status==='On Process';
+  const isDone = t.status==='Selesai'||t.status==='Done';
+  const isFail = t.status==='Gagal Kirim';
+  const isBatal= t.status==='Batal';
 
-  // Row 1: Title
-  sheet.getRange(1,1,1,SETTLE_COLS).merge()
-    .setValue('SETTLEMENT UANG JALAN HARIAN — BASIS KM + BBM km/Liter')
-    .setFontWeight('bold').setFontSize(13).setFontColor('#fff')
-    .setBackground(N).setHorizontalAlignment('left').setVerticalAlignment('middle');
-  sheet.setRowHeight(1, 30);
+  const badge = isNew  ? '<span class="do-badge badge-baru">★ Baru</span>'
+              : isProc ? '<span class="do-badge badge-process">🚚 On Process</span>'
+              : isDone ? '<span class="do-badge badge-selesai">✓ Selesai</span>'
+              : isFail ? '<span class="do-badge badge-gagal">✗ Gagal</span>'
+              : isBatal? '<span class="do-badge" style="background:#f1f5f9;color:#64748b">Batal</span>'
+              : `<span class="do-badge">${t.status||'—'}</span>`;
 
-  // Row 2: Subtitle
-  sheet.getRange(2,1,1,SETTLE_COLS).merge()
-    .setValue('BBM Aktual otomatis dari KM Aktual × km/L × Harga Solar jika input dikosongkan. ' +
-              'Update harga solar di sheet Konfigurasi → reconnect app → semua recalc.')
-    .setFontStyle('italic').setFontSize(9).setFontColor('#555')
-    .setBackground('#EBF5FB').setVerticalAlignment('middle');
-  sheet.setRowHeight(2, 18);
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.alamat||'')}`;
 
-  // Row 3: Group headers
-  [[1,1,'No',N],[2,6,'IDENTITAS KENDARAAN',N],[7,8,'KM',B],
-   [9,10,'UANG JALAN (Rp)',B],[11,16,'BBM — Solar (ikut harga solar)',A],
-   [17,18,'TOL (Rp)',B],[19,20,'PARKIR (Rp)',B],[21,21,'MAKAN (Rp)',B],
-   [22,23,'MEL / MISC',B],[24,24,'DP TOTAL (Rp)',G],
-   [25,25,'TOTAL AKTUAL (Rp)',G],[26,26,'SELISIH (Rp)',G],[27,27,'STATUS',N]]
-  .forEach(([c1,c2,lbl,bg]) => {
-    const r = sheet.getRange(3,c1,1,c2-c1+1);
-    if (c1 < c2) r.merge();
-    r.setValue(lbl).setFontWeight('bold').setFontSize(9).setFontColor('#fff')
-      .setBackground(bg).setHorizontalAlignment('center').setVerticalAlignment('middle')
-      .setBorder(true,true,true,true,null,null,'#fff','SOLID');
-  });
-  sheet.setRowHeight(3, 24);
+  const actions = isMuat
+    ? `<div class="action-row">
+        <button class="btn-start" onclick="startJob('${escHtml(t.doc_no)}')">
+          <i class="fas fa-play"></i> START JALAN
+        </button>
+       </div>`
+    : isNew
+    ? `<div style="padding:0 14px 12px">
+        <button class="btn-muat" onclick="submitMuatKargo('${escHtml(t.doc_no)}','${escHtml(t.customer||'')}')">
+          📦 Mulai Muat Kargo
+        </button>
+       </div>`
+    : isProc
+    ? `<div class="action-row">
+        <button class="btn-selesai" onclick="openSelesai('${escHtml(t.doc_no)}',${t.qty||0},'${escHtml(t.customer||'')}')">
+          <i class="fas fa-check-circle"></i> SELESAI
+        </button>
+        <button class="btn-gagal" onclick="openGagal('${escHtml(t.doc_no)}')">
+          <i class="fas fa-exclamation-triangle"></i> GAGAL KIRIM
+        </button>
+       </div>`
+    : '';
 
-  // Row 4: Sub-headers
-  sheet.getRange(4,1,1,SETTLE_COLS).setValues([[
-    'No','Plat','Driver','Tipe','Gudang','Tanggal',
-    'KM Est','KM Aktual',
-    'UJ Est','UJ Aktual',
-    'BBM Est(Rp)','BBM Aktual(Rp)','Liter Est','Liter Aktual','km/L','Harga/L(Rp)',
-    'Tol Est','Tol Aktual',
-    'Parkir Est','Parkir Aktual',
-    'Makan','Mel','Ket Mel',
-    'DP Total','Total Aktual','Selisih','Status',
-  ]]).setFontWeight('bold').setFontSize(8)
-    .setBackground('#D6E4F0').setHorizontalAlignment('center')
-    .setBorder(true,true,true,true,null,null,'#BFC9CA','SOLID');
-  sheet.setRowHeight(4, 20);
-
-  // Row 5: Note
-  sheet.getRange(5,1,1,SETTLE_COLS).merge()
-    .setValue('💡 BBM kolom 11-16. Update "Harga solar per liter" di sheet Konfigurasi → reconnect app. ' +
-              'Kolom 13-14 dalam Liter. Kolom 15 = efisiensi km/liter. Kolom 16 = harga solar saat routing.')
-    .setFontStyle('italic').setFontSize(8).setFontColor('#7B1FA2')
-    .setBackground('#F5EEF8').setHorizontalAlignment('left');
-  sheet.setRowHeight(5, 16);
-
-  // Column widths (px)
-  const w = [22,72,100,64,74,62, 50,55, 68,68, 72,72,55,60,40,64, 68,68, 68,68, 60,58,110, 76,76,70,64];
-  w.forEach((px,i) => sheet.setColumnWidth(i+1, px));
-
-  sheet.setFrozenRows(5);
-  sheet.setFrozenColumns(2);
+  const isChanged = false; // Could enhance with changedDOs set
+  return `
+  <div class="do-card" id="card-${t.doc_no}">
+    <div class="do-card-head">
+      <div style="display:flex;align-items:center;gap:10px">
+        ${isProc?`<input type="checkbox" class="do-checkbox" id="chk-${t.doc_no}"
+          onchange="toggleBulkSelect('${escHtml(t.doc_no)}')" title="Pilih untuk selesai bersama">`:''}
+        <div>
+          <div class="do-no">DO: ${t.doc_no||'—'}</div>
+          <div class="do-sub">${t.gudang||''}</div>
+        </div>
+      </div>
+      ${badge}
+    </div>
+    <div onclick="toggleDetail('${t.doc_no}')" style="padding:8px 14px;text-align:center;border-bottom:1px solid var(--border);cursor:pointer;color:var(--accent);font-size:12px;font-weight:600">
+      Detail &nbsp;<i class="fas fa-chevron-down"></i>
+    </div>
+    <div class="do-detail" id="detail-${t.doc_no}" style="display:none">
+      <div class="detail-section">
+        <div class="detail-label"><i class="fas fa-user"></i> Customer</div>
+        <div class="detail-value">${escHtml(t.customer||'—')}</div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-label"><i class="fas fa-map-marker-alt"></i> Alamat</div>
+        <div class="detail-value addr">${escHtml(t.alamat||'—')}</div>
+        <button class="btn-maps" onclick="window.open('${mapsUrl}','_blank')">
+          <i class="fas fa-map-marked-alt"></i> BUKA GOOGLE MAPS
+        </button>
+      </div>
+      <div class="detail-section">
+        <div class="detail-label"><i class="fas fa-boxes"></i> Produk</div>
+        <div class="detail-row">
+          <div class="detail-value">${escHtml(t.produk||'—')}</div>
+          <div class="qty-chip">${t.qty||0} DUS</div>
+        </div>
+      </div>
+      ${isDone||isFail||isBatal ? `
+      <div class="detail-section">
+        <div class="detail-label"><i class="fas fa-info-circle"></i> Status Terakhir</div>
+        <div class="detail-value" style="font-size:12px;color:var(--text-muted)">${escHtml(t.remark||t.status||'—')}</div>
+      </div>` : ''}
+      ${t.jam_update ? `<div style="font-size:10px;color:#94a3b8;margin-top:4px">Update: ${t.jam_update}</div>` : ''}
+    </div>
+    ${actions}
+  </div>`;
 }
 
-// ── TEST FUNCTIONS ──────────────────────────────────────────────────────────────
-function testPing() {
-  const r = getMasterData();
-  Logger.log('Sheets loaded: ' + Object.keys(r.data||{}).join(', '));
+function toggleDetail(docNo) {
+  const el = document.getElementById('detail-'+docNo);
+  if (el) el.style.display = el.style.display==='none' ? 'block' : 'none';
 }
 
-function testUpdateHargaSolar() {
-  // Jalankan ini dari editor untuk test update harga solar
-  Logger.log(JSON.stringify(updateHargaSolar(7200)));
-}
-
-function testGetSettlement() {
-  Logger.log(JSON.stringify(getSettlement(null)));
-}
-
-// ── HELPER ─────────────────────────────────────────────────────────────────────
-// Apps Script tidak support custom CORS headers, tapi fetch dari localhost/file://
-// akan gagal karena browser CORS policy.
-// SOLUSI: pastikan script di-deploy dengan akses "Anyone" dan gunakan no-cors mode
-// atau buka app via HTTP server bukan file://
-function jsonResponse(data) {
-  return ContentService
-    .createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// GPS TRACKING — v4.0 | April 2026
-// Endpoint untuk PWA driver tracking di Hostinger
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const SHEETS_GPS = {
-  gps_log    : 'GPS Log',        // raw GPS points per kendaraan
-  trip_summary: 'Trip Summary',  // ringkasan per trip: KM, durasi, start/end
-};
-
-// ── START TRIP ─────────────────────────────────────────────────────────────────
-// Dipanggil saat driver tap "Mulai" di PWA
-function startTrip(data) {
-  const { plat, driver, gudang, date, lat, lng, stops, do_date } = data;
-  if (!plat) return { error: 'Plat wajib diisi' };
-
-  const ss    = getSS('OPERASIONAL'); // SS2
-  let sheet   = ss.getSheetByName(SHEETS_GPS.trip_summary);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEETS_GPS.trip_summary);
-    _setupTripSummarySheet(sheet);
-  }
-
-  const now   = new Date();
-  const nowStr = Utilities.formatDate(now, 'Asia/Jakarta', 'dd/MM/yyyy HH:mm:ss');
-  const tripId = `${plat}_${Utilities.formatDate(now, 'Asia/Jakarta', 'yyyyMMdd_HHmm')}`;
-
-  // Cek apakah sudah ada trip hari ini untuk plat ini — jika ada, update
-  const lr    = sheet.getLastRow();
-  let existRow = -1;
-  if (lr >= 2) {
-    const platCol = sheet.getRange(2, 2, lr-1, 1).getValues();
-    const dateCol = sheet.getRange(2, 4, lr-1, 1).getValues();
-    platCol.forEach((r, i) => {
-      if (String(r[0]).trim() === plat && String(dateCol[i][0]).includes(date||'')) {
-        existRow = i + 2;
-      }
+// ═══════════════════════════════════════════════════════
+// AUTO POLLING & CHANGE DETECTION
+// ═══════════════════════════════════════════════════════
+function startPolling() {
+  if (!GAS_URL) return;
+  pollTimer = setInterval(async () => {
+    const data = await gasGet('getDriverTasks', {
+      plat: driverState.plat, date: driverState.date
     });
-  }
+    if (!data || !data.tasks) return;
 
-  const rowData = [
-    tripId, plat, driver||'', date||nowStr.slice(0,10),
-    nowStr, '', // start_time, end_time
-    lat||'', lng||'', '', '', // start_lat, start_lng, end_lat, end_lng
-    0, 0,  // km_actual, duration_min
-    stops||0, gudang||'', do_date||date||'',
-    'active', '', // status, catatan
-  ];
+    // Update poll time
+    document.getElementById('last-poll-txt').textContent =
+      'Update: ' + new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
 
-  if (existRow > 0) {
-    sheet.getRange(existRow, 1, 1, rowData.length).setValues([rowData]);
-  } else {
-    sheet.appendRow(rowData);
-  }
+    // Detect changes
+    detectChanges(data.tasks);
 
-  // Buat/reset sheet GPS Log untuk trip ini
-  _initGPSLogEntry(plat, date, lat, lng, nowStr);
+    // Update snapshot & current
+    data.tasks.forEach(t => { lastTasksSnap[t.doc_no] = t.status; });
+    currentTasks = data.tasks;
 
-  return { status: 'ok', trip_id: tripId, message: 'Trip dimulai — GPS tracking aktif' };
-}
-
-// ── UPDATE GPS (dipanggil tiap 2-5 menit dari PWA) ────────────────────────────
-function updateGPS(data) {
-  const { plat, date, lat, lng, km_total, speed_kmh, timestamp } = data;
-  if (!plat || !lat || !lng) return { error: 'Data tidak lengkap' };
-
-  const ss    = getSS('OPERASIONAL'); // SS2
-  let sheet   = ss.getSheetByName(SHEETS_GPS.gps_log);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEETS_GPS.gps_log);
-    _setupGPSLogSheet(sheet);
-  }
-
-  const now = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm:ss');
-  sheet.appendRow([
-    plat, date||now.slice(0,10), timestamp||now,
-    parseFloat(lat)||0, parseFloat(lng)||0,
-    parseFloat(km_total)||0, parseFloat(speed_kmh)||0,
-  ]);
-
-  // Update km_actual di Trip Summary
-  _updateTripKM(plat, date, parseFloat(km_total)||0);
-
-  return { status: 'ok' };
-}
-
-// ── END TRIP (driver tap "Selesai") ───────────────────────────────────────────
-function endTrip(data) {
-  const { plat, date, lat, lng, km_total, notes } = data;
-  if (!plat) return { error: 'Plat wajib diisi' };
-
-  const ss    = getSS('OPERASIONAL'); // SS2
-  const sheet = ss.getSheetByName(SHEETS_GPS.trip_summary);
-  if (!sheet) return { error: 'Trip belum dimulai' };
-
-  const now   = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm:ss');
-  const lr    = sheet.getLastRow();
-  if (lr < 2) return { error: 'Trip tidak ditemukan' };
-
-  const platCol = sheet.getRange(2, 2, lr-1, 1).getValues();
-  const dateCol = sheet.getRange(2, 4, lr-1, 1).getValues();
-  let found = -1;
-  platCol.forEach((r, i) => {
-    if (String(r[0]).trim() === plat) found = i + 2;
-  });
-
-  if (found < 0) return { error: 'Trip tidak ditemukan untuk ' + plat };
-
-  // Update: end_time, end_lat, end_lng, km_actual, status, catatan
-  const startTime = sheet.getRange(found, 5).getValue();
-  let durasiMin   = 0;
-  try {
-    const start = new Date(startTime);
-    const end   = new Date();
-    durasiMin   = Math.round((end - start) / 60000);
-  } catch(e) {}
-
-  sheet.getRange(found, 6).setValue(now);                        // end_time
-  sheet.getRange(found, 9).setValue(parseFloat(lat)||'');        // end_lat
-  sheet.getRange(found, 10).setValue(parseFloat(lng)||'');       // end_lng
-  sheet.getRange(found, 12).setValue(parseFloat(km_total)||0);   // km_actual
-  sheet.getRange(found, 13).setValue(durasiMin);                 // duration_min
-  sheet.getRange(found, 17).setValue('completed');               // status
-  sheet.getRange(found, 18).setValue(notes||'');                 // catatan
-
-  return {
-    status: 'ok',
-    km_actual: parseFloat(km_total)||0,
-    durasi_min: durasiMin,
-    message: `Trip selesai. KM: ${km_total} km, Durasi: ${durasiMin} menit`,
-  };
-}
-
-// ── GET TRIP — ambil data 1 kendaraan ─────────────────────────────────────────
-function getTrip(plat, date) {
-  const ss    = getSS('OPERASIONAL'); // SS2
-  const sheet = ss.getSheetByName(SHEETS_GPS.trip_summary);
-  if (!sheet) return { status: 'ok', data: null };
-
-  const lr = sheet.getLastRow();
-  if (lr < 2) return { status: 'ok', data: null };
-
-  const rows = sheet.getRange(2, 1, lr-1, 18).getValues();
-  const row  = rows.find(r =>
-    String(r[1]||'').trim() === plat &&
-    (!date || String(r[3]||'').includes(date))
-  );
-
-  if (!row) return { status: 'ok', data: null };
-
-  return {
-    status: 'ok',
-    data: {
-      trip_id     : row[0],  plat      : row[1],
-      driver      : row[2],  date      : row[3],
-      start_time  : row[4],  end_time  : row[5],
-      start_lat   : row[6],  start_lng : row[7],
-      end_lat     : row[8],  end_lng   : row[9],
-      km_est      : row[10], km_actual : row[11],
-      durasi_min  : row[12], stops     : row[13],
-      gudang      : row[14], do_date   : row[15],
-      status      : row[16], catatan   : row[17],
+    // Re-render if on tugas tab
+    if (currentTab === 'tugas') {
+      stopsDone = data.tasks.filter(t=>t.status==='Selesai'||t.status==='Gagal Kirim'||t.status==='Batal').length;
+      document.getElementById('stop-total').textContent = data.tasks.length;
+      document.getElementById('stop-done').textContent  = stopsDone;
+      document.getElementById('task-list').innerHTML = data.tasks.map(t => buildCard(t)).join('');
     }
-  };
+  }, POLL_INTERVAL);
 }
 
-// ── GET KM ACTUAL — shortcut untuk settlement ──────────────────────────────────
-function getKMActual(plat, date) {
-  const r = getTrip(plat, date);
-  if (!r.data) return { status: 'ok', km_actual: null, status_trip: 'not_found' };
-  return {
-    status    : 'ok',
-    km_actual : r.data.km_actual,
-    km_est    : r.data.km_est,
-    status_trip: r.data.status,
-    start_time: r.data.start_time,
-    end_time  : r.data.end_time,
-  };
-}
-
-// ── GET TRIP LIST — semua kendaraan tanggal tertentu ──────────────────────────
-function getTripList(date) {
-  const ss    = getSS('OPERASIONAL'); // SS2
-  const sheet = ss.getSheetByName(SHEETS_GPS.trip_summary);
-  if (!sheet) return { status: 'ok', data: [] };
-
-  const lr = sheet.getLastRow();
-  if (lr < 2) return { status: 'ok', data: [] };
-
-  const rows = sheet.getRange(2, 1, lr-1, 18).getValues();
-  const data = rows
-    .filter(r => r[1] && (!date || String(r[3]||'').includes(date)))
-    .map(r => ({
-      plat      : r[1],  driver    : r[2],
-      date      : r[3],  km_actual : r[11],
-      status    : r[16], end_time  : r[5],
-    }));
-
-  return { status: 'ok', data, count: data.length };
-}
-
-// ── SAVE DISPATCH LOG ─────────────────────────────────────────────────────────
-function saveDispatch(data) {
-  if (!data || !Array.isArray(data.log)) return { error: 'No data' };
-  const ss = getSS('OPERASIONAL'); // SS2
-  let sheet = ss.getSheetByName('Dispatch Log');
-  if (!sheet) {
-    sheet = ss.insertSheet('Dispatch Log');
-    const h = sheet.getRange(1,1,1,10);
-    h.setValues([['Tanggal DO','Waktu','Plat','Driver','DO No','Aksi','Alasan','QTY Kirim','QTY Sisa','Sales']]);
-    h.setFontWeight('bold').setBackground('#064e3b').setFontColor('#fff');
-  }
-  const now = Utilities.formatDate(new Date(),'Asia/Jakarta','dd/MM/yyyy');
-  const rows = data.log.map(l => [
-    data.doDate||now, l.waktu||'', l.plat||'', l.driver||'',
-    l.doc_no||'', l.action||'', l.alasan||'',
-    l.qty_kirim||'', l.qty_sisa||'', l.sales||'',
-  ]);
-  if (rows.length > 0)
-    sheet.getRange(sheet.getLastRow()+1, 1, rows.length, 10).setValues(rows);
-  return { status:'ok', saved: rows.length };
-}
-
-// ── HELPER FUNCTIONS ──────────────────────────────────────────────────────────
-function _initGPSLogEntry(plat, date, lat, lng, timeStr) {
-  const ss    = getSS('OPERASIONAL'); // SS2
-  let sheet   = ss.getSheetByName(SHEETS_GPS.gps_log);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEETS_GPS.gps_log);
-    _setupGPSLogSheet(sheet);
-  }
-  sheet.appendRow([plat, date, timeStr, lat||'', lng||'', 0, 0]);
-}
-
-function _updateTripKM(plat, date, kmTotal) {
-  const ss    = getSS('OPERASIONAL'); // SS2
-  const sheet = ss.getSheetByName(SHEETS_GPS.trip_summary);
-  if (!sheet) return;
-  const lr    = sheet.getLastRow();
-  if (lr < 2) return;
-  const platCol = sheet.getRange(2, 2, lr-1, 1).getValues();
-  platCol.forEach((r, i) => {
-    if (String(r[0]).trim() === plat) {
-      sheet.getRange(i+2, 12).setValue(kmTotal); // km_actual column
-    }
-  });
-}
-
-function _setupGPSLogSheet(sheet) {
-  const h = sheet.getRange(1,1,1,7);
-  h.setValues([['Plat','Tanggal','Timestamp','Lat','Lng','KM Total','Speed (km/h)']]);
-  h.setFontWeight('bold').setBackground('#1F4E79').setFontColor('#fff');
-  [1,2].forEach(c => sheet.setColumnWidth(c, 90));
-  sheet.setColumnWidth(3, 140); sheet.setFrozenRows(1);
-}
-
-function _setupTripSummarySheet(sheet) {
-  const headers = [
-    'Trip ID','Plat','Driver','Tanggal',
-    'Start Time','End Time',
-    'Start Lat','Start Lng','End Lat','End Lng',
-    'KM Est','KM Actual','Durasi (menit)',
-    'Jumlah Stop','Gudang','DO Date',
-    'Status','Catatan'
-  ];
-  const h = sheet.getRange(1,1,1,headers.length);
-  h.setValues([headers]);
-  h.setFontWeight('bold').setBackground('#064e3b').setFontColor('#fff');
-  sheet.setColumnWidth(1, 160); sheet.setColumnWidth(2, 80);
-  sheet.setColumnWidth(3, 110); sheet.setFrozenRows(1);
-}
-
-// ── TEST FUNCTIONS ─────────────────────────────────────────────────────────────
-function testStartTrip() {
-  const result = startTrip({
-    plat: 'B9117ZI', driver: 'EKO PRIBADI',
-    gudang: 'GUDANG DOYONG', date: '10/04/2026',
-    lat: -6.2167, lng: 106.6333, stops: 8,
-  });
-  Logger.log(JSON.stringify(result));
-}
-
-function testGetTripList() {
-  Logger.log(JSON.stringify(getTripList('10/04/2026')));
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// USER MANAGEMENT & ACCESS CONTROL — v4.1
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// Kolom sheet Users:
-// A: username | B: password_hash | C: nama_lengkap | D: role
-// E: gudang   | F: aktif         | G: last_login   | H: created_at
-
-// Role yang tersedia:
-//   dispatcher   → full akses 1 gudang (routing, dispatch, WA blast)
-//   settlement   → tab settlement saja (1 gudang)
-//   kepala       → view + approve (1 gudang)
-//   pusat        → view ALL gudang, no edit
-//   superadmin   → semua akses semua gudang
-
-// Gudang value: DAAN_MOGOT | DOYONG | CIKUDA | ALL
-
-// ── SETUP SHEET USERS (jalankan 1x) ──────────────────────────────────────────
-function setupUsersSheet() {
-  const ss = getSS('MASTER'); // SS1: Data Master
-  let sheet = ss.getSheetByName(SHEETS.users);
-
-  // Hapus sheet lama dan buat baru — paling bersih
-  if (sheet) ss.deleteSheet(sheet);
-  sheet = ss.insertSheet(SHEETS.users);
-
-  // Setup kolom
-  [1,2,3,4,5,6,7,8].forEach((c,i) =>
-    sheet.setColumnWidth(c, [120,160,160,110,120,100,140,120][i]));
-
-  // Header di baris 1
-  const headers = ['Username','Password Hash','Nama Lengkap','Role','Gudang','Aktif','Last Login','Dibuat'];
-  const hRange = sheet.getRange(1, 1, 1, headers.length);
-  hRange.setValues([headers]);
-  hRange.setFontWeight('bold').setBackground('#1F4E79').setFontColor('#fff');
-  sheet.setFrozenRows(1);
-
-  // Data 11 user mulai baris 2
-  const defaultUsers = [
-    ['dm_dispatcher', _hash('dm2026!'),           'Dispatcher DM',       'dispatcher', 'DAAN_MOGOT', 'TRUE', '', _now()],
-    ['dm_settlement', _hash('dm_fin26'),           'Keuangan DM',         'settlement', 'DAAN_MOGOT', 'TRUE', '', _now()],
-    ['dm_kepala',     _hash('dm_kpl26'),           'Kepala Gudang DM',    'kepala',     'DAAN_MOGOT', 'TRUE', '', _now()],
-    ['dy_dispatcher', _hash('dy2026!'),            'Dispatcher Doyong',   'dispatcher', 'DOYONG',     'TRUE', '', _now()],
-    ['dy_settlement', _hash('dy_fin26'),           'Keuangan Doyong',     'settlement', 'DOYONG',     'TRUE', '', _now()],
-    ['dy_kepala',     _hash('dy_kpl26'),           'Kepala Gudang Doyong','kepala',     'DOYONG',     'TRUE', '', _now()],
-    ['ck_dispatcher', _hash('ck2026!'),            'Dispatcher Cikuda',   'dispatcher', 'CIKUDA',     'TRUE', '', _now()],
-    ['ck_settlement', _hash('ck_fin26'),           'Keuangan Cikuda',     'settlement', 'CIKUDA',     'TRUE', '', _now()],
-    ['ck_kepala',     _hash('ck_kpl26'),           'Kepala Gudang Cikuda','kepala',     'CIKUDA',     'TRUE', '', _now()],
-    ['pusat_view',    _hash('pusat26!'),            'Staff Pusat',         'pusat',      'ALL',        'TRUE', '', _now()],
-    ['superadmin',    _hash('Sa@GlobalS3ntral!'),  'Super Admin',         'superadmin', 'ALL',        'TRUE', '', _now()],
-  ];
-
-  // Bersihkan semua baris lama (termasuk sisa run sebelumnya)
-  const lastRow = sheet.getLastRow();
-  if (lastRow >= 2) {
-    sheet.getRange(2, 1, Math.max(lastRow - 1, 15), 8).clearContent();
-  }
-
-  // Tulis 11 user dengan hash SHA-256 asli
-  sheet.getRange(2, 1, defaultUsers.length, 8).setValues(defaultUsers);
-
-  // Warnai baris per gudang
-  const colors = { 'DAAN_MOGOT':'#E3F2FD', 'DOYONG':'#E8F5E9', 'CIKUDA':'#FFF3E0', 'ALL':'#F3E5F5' };
-  defaultUsers.forEach((u, i) => {
-    sheet.getRange(i+2, 1, 1, 8).setBackground(colors[u[4]] || '#fff');
-  });
-
-  // Setup Audit Log
-  setupAuditLogSheet(ss);
-
-  return { status:'ok', message:'Users sheet siap (11 user). Ganti password segera!', count: defaultUsers.length };
-}
-
-function setupAuditLogSheet(ss) {
-  let sheet = ss.getSheetByName(SHEETS.audit_log);
-  if (!sheet) sheet = ss.insertSheet(SHEETS.audit_log);
-  const h = sheet.getRange(1,1,1,7);
-  h.setValues([['Timestamp','Username','Nama','Role','Gudang','Action','Detail']]);
-  h.setFontWeight('bold').setBackground('#374151').setFontColor('#fff');
-  sheet.setFrozenRows(1);
-  sheet.setColumnWidth(1,140); sheet.setColumnWidth(2,110);
-  sheet.setColumnWidth(3,140); sheet.setColumnWidth(6,120);
-  sheet.setColumnWidth(7,300);
-}
-
-// ── LOGIN ─────────────────────────────────────────────────────────────────────
-function doLogin(body) {
-  const { username, password } = body;
-  if (!username || !password) return { error: 'Username dan password wajib diisi' };
-
-  const ss    = getSS('MASTER'); // SS1
-  const sheet = ss.getSheetByName(SHEETS.users);
-  if (!sheet) return { error: 'Users sheet belum setup. Hubungi admin.' };
-
-  const lr   = sheet.getLastRow();
-  if (lr < 2) return { error: 'Tidak ada user terdaftar' };
-
-  const rows = sheet.getRange(2, 1, lr-1, 8).getValues();
-  const user = rows.find(r => String(r[0]).trim().toLowerCase() === username.trim().toLowerCase());
-
-  if (!user) return { error: 'Username tidak ditemukan' };
-
-  // Cek aktif
-  if (String(user[5]).toLowerCase() === 'false' || user[5] === false)
-    return { error: 'Akun dinonaktifkan. Hubungi admin.' };
-
-  // Verifikasi password
-  const inputHash = _hash(password);
-  if (inputHash !== user[1])
-    return { error: 'Password salah' };
-
-  // Update last login
-  const rowIdx = rows.indexOf(user) + 2;
-  sheet.getRange(rowIdx, 7).setValue(_now());
-
-  // Catat audit log
-  _writeAudit(ss, user[0], user[2], user[3], user[4], 'LOGIN', 'Login berhasil');
-
-  return {
-    status   : 'ok',
-    username : user[0],
-    nama     : user[2],
-    role     : user[3],
-    gudang   : user[4],
-    message  : `Selamat datang, ${user[2]}!`,
-  };
-}
-
-// ── GET USERS (untuk superadmin saja) ─────────────────────────────────────────
-function getUsers() {
-  const ss    = getSS('MASTER'); // SS1
-  const sheet = ss.getSheetByName(SHEETS.users);
-  if (!sheet) return { status:'ok', data:[] };
-  const lr = sheet.getLastRow();
-  if (lr < 2) return { status:'ok', data:[] };
-  const rows = sheet.getRange(2, 1, lr-1, 8).getValues();
-  return {
-    status: 'ok',
-    data: rows.filter(r=>r[0]).map(r => ({
-      username   : r[0],
-      nama       : r[2],
-      role       : r[3],
-      gudang     : r[4],
-      aktif      : r[5],
-      last_login : r[6],
-    }))
-  };
-}
-
-// ── RESET PASSWORD (hanya superadmin) ─────────────────────────────────────────
-function resetPassword(body) {
-  const { admin_username, admin_password, target_username, new_password } = body;
-  if (!admin_username || !admin_password || !target_username || !new_password)
-    return { error: 'Data tidak lengkap' };
-
-  // Verifikasi admin
-  const adminLogin = doLogin({ username: admin_username, password: admin_password });
-  if (adminLogin.error) return { error: 'Admin auth gagal: ' + adminLogin.error };
-  if (!['superadmin'].includes(adminLogin.role))
-    return { error: 'Hanya superadmin yang bisa reset password' };
-
-  const ss    = getSS('MASTER'); // SS1
-  const sheet = ss.getSheetByName(SHEETS.users);
-  const lr    = sheet.getLastRow();
-  const rows  = sheet.getRange(2, 1, lr-1, 8).getValues();
-  const idx   = rows.findIndex(r => String(r[0]).trim() === target_username.trim());
-  if (idx < 0) return { error: 'User tidak ditemukan: ' + target_username };
-
-  sheet.getRange(idx+2, 2).setValue(_hash(new_password));
-  _writeAudit(ss, admin_username, adminLogin.nama, adminLogin.role, adminLogin.gudang,
-    'RESET_PWD', `Reset password untuk ${target_username}`);
-
-  return { status:'ok', message:`Password ${target_username} berhasil direset` };
-}
-
-// ── SAVE AUDIT LOG ─────────────────────────────────────────────────────────────
-function saveAuditLog(body) {
-  const ss = getSS('MASTER');
-  _writeAudit(ss, body.username||'', body.nama||'', body.role||'',
-    body.gudang||'', body.action||'', body.detail||'');
-  return { status:'ok' };
-}
-
-function _writeAudit(ss, username, nama, role, gudang, action, detail) {
-  let sheet = ss.getSheetByName(SHEETS.audit_log);
-  if (!sheet) { setupAuditLogSheet(ss); sheet = ss.getSheetByName(SHEETS.audit_log); }
-  sheet.appendRow([_now(), username, nama, role, gudang, action, detail]);
-}
-
-// ── HELPERS ───────────────────────────────────────────────────────────────────
-function _hash(str) {
-  // SHA-256 via Apps Script Utilities
-  const bytes = Utilities.computeDigest(
-    Utilities.DigestAlgorithm.SHA_256,
-    String(str),
-    Utilities.Charset.UTF_8
-  );
-  return bytes.map(b => ('0' + (b & 0xff).toString(16)).slice(-2)).join('');
-}
-
-function _now() {
-  return Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm:ss');
-}
-
-// ── TEST FUNCTIONS ─────────────────────────────────────────────────────────────
-function testSetupUsers() {
-  Logger.log(JSON.stringify(setupUsersSheet()));
-}
-
-function testLogin() {
-  Logger.log(JSON.stringify(doLogin({ username:'dm_dispatcher', password:'dm2026!' })));
-}
-
-function testLoginWrong() {
-  Logger.log(JSON.stringify(doLogin({ username:'dm_dispatcher', password:'salah' })));
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// DRIVER APP v2 — Endpoints
-// v4.2 | April 2026
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// ── SETUP SHEETS (jalankan 1x) ────────────────────────────────────────────────
-function setupDriverSheets() {
-  const ss = getSS('OPERASIONAL'); // SS2: Operasional
-
-  // DO Status sheet
-  let ds = ss.getSheetByName(SHEETS.do_status);
-  if (!ds) {
-    ds = ss.insertSheet(SHEETS.do_status);
-    const h = ['Tanggal DO','Plat','Driver','Gudang','DO No','Customer',
-      'Alamat','Produk','QTY Kirim','Status','Jam Update','GPS Coords',
-      'QTY Terima','QTY Rusak','Alasan Gagal','Keterangan',
-      'Titip SJ','Nama SPG','Jabatan SPG','Catatan'];
-    const hr = ds.getRange(1,1,1,h.length);
-    hr.setValues([h]).setFontWeight('bold').setBackground('#0b1f3a').setFontColor('#fff');
-    ds.setFrozenRows(1);
-    [1,2,3,4,5,6].forEach((c,i)=>ds.setColumnWidth(c,[100,90,120,90,100,160][i]));
-    Logger.log('✅ DO Status sheet dibuat');
-  }
-
-  // Stop Log sheet
-  let sl = ss.getSheetByName(SHEETS.stop_log);
-  if (!sl) {
-    sl = ss.insertSheet(SHEETS.stop_log);
-    const h = ['Timestamp','Plat','Driver','Tanggal DO','DO No','Customer',
-      'Status','QTY Kirim','QTY Terima','QTY Rusak',
-      'Alasan Gagal','Keterangan','Titip SJ','Nama SPG','Jabatan SPG',
-      'Catatan','GPS Coords','Foto DO (Drive)','Foto Rusak (Drive)',
-      'Foto SJ (Drive)','Foto Gagal (Drive)'];
-    const hr = sl.getRange(1,1,1,h.length);
-    hr.setValues([h]).setFontWeight('bold').setBackground('#1e3a5f').setFontColor('#fff');
-    sl.setFrozenRows(1);
-    Logger.log('✅ Stop Log sheet dibuat');
-  }
-
-  // Photo Log sheet
-  let pl = ss.getSheetByName(SHEETS.photo_log);
-  if (!pl) {
-    pl = ss.insertSheet(SHEETS.photo_log);
-    const h = ['Timestamp','Plat','Driver','Tanggal DO','DO No',
-      'Jenis Foto','Drive File ID','Drive URL','GPS Coords'];
-    const hr = pl.getRange(1,1,1,h.length);
-    hr.setValues([h]).setFontWeight('bold').setBackground('#064e3b').setFontColor('#fff');
-    pl.setFrozenRows(1);
-    Logger.log('✅ Photo Log sheet dibuat');
-  }
-
-  return { status:'ok', message:'Driver sheets siap (DO Status, Stop Log, Photo Log)' };
-}
-
-// ── GET DRIVER TASKS ──────────────────────────────────────────────────────────
-// Ambil semua DO untuk plat tertentu pada tanggal tertentu dari DO Status
-function getDriverTasks(plat, date) {
-  if (!plat) return { error: 'Plat wajib' };
-  const ss  = getSS('OPERASIONAL'); // SS2
-  const sh  = ss.getSheetByName(SHEETS.do_status);
-  if (!sh) return { tasks:[], message:'Sheet DO Status belum ada. Jalankan setupDriverSheets() di Apps Script editor.' };
-
-  const lr = sh.getLastRow();
-  if (lr < 2) return { tasks:[], message:'Sheet DO Status kosong. Lakukan routing dulu di Routing Optimizer.' };
-
-  const rows = sh.getRange(2,1,lr-1,20).getValues();
-
-  // Normalize tanggal untuk perbandingan — ambil angka saja
-  // Normalisasi tanggal: hapus semua non-digit → ddMMyyyyatau ddMMyy
-  const normDate = d => String(d||'').replace(/\D/g,'');
-  // Expand 6-digit (ddMMyy) → 8-digit (ddMMyyyy) dengan prefix "20"
-  const expandDate = norm => norm.length === 6
-    ? norm.slice(0,4) + '20' + norm.slice(4,6)
-    : norm;
-  const todayNorm    = expandDate(normDate(_now()));
-  const reqDateNorm  = date ? expandDate(normDate(date)) : '';
-
-  const tasks = rows
-    .filter(r => {
-      const rowPlat = String(r[1]||'').trim().toUpperCase();
-      const rowDate = expandDate(normDate(r[0]));
-      const matchPlat = rowPlat === String(plat||'').trim().toUpperCase();
-      // Match: exact, atau sama dengan hari ini (fallback jika tanggal SAP ≠ tanggal jalan)
-      const matchDate = !reqDateNorm ||
-        rowDate === reqDateNorm ||
-        rowDate === todayNorm;
-      return matchPlat && matchDate;
-    })
-    .map(r => ({
-      do_date   : r[0],  plat      : r[1],
-      driver    : r[2],  gudang    : r[3],
-      doc_no    : r[4],  customer  : r[5],
-      alamat    : r[6],  produk    : r[7],
-      qty       : r[8],  status    : r[9],
-      jam_update: r[10], remark    : r[15]||'',
-    }));
-
-  return { status:'ok', tasks, count:tasks.length,
-    debug: { plat, date, reqDateNorm, todayNorm, total_rows: rows.length } };
-}
-
-// ── START JOB ─────────────────────────────────────────────────────────────────
-function startJob(params) {
-  const { plat, driver, doc_no, date, lat, lng } = params;
-  if (!doc_no) return { error: 'doc_no wajib' };
-  _updateDoStatus(doc_no, 'On Process', lat+','+lng, null, null, null, null);
-  return { status:'ok', message:'Status updated: On Process' };
-}
-
-// ── CANCEL JOB ────────────────────────────────────────────────────────────────
-function cancelJob(params) {
-  const { plat, doc_no, date } = params;
-  if (!doc_no) return { error: 'doc_no wajib' };
-  _updateDoStatus(doc_no, 'Batal', '', null, null, null, null);
-  return { status:'ok' };
-}
-
-// ── SUBMIT SELESAI ────────────────────────────────────────────────────────────
-function submitSelesai(params) {
-  const {
-    plat, driver, doc_no, date,
-    qty_kirim, qty_terima, qty_rusak,
-    catatan, titip_sj, nama_spg, jabatan_spg,
-    gps_coords, foto_do, foto_rusak, foto_sj, timestamp,
-  } = params;
-
-  if (!doc_no) return { error: 'doc_no wajib' };
-  if (!foto_do) return { error: 'Foto DO wajib' };
-
-  const ss = getSS('OPERASIONAL');
-  const now = _now();
-
-  // Upload foto ke Google Drive
-  const fotoDoUrl   = _uploadPhoto(foto_do,   plat, date, doc_no, 'DO');
-  const fotoRusakUrl= qty_rusak>0 && foto_rusak
-                    ? _uploadPhoto(foto_rusak, plat, date, doc_no, 'RUSAK') : '';
-  const fotoSJUrl   = titip_sj==='Ya' && foto_sj
-                    ? _uploadPhoto(foto_sj,   plat, date, doc_no, 'SJ') : '';
-
-  // Update DO Status
-  _updateDoStatus(doc_no, 'Selesai', gps_coords,
-    parseInt(qty_terima)||0, parseInt(qty_rusak)||0, null,
-    catatan, titip_sj, nama_spg, jabatan_spg);
-
-  // Tulis ke Stop Log
-  const sl = _getOrCreateSheet(ss, SHEETS.stop_log, setupDriverSheets);
-  sl.appendRow([
-    now, plat, driver, date, doc_no,
-    _getDoField(ss, doc_no, 'customer'),
-    'Selesai', parseInt(qty_kirim)||0,
-    parseInt(qty_terima)||0, parseInt(qty_rusak)||0,
-    '', '', titip_sj||'Tidak', nama_spg||'', jabatan_spg||'',
-    catatan||'', gps_coords||'',
-    fotoDoUrl, fotoRusakUrl, fotoSJUrl, '',
-  ]);
-
-  // Log foto
-  if (fotoDoUrl)    _logPhoto(ss, plat, driver, date, doc_no, 'DO',    fotoDoUrl, gps_coords);
-  if (fotoRusakUrl) _logPhoto(ss, plat, driver, date, doc_no, 'RUSAK', fotoRusakUrl, gps_coords);
-  if (fotoSJUrl)    _logPhoto(ss, plat, driver, date, doc_no, 'SJ',    fotoSJUrl, gps_coords);
-
-  return { status:'ok', foto_do:fotoDoUrl, message:'Laporan selesai tersimpan' };
-}
-
-// ── SUBMIT GAGAL ──────────────────────────────────────────────────────────────
-function submitGagal(params) {
-  const {
-    plat, driver, doc_no, date,
-    alasan, keterangan, gps_coords, foto_gagal,
-    timestamp, is_urgent,
-  } = params;
-
-  if (!doc_no) return { error: 'doc_no wajib' };
-  if (!alasan) return { error: 'Alasan wajib' };
-  if (!foto_gagal) return { error: 'Foto bukti wajib' };
-
-  const ss  = getSS('OPERASIONAL');
-  const now = _now();
-
-  // Upload foto
-  const fotoUrl = _uploadPhoto(foto_gagal, plat, date, doc_no, 'GAGAL');
-
-  // Update DO Status
-  _updateDoStatus(doc_no, 'Gagal Kirim', gps_coords, 0, 0, alasan, keterangan||'');
-
-  // Stop Log
-  const sl = _getOrCreateSheet(ss, SHEETS.stop_log, setupDriverSheets);
-  sl.appendRow([
-    now, plat, driver, date, doc_no,
-    _getDoField(ss, doc_no, 'customer'),
-    'Gagal Kirim', _getDoField(ss, doc_no, 'qty'), 0, 0,
-    alasan, keterangan||'', 'Tidak','','','',
-    gps_coords||'', '', '', '', fotoUrl,
-  ]);
-
-  _logPhoto(ss, plat, driver, date, doc_no, 'GAGAL', fotoUrl, gps_coords);
-
-  // Alert jika urgent (musibah)
-  if (is_urgent === '1') {
-    _writeAudit(ss, driver, driver, 'driver', '', 'URGENT_MUSIBAH',
-      'Kendaraan '+plat+' lapor musibah: '+alasan+' | DO: '+doc_no);
-  }
-
-  return { status:'ok', foto_gagal:fotoUrl, message:'Laporan gagal tersimpan' };
-}
-
-// ── SUBMIT STRUK (Selesai Perjalanan) ─────────────────────────────────────────
-function submitStruk(params) {
-  const { plat, driver, date, km_total, foto_tol, foto_parkir, foto_bensin, timestamp } = params;
-  if (!plat) return { error:'Plat wajib' };
-
-  const ss  = getSS('OPERASIONAL');
-  const now = _now();
-
-  // Upload struk foto
-  const tolUrl   = foto_tol    ? _uploadPhoto(foto_tol,    plat, date, 'STRUK', 'TOL')    : '';
-  const parkirUrl= foto_parkir ? _uploadPhoto(foto_parkir, plat, date, 'STRUK', 'PARKIR') : '';
-  const bensinUrl= foto_bensin ? _uploadPhoto(foto_bensin, plat, date, 'STRUK', 'BENSIN') : '';
-
-  // Update Trip Summary
-  const ts = ss.getSheetByName(SHEETS_GPS.trip_summary);
-  if (ts) {
-    const lr = ts.getLastRow();
-    if (lr >= 2) {
-      const platCol = ts.getRange(2,2,lr-1,1).getValues();
-      platCol.forEach((r,i) => {
-        if (String(r[0]).trim() === String(plat).trim()) {
-          ts.getRange(i+2,12).setValue(parseFloat(km_total)||0); // KM actual
-          // Simpan link struk di kolom tersedia
-          if (tolUrl)    ts.getRange(i+2,19).setValue(tolUrl);
-          if (parkirUrl) ts.getRange(i+2,20).setValue(parkirUrl);
-          if (bensinUrl) ts.getRange(i+2,21).setValue(bensinUrl);
-        }
+function detectChanges(newTasks) {
+  const changedCards = [];
+
+  newTasks.forEach(t => {
+    const prevStatus = lastTasksSnap[t.doc_no];
+
+    if (prevStatus === undefined) {
+      // New DO added by dispatcher
+      addNotification({
+        type: 'new_do',
+        icon: 'new',
+        title: '📦 DO Baru Ditambahkan',
+        msg: `DO ${t.doc_no} — ${t.customer||'Customer'} · ${t.qty||0} DUS`,
+        doc_no: t.doc_no,
       });
+    } else if (prevStatus !== t.status) {
+      // Status changed by dispatcher
+      const isUrgent = t.status==='Batal'||t.status==='CS Minta Cancel';
+      addNotification({
+        type: 'status_change',
+        icon: isUrgent ? 'alert' : 'change',
+        title: `🔄 Status DO Berubah`,
+        msg: `DO ${t.doc_no} — ${prevStatus} → ${t.status}`,
+        doc_no: t.doc_no,
+      });
+      changedCards.push(t.doc_no);
     }
-  }
-
-  // Log foto struk
-  ['tol','parkir','bensin'].forEach((t,i) => {
-    const url=[tolUrl,parkirUrl,bensinUrl][i];
-    if (url) _logPhoto(ss, plat, driver, date, 'STRUK', t.toUpperCase(), url, '');
   });
 
-  return {
-    status:'ok',
-    km_total, foto_tol:tolUrl, foto_parkir:parkirUrl, foto_bensin:bensinUrl,
-    message:'Perjalanan selesai. Data dan foto struk tersimpan.'
-  };
+  // Animate changed cards
+  changedCards.forEach(docNo => {
+    const card = document.getElementById('card-'+docNo);
+    if (card) { card.classList.add('changed'); setTimeout(()=>card.classList.remove('changed'), 2000); }
+  });
 }
 
-// ── GET DO STATUS (untuk client tracking) ─────────────────────────────────────
-function getDoStatus(docNo) {
-  if (!docNo) return { error: 'doc_no wajib' };
-  const ss  = getSS('OPERASIONAL');
-  const sh  = ss.getSheetByName(SHEETS.do_status);
-  if (!sh) return { status:'ok', data:null };
-
-  const lr = sh.getLastRow();
-  if (lr < 2) return { status:'ok', data:null };
-
-  const rows = sh.getRange(2,1,lr-1,20).getValues();
-  const row  = rows.find(r => String(r[4]||'').trim() === String(docNo).trim());
-  if (!row) return { status:'ok', data:null };
-
-  // Get driver phone from Kendaraan sheet
-  const plat     = String(row[1]||'');
-  const drvPhone = _getDriverPhone(ss, plat);
-  const dispPhone= _getDispatcherPhone(ss, row[3]||'');
-
-  // Ambil foto DO dari Stop Log (foto bukti kirim dengan watermark)
-  const fotoDoUrl = _getFotoDoUrl(ss, String(row[4]||''));
-
-  return {
-    status: 'ok',
-    data: {
-      do_date          : row[0],  plat         : row[1],
-      driver           : row[2],  gudang       : row[3],
-      doc_no           : row[4],  customer     : row[5],
-      alamat           : row[6],  produk       : row[7],
-      qty_kirim        : row[8],  status       : row[9],
-      jam_update       : row[10], gps_coords   : row[11],
-      qty_terima       : row[12], qty_rusak    : row[13],
-      alasan_gagal     : row[14], keterangan   : row[15],
-      titip_sj         : row[16], nama_spg     : row[17],
-      driver_phone     : drvPhone,
-      dispatcher_phone : dispPhone,
-      foto_do_url      : fotoDoUrl,  // ← link foto bukti kirim dari Drive
-    }
-  };
-}
-
-// ── HELPER: AMBIL URL FOTO DO DARI PHOTO LOG ──────────────────────────────
-function _getFotoDoUrl(ss, docNo) {
-  try {
-    const sh = ss.getSheetByName(SHEETS.photo_log);
-    if (!sh) return '';
-    const lr = sh.getLastRow();
-    if (lr < 2) return '';
-    const rows = sh.getRange(2,1,lr-1,9).getValues();
-    // Kolom: Timestamp, Plat, Driver, Tanggal, DO No, Jenis, FileID, URL, GPS
-    const row = rows.find(r =>
-      String(r[4]||'').trim() === String(docNo).trim() &&
-      String(r[5]||'').toUpperCase() === 'DO'
-    );
-    return row ? String(row[7]||'') : ''; // kolom URL (index 7)
-  } catch(e) { return ''; }
-}
-
-// ── HELPER: UPDATE DO STATUS ──────────────────────────────────────────────────
-function _updateDoStatus(docNo, status, gps, qtyT, qtyR, alasan, ket, titipSJ, namaSPG, jabatan) {
-  const ss = getSS('OPERASIONAL');
-  const sh = ss.getSheetByName(SHEETS.do_status);
-  if (!sh) return;
-
-  const lr = sh.getLastRow();
-  if (lr < 2) return;
-
-  const rows    = sh.getRange(2,1,lr-1,20).getValues();
-  const rowIdx  = rows.findIndex(r => String(r[4]||'').trim() === String(docNo).trim());
-
-  const now = _now();
-  if (rowIdx >= 0) {
-    const r = rowIdx + 2;
-    sh.getRange(r,10).setValue(status);
-    sh.getRange(r,11).setValue(now);
-    if (gps)     sh.getRange(r,12).setValue(gps);
-    if (qtyT!=null) sh.getRange(r,13).setValue(qtyT);
-    if (qtyR!=null) sh.getRange(r,14).setValue(qtyR);
-    if (alasan)  sh.getRange(r,15).setValue(alasan);
-    if (ket)     sh.getRange(r,16).setValue(ket);
-    if (titipSJ) sh.getRange(r,17).setValue(titipSJ);
-    if (namaSPG) sh.getRange(r,18).setValue(namaSPG);
-    if (jabatan) sh.getRange(r,19).setValue(jabatan);
-    // Color row berdasarkan status
-    const colors = {
-      'Selesai':'#f0fdf4','Gagal Kirim':'#fef2f2',
-      'On Process':'#eff6ff','Batal':'#f8fafc'
-    };
-    if (colors[status]) sh.getRange(r,1,1,20).setBackground(colors[status]);
+// ═══════════════════════════════════════════════════════
+// NOTIFICATIONS
+// ═══════════════════════════════════════════════════════
+function requestNotifPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
   }
 }
 
-// ── HELPER: UPLOAD FOTO KE GOOGLE DRIVE ───────────────────────────────────────
-function _uploadPhoto(base64Data, plat, date, docNo, type) {
-  if (!base64Data) return '';
+function addNotification(notif) {
+  notif.id   = Date.now() + Math.random();
+  notif.read = false;
+  notif.time = new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+  notifications.unshift(notif);
+  if (notifications.length > MAX_NOTIF) notifications = notifications.slice(0, MAX_NOTIF);
+  localStorage.setItem('notif_list', JSON.stringify(notifications));
+
+  unreadCount++;
+  renderNotifBadge();
+
+  // Browser push notification
+  if (Notification.permission === 'granted') {
+    try {
+      new Notification('GST Logistics ' + APP_VERSION, {
+        body: notif.title + '\n' + notif.msg,
+        icon: 'https://globalsentral.id/z/data/Logo.avif',
+        tag: notif.doc_no || 'gst-notif',
+        renotify: true,
+      });
+    } catch(e) {}
+  }
+
+  // Audio beep (Web Audio API — no external file needed)
+  playAlertBeep(notif.icon === 'alert');
+}
+
+function playAlertBeep(isUrgent = false) {
   try {
-    // Strip header base64
-    const b64 = base64Data.replace(/^data:image\/(jpeg|png|jpg);base64,/, '');
-    const blob = Utilities.newBlob(Utilities.base64Decode(b64), 'image/jpeg',
-      `${type}_${docNo}_${plat}_${_formatDateForFile(date)}.jpg`);
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const beeps = isUrgent ? [800,600,800] : [660];
+    beeps.forEach((freq, i) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0, ctx.currentTime + i*0.18);
+      gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + i*0.18 + 0.02);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + i*0.18 + 0.15);
+      osc.start(ctx.currentTime + i*0.18);
+      osc.stop(ctx.currentTime + i*0.18 + 0.18);
+    });
+  } catch(e) {}
+}
 
-    // Cari/buat folder struktur: GlobalSentral-POD/YYYY-MM-DD/PLAT_DRIVER/
-    const rootFolderName = 'GlobalSentral-POD';
-    let root;
-    const rootQ = DriveApp.getFoldersByName(rootFolderName);
-    root = rootQ.hasNext() ? rootQ.next() : DriveApp.createFolder(rootFolderName);
+function renderNotifBadge() {
+  const badge1 = document.getElementById('hdr-notif-badge');
+  const badge2 = document.getElementById('nav-notif-badge');
+  const show = unreadCount > 0;
+  const txt = unreadCount > 9 ? '9+' : String(unreadCount);
+  [badge1, badge2].forEach(b => {
+    if (!b) return;
+    b.textContent  = txt;
+    b.style.display = show ? 'flex' : 'none';
+  });
+}
 
-    // Subfolder per tanggal
-    const dateStr  = _formatDateForFile(date);
-    let dateFolder;
-    const dateQ    = root.getFoldersByName(dateStr);
-    dateFolder     = dateQ.hasNext() ? dateQ.next() : root.createFolder(dateStr);
+function renderNotifList() {
+  const el = document.getElementById('notif-list');
+  if (!notifications.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:40px 20px"><i class="fas fa-bell-slash"></i><p>Belum ada notifikasi</p></div>';
+    return;
+  }
+  el.innerHTML = notifications.map(n => `
+    <div class="notif-item ${n.read?'read':'unread'}" onclick="markRead('${n.id}')">
+      <div class="notif-icon ${n.icon||'change'}">
+        <i class="fas ${n.icon==='new'?'fa-plus-circle':n.icon==='alert'?'fa-exclamation-triangle':'fa-exchange-alt'}"></i>
+      </div>
+      <div class="notif-body">
+        <div class="notif-title">${escHtml(n.title||'')}</div>
+        <div class="notif-msg">${escHtml(n.msg||'')}</div>
+        <div class="notif-time">${n.time||''}</div>
+      </div>
+    </div>`).join('');
+}
 
-    // Subfolder per plat
-    let platFolder;
-    const platQ    = dateFolder.getFoldersByName(plat);
-    platFolder     = platQ.hasNext() ? platQ.next() : dateFolder.createFolder(plat);
+function markRead(id) {
+  const n = notifications.find(n => String(n.id) === String(id));
+  if (n && !n.read) {
+    n.read = true;
+    unreadCount = Math.max(0, unreadCount-1);
+    localStorage.setItem('notif_list', JSON.stringify(notifications));
+    renderNotifBadge();
+    renderNotifList();
+  }
+}
 
-    // Upload
-    const file = platFolder.createFile(blob);
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    return 'https://drive.google.com/file/d/' + file.getId() + '/view';
+function markAllRead() {
+  notifications.forEach(n => { n.read = true; });
+  unreadCount = 0;
+  localStorage.setItem('notif_list', JSON.stringify(notifications));
+  renderNotifBadge();
+}
+
+function clearAllNotif() {
+  if (!confirm('Hapus semua notifikasi?')) return;
+  notifications = [];
+  unreadCount = 0;
+  localStorage.setItem('notif_list', JSON.stringify(notifications));
+  renderNotifBadge();
+  renderNotifList();
+}
+
+// ═══════════════════════════════════════════════════════
+// HISTORY TAB
+// ═══════════════════════════════════════════════════════
+async function loadHistory() {
+  const input = document.getElementById('history-date');
+  if (!input.value) { alert('Pilih tanggal dulu'); return; }
+
+  // Convert yyyy-mm-dd → dd/mm/yyyy
+  const [y,m,d] = input.value.split('-');
+  const dateStr = `${d}/${m}/${y}`;
+
+  renderHistoryContent(null, 'loading');
+
+  // Check cache first
+  const cacheKey = `history_${input.value.replace(/-/g,'')}_${driverState.plat}`;
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) {
+    const data = JSON.parse(cached);
+    renderHistoryContent(data, dateStr);
+    return;
+  }
+
+  const data = await gasGet('getDriverTasks', { plat: driverState.plat, date: dateStr });
+
+  if (!data || data.error) {
+    renderHistoryContent([], dateStr);
+    return;
+  }
+
+  // Cache result
+  if (data.tasks && data.tasks.length) {
+    try { localStorage.setItem(cacheKey, JSON.stringify(data.tasks)); } catch(e) {}
+  }
+
+  renderHistoryContent(data.tasks || [], dateStr);
+}
+
+function renderHistoryContent(tasks, dateStr) {
+  const el = document.getElementById('history-content');
+  if (tasks === null && dateStr === undefined) {
+    el.innerHTML = '<div class="empty-state" style="padding:40px 20px"><i class="fas fa-calendar-alt"></i><p>Pilih tanggal untuk melihat riwayat</p></div>';
+    return;
+  }
+  if (tasks === null || dateStr === 'loading') {
+    el.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Memuat riwayat...</p></div>';
+    return;
+  }
+  if (!tasks || !tasks.length) {
+    el.innerHTML = `<div class="empty-state" style="padding:40px 20px"><i class="fas fa-inbox"></i><p>Tidak ada data untuk ${dateStr}</p></div>`;
+    return;
+  }
+
+  const done  = tasks.filter(t => t.status==='Selesai').length;
+  const gagal = tasks.filter(t => t.status==='Gagal Kirim').length;
+  const baru  = tasks.filter(t => t.status==='Baru'||t.status==='On Process').length;
+
+  el.innerHTML = `
+    <div class="history-summary">
+      📅 ${dateStr} &nbsp;·&nbsp; ${tasks.length} DO &nbsp;·&nbsp;
+      ✅ ${done} Selesai &nbsp;·&nbsp; ✗ ${gagal} Gagal &nbsp;·&nbsp; ⏳ ${baru} Proses
+    </div>
+    ${tasks.map(t => {
+      const st = t.status||'—';
+      const cls = st==='Selesai'?'hs-selesai':st==='Gagal Kirim'?'hs-gagal':
+                  st==='On Process'?'hs-process':'hs-baru';
+      return `
+      <div class="history-do-item">
+        <div>
+          <div class="history-do-no">DO: ${escHtml(t.doc_no||'—')}</div>
+          <div class="history-do-cust">${escHtml(t.customer||'—')} · ${t.qty||0} DUS</div>
+          ${t.jam_update ? `<div style="font-size:10px;color:#94a3b8">${t.jam_update}</div>` : ''}
+        </div>
+        <span class="history-do-status ${cls}">${st}</span>
+      </div>`;
+    }).join('')}`;
+}
+
+// ═══════════════════════════════════════════════════════
+// JOB ACTIONS
+// ═══════════════════════════════════════════════════════
+async function startJob(docNo) {
+  if (!confirm('Mulai perjalanan untuk DO '+docNo+'?')) return;
+  tripState.started    = true;
+  tripState.start_time = Date.now();
+  document.getElementById('km-bar').style.display = 'flex';
+  requestWakeLock(); // Cegah layar mati saat trip dimulai
+  // Hapus timestamp muat dari localStorage setelah start jalan
+  localStorage.removeItem('muat_ts_'+driverState.plat);
+  localStorage.removeItem('muat_ts_label_'+driverState.plat);
+
+  const pos = tripState.last_pos || {lat:0, lng:0};
+  // Ambil timestamp muat dari localStorage jika ada
+  const muatTs = localStorage.getItem('muat_ts_'+driverState.plat) || '';
+  if (muatTs) localStorage.setItem('_muat_done_ts_'+driverState.plat, muatTs);
+
+  await gasGet('startJob', {
+    plat:driverState.plat, driver:driverState.driver,
+    doc_no:docNo, date:driverState.date,
+    lat:pos.lat, lng:pos.lng,
+    jam_muat_iso:muatTs,
+  });
+
+  // Update snapshot immediately to avoid false change detection
+  lastTasksSnap[docNo] = 'On Process';
+  await loadTasks(false);
+}
+
+async function confirmBatal(docNo) {
+  if (!confirm('Batalkan DO '+docNo+'?')) return;
+  await gasGet('cancelJob', { plat:driverState.plat, doc_no:docNo, date:driverState.date });
+  lastTasksSnap[docNo] = 'Batal';
+  await loadTasks(false);
+}
+
+function openSelesai(docNo, qty, customer) {
+  modalCtx = { doc_no:docNo, qty_kirim:qty, qty_terima:qty, qty_rusak:0,
+    foto_do:null, foto_rusak:null, foto_sj:null, gps_coords:modalCtx.gps_coords||'' };
+  document.getElementById('m-selesai-info').textContent = customer + ' · ' + qty + ' DUS';
+  document.getElementById('qty-kirim').textContent      = qty;
+  document.getElementById('qty-terima-disp').textContent = qty;
+  document.getElementById('qty-rusak-disp').textContent  = 0;
+  document.getElementById('group-foto-rusak').style.display = 'none';
+  document.getElementById('titip-sj').value  = 'Tidak';
+  document.getElementById('titip-extra').classList.remove('show');
+  document.getElementById('catatan-selesai').value = '';
+  ['do','rusak','sj'].forEach(k => {
+    const prev=document.getElementById('prev-foto-'+k);
+    const icon=document.getElementById('icon-foto-'+k);
+    const txt =document.getElementById('txt-foto-'+k);
+    const wrap=document.getElementById('wrap-foto-'+k);
+    if (prev){prev.style.display='none';prev.src='';}
+    if (wrap) wrap.classList.remove('has-photo');
+    if (icon) icon.innerHTML='<i class="fas fa-camera"></i>';
+    if (txt)  txt.textContent = k==='do'?'Letakkan DO dalam bingkai · nomor DO harus terbaca':
+              k==='rusak'?'Foto kerusakan dari dekat · pastikan jelas':'Foto SJ sebelum ditinggal';
+  });
+  document.getElementById('btn-submit-selesai').disabled = false;
+  openModal('m-selesai');
+}
+
+function openGagal(docNo) {
+  modalCtx.doc_no     = docNo;
+  modalCtx.foto_gagal = null;
+  document.getElementById('alasan-gagal').value = '';
+  document.getElementById('prev-foto-gagal').style.display='none';
+  document.getElementById('wrap-foto-gagal').classList.remove('has-photo');
+  document.getElementById('icon-foto-gagal').innerHTML='<i class="fas fa-camera"></i>';
+  document.getElementById('txt-foto-gagal').textContent='Foto kondisi lokasi / bukti gagal kirim';
+  ['titip-gudang','reschedule','cancel','lainlain'].forEach(k =>
+    document.getElementById('extra-'+k).classList.remove('show'));
+  document.getElementById('alert-musibah').style.display='none';
+  document.getElementById('btn-submit-gagal').disabled=false;
+  openModal('m-gagal');
+}
+
+function onAlasanChange(val) {
+  ['titip-gudang','reschedule','cancel','lainlain'].forEach(k =>
+    document.getElementById('extra-'+k).classList.remove('show'));
+  const musibah = val==='Kendaraan Rusak'||val==='Bencana Alam/Banjir';
+  document.getElementById('alert-musibah').style.display = musibah?'block':'none';
+  if (val==='Titip Gudang Lain')    document.getElementById('extra-titip-gudang').classList.add('show');
+  if (val==='CS Minta Reschedule')  document.getElementById('extra-reschedule').classList.add('show');
+  if (val==='CS Minta Cancel')      document.getElementById('extra-cancel').classList.add('show');
+  if (val==='Lain-lain')            document.getElementById('extra-lainlain').classList.add('show');
+}
+
+function adjQty(type, delta) {
+  const max = modalCtx.qty_kirim;
+  if (type==='terima') {
+    modalCtx.qty_terima = Math.max(0, Math.min(max, modalCtx.qty_terima+delta));
+    modalCtx.qty_rusak  = Math.max(0, max-modalCtx.qty_terima);
+  } else {
+    modalCtx.qty_rusak  = Math.max(0, Math.min(max, modalCtx.qty_rusak+delta));
+    modalCtx.qty_terima = Math.max(0, max-modalCtx.qty_rusak);
+  }
+  document.getElementById('qty-terima-disp').textContent = modalCtx.qty_terima;
+  document.getElementById('qty-rusak-disp').textContent  = modalCtx.qty_rusak;
+  document.getElementById('group-foto-rusak').style.display = modalCtx.qty_rusak>0?'block':'none';
+}
+
+function toggleTitipSJ(val) {
+  val==='Ya'
+    ? document.getElementById('titip-extra').classList.add('show')
+    : document.getElementById('titip-extra').classList.remove('show');
+}
+
+// ═══════════════════════════════════════════════════════
+// PHOTO CAPTURE + WATERMARK
+// ═══════════════════════════════════════════════════════
+async function capturePhoto(type, inputEl) {
+  const file = inputEl.files[0];
+  if (!file) return;
+
+  // Koordinat GPS — tidak tunggu reverse geocoding (lambat ~1-2 detik)
+  // Koordinat raw sudah cukup untuk watermark
+  const coords = modalCtx.gps_coords || (tripState.last_pos
+    ? tripState.last_pos.lat.toFixed(6)+','+tripState.last_pos.lng.toFixed(6) : '');
+  let gpsAddr = coords || 'Lokasi tidak tersedia';
+  // Geocoding async di background (tidak blocking)
+  if (coords) {
+    const [lat,lng] = coords.split(',');
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+      .then(r=>r.json()).then(d=>{if(d.display_name) gpsAddr=d.display_name.slice(0,80);})
+      .catch(()=>{});
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.getElementById('canvas-foto-'+type);
+      // Max 1000px width for balance of quality vs size
+      const maxW = 600; // C: kompres lebih kecil → transfer cepat // Dikurangi dari 1000 → proses lebih cepat
+      let w = img.width, h = img.height;
+      if (w > maxW) { h = h*(maxW/w); w = maxW; }
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+
+      // Brightness check
+      const imgData = ctx.getImageData(0, 0, w, Math.min(h,80));
+      const brightness = imgData.data.reduce((a,v,i)=>i%4!==3?a+v:a,0)/(imgData.data.length*3/4);
+      if (brightness < 28) {
+        alert('Foto terlalu gelap. Pastikan pencahayaan cukup, lalu ambil foto ulang.');
+        inputEl.value=''; return;
+      }
+
+      // Watermark
+      const now = new Date().toLocaleString('id-ID',{timeZone:'Asia/Jakarta'});
+      const lines = [
+        'Plat         : '+driverState.plat,
+        'Driver       : '+driverState.driver,
+        'Koordinat    : '+(coords||'-'),
+        'Alamat GPS   : '+gpsAddr,
+        'DO           : '+modalCtx.doc_no,
+        'Waktu Kamera : '+now,
+      ];
+      const pad=18, lh=17, textX=100, maxTW=w-textX-16;
+      ctx.font='11px Arial';
+      let totalH=0;
+      lines.forEach(l=>{ totalH+=getTextH(ctx,l,maxTW,lh); });
+      const logoH=50, boxH=Math.max(totalH,logoH)+pad;
+      const boxY=h-boxH;
+      const grad=ctx.createLinearGradient(0,boxY,0,h);
+      grad.addColorStop(0,'rgba(0,0,0,0.87)');
+      grad.addColorStop(1,'rgba(0,0,0,0.70)');
+      ctx.fillStyle=grad; ctx.fillRect(0,boxY,w,boxH);
+
+      const logo=new Image(); logo.crossOrigin='anonymous';
+      logo.src='https://globalsentral.id/z/data/Logo.avif';
+      const finalizeWM = () => {
+        ctx.fillStyle='#fff'; ctx.font='11px Arial';
+        let ty=boxY+20;
+        lines.forEach(l=>{ ty=drawWrappedText(ctx,l,textX,ty,maxTW,lh); });
+        const b64=canvas.toDataURL('image/jpeg',0.65); // C: quality → 0.65
+        setPhotoResult(type, b64);
+        inputEl.value='';
+      };
+      logo.onload=function(){
+        const lw=logo.width*(logoH/logo.height);
+        ctx.globalAlpha=0.88; ctx.drawImage(logo,14,boxY+(boxH-logoH)/2,lw,logoH); ctx.globalAlpha=1;
+        finalizeWM();
+      };
+      logo.onerror=finalizeWM;
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function setPhotoResult(type, b64) {
+  modalCtx['foto_'+type]=b64;
+  const prev=document.getElementById('prev-foto-'+type);
+  const wrap=document.getElementById('wrap-foto-'+type);
+  const icon=document.getElementById('icon-foto-'+type);
+  const txt =document.getElementById('txt-foto-'+type);
+  if (prev){prev.src=b64;prev.style.display='block';}
+  if (wrap) wrap.classList.add('has-photo');
+  if (icon) icon.innerHTML='<i class="fas fa-check-circle" style="color:var(--green)"></i>';
+  if (txt)  txt.textContent='✅ Foto berhasil diambil';
+}
+
+function captureStruk(type, inputEl) {
+  const file=inputEl.files[0]; if(!file)return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const img=new Image();
+    img.onload=function(){
+      const canvas=document.createElement('canvas');
+      const max=700; let w=img.width,h=img.height;
+      if(w>max){h=h*(max/w);w=max;}
+      canvas.width=w; canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      strukPhotos[type]=canvas.toDataURL('image/jpeg',0.72);
+      const btn=document.getElementById('struk-btn-'+type);
+      if(btn){btn.classList.add('done');
+        btn.innerHTML=`<img src="${strukPhotos[type]}"><i class="fas fa-check" style="position:relative;z-index:1;color:#fff;font-size:20px;text-shadow:0 0 8px #000"></i>`;}
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ═══════════════════════════════════════════════════════
+// SUBMIT — POST (no-cors) for photos → bypass URL length limit
+// ═══════════════════════════════════════════════════════
+async function submitSelesai() {
+  if (!modalCtx.foto_do) { alert('Foto DO wajib diambil dari kamera'); return; }
+  if (modalCtx.qty_rusak>0 && !modalCtx.foto_rusak) { alert('Ada barang rusak — foto kerusakan wajib'); return; }
+  const titipSJ = document.getElementById('titip-sj').value;
+  if (titipSJ==='Ya') {
+    if (!document.getElementById('nama-spg').value.trim()) { alert('Nama penerima SJ wajib diisi'); return; }
+    if (!modalCtx.foto_sj) { alert('Foto SJ yang dititip wajib diambil'); return; }
+  }
+
+  const btn = document.getElementById('btn-submit-selesai');
+  btn.disabled = true;
+
+  const payload = {
+    action      : 'submitSelesai',
+    plat        : driverState.plat,
+    driver      : driverState.driver,
+    doc_no      : modalCtx.doc_no,
+    date        : driverState.date,
+    qty_kirim   : modalCtx.qty_kirim,
+    qty_terima  : modalCtx.qty_terima,
+    qty_rusak   : modalCtx.qty_rusak,
+    catatan     : document.getElementById('catatan-selesai').value,
+    titip_sj    : titipSJ,
+    nama_spg    : document.getElementById('nama-spg').value,
+    jabatan_spg : document.getElementById('jabatan-spg').value,
+    gps_coords  : modalCtx.gps_coords,
+    foto_do     : modalCtx.foto_do,
+    foto_rusak  : modalCtx.qty_rusak>0 ? (modalCtx.foto_rusak||null) : null,
+    foto_sj     : titipSJ==='Ya' ? (modalCtx.foto_sj||null) : null,
+    timestamp   : new Date().toISOString(),
+  };
+
+  // ── FIRE AND FORGET: langsung lanjut, tidak tunggu response ──────────────
+  // Kirim di background — driver tidak perlu nunggu upload foto selesai
+  gasPost(payload); // no await
+
+  // Update UI langsung tanpa tunggu server
+  lastTasksSnap[modalCtx.doc_no] = 'Selesai';
+  stopsDone++;
+  btn.disabled = false;
+  closeModal('m-selesai');
+
+  // Notif langsung
+  addNotification({
+    type:'self', icon:'change',
+    title:'✅ Laporan Dikirim',
+    msg:`DO ${modalCtx.doc_no} — ${modalCtx.qty_terima} DUS · mengirim ke server...`,
+    doc_no: modalCtx.doc_no,
+  });
+
+  // Reload tugas langsung (optimistic — anggap sukses)
+  await loadTasks(false);
+  checkAllDone();
+}
+
+async function submitGagal() {
+  const alasan = document.getElementById('alasan-gagal').value;
+  if (!alasan) { alert('Alasan gagal kirim wajib dipilih'); return; }
+  if (!modalCtx.foto_gagal) { alert('Foto bukti wajib diambil dari kamera'); return; }
+  if (alasan==='Lain-lain' && !document.getElementById('ket-lainlain').value.trim()) {
+    alert('Keterangan wajib diisi untuk alasan Lain-lain'); return; }
+
+  const btn = document.getElementById('btn-submit-gagal');
+  btn.disabled = true;
+
+  const payload = {
+    action       : 'submitGagal',
+    plat         : driverState.plat,
+    driver       : driverState.driver,
+    doc_no       : modalCtx.doc_no,
+    date         : driverState.date,
+    alasan       : alasan,
+    keterangan   : document.getElementById('ket-lainlain').value||
+                   document.getElementById('nama-gudang-titip').value||
+                   document.getElementById('tgl-reschedule').value||
+                   document.getElementById('nama-sales-cancel').value||'',
+    gps_coords   : modalCtx.gps_coords,
+    foto_gagal   : modalCtx.foto_gagal,
+    timestamp    : new Date().toISOString(),
+    is_urgent    : alasan==='Kendaraan Rusak'||alasan==='Bencana Alam/Banjir'?'1':'0',
+  };
+
+  // ── FIRE AND FORGET ──────────────────────────────────────────────────────
+  gasPost(payload); // no await — tidak tunggu server
+
+  lastTasksSnap[modalCtx.doc_no] = 'Gagal Kirim';
+  btn.disabled = false;
+  closeModal('m-gagal');
+
+  addNotification({
+    type:'self', icon: payload.is_urgent==='1'?'alert':'change',
+    title: payload.is_urgent==='1'?'🚨 Alert Urgent Dikirim':'✅ Laporan Gagal Dikirim',
+    msg: `DO ${modalCtx.doc_no} — ${alasan} · mengirim ke server...`,
+    doc_no: modalCtx.doc_no,
+  });
+
+  await loadTasks(false);
+}
+
+async function submitStruk() {
+  if (!confirm('Tutup perjalanan hari ini? Semua data akan final.')) return;
+
+  const payload = {
+    action      : 'submitStruk',
+    plat        : driverState.plat,
+    driver      : driverState.driver,
+    date        : driverState.date,
+    km_total    : tripState.km_total.toFixed(1),
+    foto_tol    : strukPhotos.tol    || null,
+    foto_parkir : strukPhotos.parkir || null,
+    foto_bensin : strukPhotos.bensin || null,
+    timestamp   : new Date().toISOString(),
+  };
+
+  showSubmitOverlay('Menutup perjalanan...');
+  await gasPost(payload);
+  await gasGet('endTrip', {
+    plat:driverState.plat, date:driverState.date,
+    lat:tripState.last_pos?.lat||0, lng:tripState.last_pos?.lng||0,
+    km_total:tripState.km_total.toFixed(1),
+  });
+  hideSubmitOverlay();
+
+  closeModal('m-struk');
+  document.getElementById('km-bar').style.display='none';
+  tripState.started = false;
+  releaseWakeLock(); // Lepas wake lock setelah trip selesai
+
+  addNotification({
+    type:'self', icon:'change',
+    title:'🏁 Perjalanan Selesai',
+    msg:`Total ${tripState.km_total.toFixed(1)} km · ${stopsDone} stop diselesaikan`,
+  });
+
+  alert(`✅ Perjalanan selesai!\nTotal: ${tripState.km_total.toFixed(1)} km\nData tersimpan ke Google Sheets.`);
+  await loadTasks(false);
+}
+
+function checkAllDone() {
+  setTimeout(async()=>{
+    const data=await gasGet('getDriverTasks',{plat:driverState.plat,date:driverState.date});
+    if(data&&data.tasks){
+      const active=data.tasks.filter(t=>t.status==='Baru'||t.status==='On Process');
+      if(active.length===0) openModal('m-struk');
+    }
+  },1200);
+}
+
+// ═══════════════════════════════════════════════════════
+// GAS COMMUNICATION
+// ═══════════════════════════════════════════════════════
+async function gasGet(action, params={}) {
+  const url = GAS_URL || localStorage.getItem('gps_gas_url');
+  if (!url) { console.log('[NO GAS]', action, params); return null; }
+  try {
+    const qs = new URLSearchParams({action, ...params});
+    const r  = await fetch(`${url}?${qs}`, {redirect:'follow'});
+    return await r.json();
+  } catch(e) { console.error('gasGet', action, e); return null; }
+}
+
+// ── FIX: POST (no-cors) untuk payload besar (foto base64) ────────────────────
+// GET params tidak bisa menampung foto (URL limit ~2KB, foto >50KB)
+// no-cors POST: data terkirim ke Apps Script, response tidak terbaca (opaque)
+// Apps Script harus handle di doPost() untuk action ini
+async function gasPost(payload) {
+  const url = GAS_URL || localStorage.getItem('gps_gas_url');
+
+  if (!navigator.onLine || !url) {
+    queueOffline(payload);
+    alert('⚠ Offline — laporan disimpan lokal dan akan dikirim saat sinyal ada.');
+    return false;
+  }
+
+  try {
+    // Kirim via POST no-cors (response opaque — tidak bisa dibaca, tapi data TERKIRIM)
+    await fetch(url, {
+      method  : 'POST',
+      mode    : 'no-cors',
+      headers : { 'Content-Type': 'text/plain' },
+      body    : JSON.stringify(payload),
+    });
+
+    // Verifikasi setelah 3 detik via GET
+    await sleep(3000);
+    const check = await gasGet('getDoStatus', { doc_no: payload.doc_no });
+    if (check && check.data) {
+      console.log('[gasPost] ✅ Verified:', check.data.status);
+      return true;
+    }
+    // Jika verifikasi gagal, tambahkan ke queue sebagai backup
+    console.warn('[gasPost] Verification inconclusive — status not returned');
+    return true; // Optimistic: data was sent via POST
   } catch(e) {
-    Logger.log('Upload foto error: ' + e.message);
-    return 'UPLOAD_FAILED: ' + e.message;
+    console.error('gasPost error:', e);
+    queueOffline(payload);
+    alert('⚠ Gagal kirim — disimpan lokal dan akan dikirim ulang.');
+    return false;
   }
 }
 
-function _formatDateForFile(date) {
-  if (!date) return Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd');
-  // Handle format dd/MM/yyyy atau yyyy-MM-dd
-  const parts = String(date).split(/[\/\-\.]/);
-  if (parts.length === 3) {
-    if (parts[0].length === 4) return `${parts[0]}-${parts[1]}-${parts[2]}`;
-    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+function queueOffline(payload) {
+  offlineQueue.push({ ...payload, _queued_at: Date.now() });
+  localStorage.setItem('offline_q', JSON.stringify(offlineQueue));
+}
+
+async function flushOfflineQueue() {
+  if (!offlineQueue.length || !navigator.onLine) return;
+  const url = GAS_URL || localStorage.getItem('gps_gas_url');
+  if (!url) return;
+
+  const q = [...offlineQueue]; offlineQueue = [];
+  localStorage.setItem('offline_q', '[]');
+
+  for (const p of q) {
+    try {
+      // Item dengan foto → POST; item tanpa foto → GET
+      const hasFoto = p.foto_do || p.foto_rusak || p.foto_sj || p.foto_gagal ||
+                      p.foto_tol || p.foto_parkir || p.foto_bensin;
+      if (hasFoto) {
+        await fetch(url, {
+          method:'POST', mode:'no-cors',
+          headers:{'Content-Type':'text/plain'},
+          body:JSON.stringify(p),
+        });
+      } else {
+        const qs = new URLSearchParams(p);
+        await fetch(`${url}?${qs}`, {redirect:'follow'});
+      }
+    } catch(e) {
+      offlineQueue.push(p);
+    }
   }
-  return String(date).replace(/\//g,'-');
+  if (offlineQueue.length) localStorage.setItem('offline_q', JSON.stringify(offlineQueue));
 }
 
-// ── HELPER: LOG FOTO ──────────────────────────────────────────────────────────
-function _logPhoto(ss, plat, driver, date, docNo, type, url, gps) {
-  const sh = _getOrCreateSheet(ss, SHEETS.photo_log, setupDriverSheets);
-  sh.appendRow([_now(), plat, driver, date, docNo, type, '', url, gps||'']);
+// ═══════════════════════════════════════════════════════
+// SUBMIT OVERLAY
+// ═══════════════════════════════════════════════════════
+function showSubmitOverlay(msg) {
+  document.getElementById('submit-overlay-msg').textContent = msg || 'Mengirim...';
+  document.getElementById('submit-overlay').classList.add('show');
+}
+function hideSubmitOverlay() {
+  document.getElementById('submit-overlay').classList.remove('show');
 }
 
-// ── HELPER: GET OR CREATE SHEET ───────────────────────────────────────────────
-function _getOrCreateSheet(ss, name, setupFn) {
-  let sh = ss.getSheetByName(name);
-  if (!sh) { setupFn(); sh = ss.getSheetByName(name); }
-  return sh;
+// ═══════════════════════════════════════════════════════
+// SETTINGS
+// ═══════════════════════════════════════════════════════
+function openSettings() {
+  document.getElementById('s-plat').value   = driverState.plat   || '';
+  document.getElementById('s-driver').value = driverState.driver || '';
+  document.getElementById('s-gudang').value = driverState.gudang || '';
+  document.getElementById('s-gas').value    = GAS_URL || localStorage.getItem('gps_gas_url') || '';
+  const lastChange = localStorage.getItem('drv_last_change');
+  const cl = document.getElementById('s-changelog');
+  if (lastChange) {
+    cl.style.display='block';
+    document.getElementById('s-changelog-txt').textContent = lastChange;
+  } else { cl.style.display='none'; }
+  document.getElementById('settings-overlay').classList.add('show');
 }
 
-// ── HELPER: GET DO FIELD ──────────────────────────────────────────────────────
-function _getDoField(ss, docNo, field) {
-  const sh = ss.getSheetByName(SHEETS.do_status);
-  if (!sh) return '';
-  const lr = sh.getLastRow();
-  if (lr < 2) return '';
-  const rows = sh.getRange(2,1,lr-1,20).getValues();
-  const row  = rows.find(r => String(r[4]||'').trim() === String(docNo||'').trim());
-  if (!row) return '';
-  const fieldMap = { customer:5, alamat:6, produk:7, qty:8 };
-  return row[fieldMap[field]||0] || '';
+function closeSettings() { document.getElementById('settings-overlay').classList.remove('show'); }
+
+async function saveSettings() {
+  const newPlat   = document.getElementById('s-plat').value.trim().toUpperCase();
+  const newDriver = document.getElementById('s-driver').value.trim();
+  const newGudang = document.getElementById('s-gudang').value.trim();
+  const newGas    = document.getElementById('s-gas').value.trim();
+
+  if (!newPlat)   { alert('Nomor plat wajib diisi'); return; }
+  if (!newDriver) { alert('Nama driver wajib diisi'); return; }
+  if (newGas && !newGas.startsWith('https://script.google.com')) {
+    alert('URL Apps Script tidak valid'); return; }
+
+  const changes=[];
+  if (newPlat   !== driverState.plat)   changes.push(`Plat: ${driverState.plat||'—'} → ${newPlat}`);
+  if (newDriver !== driverState.driver) changes.push(`Driver: ${driverState.driver||'—'} → ${newDriver}`);
+  if (newGudang !== driverState.gudang) changes.push(`Gudang: ${driverState.gudang||'—'} → ${newGudang}`);
+  if (newGas    !== GAS_URL)            changes.push('URL GAS diperbarui');
+
+  if (!changes.length) { alert('Tidak ada perubahan'); closeSettings(); return; }
+
+  const changeStr=changes.join(' | ');
+  const now=new Date().toLocaleString('id-ID',{timeZone:'Asia/Jakarta'});
+  localStorage.setItem('drv_plat',   newPlat);
+  localStorage.setItem('drv_driver', newDriver);
+  if (newGudang) localStorage.setItem('drv_gudang', newGudang);
+  if (newGas) {
+    localStorage.setItem('gps_gas_url', newGas);
+    localStorage.setItem(GSHEET_ID_KEY, newGas);
+    GAS_URL = newGas;
+  }
+  localStorage.setItem('drv_last_change', `${now} — ${changeStr}`);
+
+  driverState.plat   = newPlat;
+  driverState.driver = newDriver;
+  if (newGudang) driverState.gudang = newGudang;
+  document.getElementById('hdr-name').textContent = newDriver;
+  document.getElementById('hdr-plat').textContent = newPlat;
+
+  // Kirim ke Audit Log
+  const gasUrl = newGas || GAS_URL || localStorage.getItem('gps_gas_url');
+  if (gasUrl) {
+    try {
+      const qs=new URLSearchParams({
+        action:'saveAuditLog', username:newPlat, nama:newDriver,
+        role:'driver', gudang:newGudang||driverState.gudang||'',
+        auditAction:'DRIVER_SETTINGS_CHANGE', detail:changeStr+' | '+now,
+      });
+      await fetch(`${gasUrl}?${qs}`,{redirect:'follow'});
+    } catch(e) {}
+  }
+
+  closeSettings();
+  alert(`✅ Pengaturan disimpan!\n\n${changeStr}`);
+  await loadTasks(false);
 }
 
-// ── HELPER: GET DRIVER PHONE ──────────────────────────────────────────────────
-function _getDriverPhone(ss, plat) {
-  const sh = ss.getSheetByName(SHEETS.kendaraan);
-  if (!sh) return '';
-  const lr = sh.getLastRow();
-  if (lr < 2) return '';
-  const rows = sh.getRange(1,1,lr,sh.getLastColumn()).getValues();
-  const header = rows[0].map(h=>String(h||'').toLowerCase());
-  const platIdx  = header.findIndex(h=>h.includes('plat'));
-  const phoneIdx = header.findIndex(h=>h.includes('hp') || h.includes('phone') || h.includes('telp'));
-  if (platIdx<0 || phoneIdx<0) return '';
-  const row = rows.slice(1).find(r=>String(r[platIdx]||'').toUpperCase()===String(plat||'').toUpperCase());
-  return row ? String(row[phoneIdx]||'') : '';
+function confirmLogout() {
+  if (!confirm('Logout dari Driver App?')) return;
+  if (isNativeApp() && window.NativeGPS?.isGPSRunning?.()) window.NativeGPS.stopGPS();
+  if (pollTimer) clearInterval(pollTimer);
+  localStorage.removeItem('drv_plat');
+  localStorage.removeItem('drv_driver');
+  localStorage.removeItem('drv_gudang');
+  localStorage.removeItem('gps_gas_url');
+  location.reload();
 }
 
-// ── HELPER: GET DISPATCHER PHONE ──────────────────────────────────────────────
-function _getDispatcherPhone(ss, gudang) {
-  const sh = ss.getSheetByName(SHEETS.konfigurasi);
-  if (!sh) return '';
-  const lr = sh.getLastRow();
-  if (lr < 2) return '';
-  const rows = sh.getRange(2,1,lr-1,4).getValues();
-  const gudangKey = String(gudang||'').toUpperCase().replace('GUDANG ','');
-  const row = rows.find(r => {
-    const param = String(r[0]||'').toLowerCase();
-    return param.includes('dispatcher') && param.includes(gudangKey.toLowerCase());
-  });
-  return row ? String(row[1]||'') : '';
-}
-
-// ── POPULATE DO STATUS (dipanggil dari routing optimizer setelah routing) ──────
-// Digunakan untuk mengisi sheet DO Status dari hasil routing
-function populateDoStatus(data) {
-  if (!data || !Array.isArray(data.rows)) return { error: 'No data' };
-  const ss = getSS('OPERASIONAL');
-  setupDriverSheets();
-  const sh = ss.getSheetByName(SHEETS.do_status);
-
-  // Hapus data lama untuk tanggal ini
-  const doDate = data.doDate || _now().slice(0,10);
-  const lr = sh.getLastRow();
-  if (lr >= 2) {
-    const dateCol = sh.getRange(2,1,lr-1,1).getValues();
-    const toDelete = [];
-    dateCol.forEach((r,i) => {
-      if (String(r[0]||'').includes(doDate) || String(r[0]||'').includes(doDate.replace(/-/g,'/')))
-        toDelete.push(i+2);
+// ═══════════════════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════════════════
+// ── WAKE LOCK API — cegah layar mati saat trip ───────────────────────────────
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) {
+    console.log('[WakeLock] Tidak didukung di browser ini');
+    return;
+  }
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => {
+      console.log('[WakeLock] Dilepas oleh sistem');
+      wakeLock = null;
     });
-    // Delete dari bawah ke atas
-    toDelete.reverse().forEach(r => sh.deleteRow(r));
+    console.log('[WakeLock] ✅ Aktif — layar tidak akan mati');
+    // Update status bar
+    const dot = document.getElementById('gps-txt');
+    if (dot) dot.textContent = 'GPS aktif · Layar terkunci';
+  } catch(e) {
+    console.log('[WakeLock] Gagal:', e.message);
   }
+}
 
-  // Insert rows baru
-  if (data.rows.length > 0) {
-    const newRows = data.rows.map(r => [
-      r.do_date||doDate, r.plat||'', r.driver||'', r.gudang||'',
-      r.doc_no||'', r.customer||'', r.alamat||'', r.produk||'',
-      r.qty||0, r.status||'Baru', _now(), '',
-      '', '', '', '', '', '', '', r.catatan||'',
-    ]);
-    sh.getRange(sh.getLastRow()+1, 1, newRows.length, 20).setValues(newRows);
+async function releaseWakeLock() {
+  if (wakeLock) {
+    await wakeLock.release();
+    wakeLock = null;
+    console.log('[WakeLock] Dilepas');
   }
-
-  return { status:'ok', inserted: data.rows.length };
 }
 
-// ── TEST FUNCTIONS ─────────────────────────────────────────────────────────────
-
-// ── GET FAILED DOs (carry-over) ───────────────────────────────────────────────
-function getFailedDOs(date) {
-  const ss = getSS('OPERASIONAL');
-  const sh = ss.getSheetByName(SHEETS.do_status);
-  if (!sh) return { status:'ok', tasks:[] };
-  const lr = sh.getLastRow();
-  if (lr < 2) return { status:'ok', tasks:[] };
-  const rows = sh.getRange(2,1,lr-1,20).getValues();
-  let targetDate = date;
-  if (!targetDate) {
-    const yday = new Date(); yday.setDate(yday.getDate()-1);
-    targetDate = Utilities.formatDate(yday, 'Asia/Jakarta', 'dd/MM/yyyy');
+// Re-acquire wake lock setelah tab kembali visible (misal balik dari WA)
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && tripState.started && !wakeLock) {
+    await requestWakeLock();
   }
-  const normDate = d => String(d||'').replace(/\D/g,'');
-  const tNorm = normDate(targetDate);
-  const tasks = rows
-    .filter(r => normDate(r[0]).slice(0,6) === tNorm.slice(0,6) && String(r[9]||'').trim() === 'Gagal Kirim')
-    .map(r => ({ do_date:r[0],plat:r[1],driver:r[2],gudang:r[3],doc_no:r[4],customer:r[5],alamat:r[6],produk:r[7],qty:r[8],status:r[9],alasan_gagal:r[14]||'' }));
-  return { status:'ok', tasks, count:tasks.length };
+});
+
+function openModal(id)  { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+function checkOnline() {
+  const offline = !navigator.onLine;
+  document.getElementById('offline-notice').style.display = offline ? 'block' : 'none';
+  if (!offline && offlineQueue.length) flushOfflineQueue();
 }
 
-// ── GET ROUTING LOG (history) ─────────────────────────────────────────────────
-function getRoutingLog(date) {
-  const ss = getSS('ANALITIK');
-  const sh = ss.getSheetByName(SHEETS.routing_log);
-  if (!sh) return { status:'ok', data:[] };
-  const lr = sh.getLastRow();
-  if (lr < 2) return { status:'ok', data:[] };
-  const rows = sh.getRange(2,1,lr-1,17).getValues();
-  const normDate = d => String(d||'').replace(/\D/g,'');
-  const tNorm = date ? normDate(date) : '';
-  const data = rows
-    .filter(r => !tNorm || normDate(r[1]).slice(0,6) === tNorm.slice(0,6))
-    .map(r => ({ tanggal_routing:r[0],tanggal_do:r[1],gudang:r[2],plat:r[3],driver:r[4],tipe:r[5],route_no:r[6],trip_no:r[7],total_do:r[8],total_qty:r[9],total_vol:r[10],km_est:r[11],util_berat:r[12],util_vol:r[13],eta_selesai:r[14],eta_ok:r[15],flag:r[16]||'' }));
-  return { status:'ok', data, count:data.length };
+function today() {
+  return new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric'});
 }
 
-function testSetupDriverSheets() {
-  Logger.log(JSON.stringify(setupDriverSheets()));
+function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
+
+function escHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function haversineKm(a,b,c,d){
+  const R=6371,dL=(c-a)*Math.PI/180,dN=(d-b)*Math.PI/180;
+  const x=Math.sin(dL/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dN/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
 }
 
-function testGetDriverTasks() {
-  Logger.log(JSON.stringify(getDriverTasks('B9648MJ', '12/04/2026')));
+function getTextH(ctx,text,maxW,lh){
+  const words=text.split(' ');let line='',h=lh;
+  for(let n=0;n<words.length;n++){
+    const tl=line+words[n]+' ';
+    if(ctx.measureText(tl).width>maxW&&n>0){line=words[n]+' ';h+=lh;}else{line=tl;}
+  }
+  return h;
 }
 
-function testPopulateDoStatus() {
-  const result = populateDoStatus({
-    doDate: '12/04/2026',
-    rows: [
-      { plat:'B9648MJ', driver:'PRIHATMOKO', gudang:'DAAN MOGOT',
-        doc_no:'261024882', customer:'TATA MULIA NUSANTARA', alamat:'Jl. BSD CBD',
-        produk:'FT Sandimas 60x60', qty:10, status:'Baru' },
-    ]
-  });
-  Logger.log(JSON.stringify(result));
+function drawWrappedText(ctx,text,x,y,maxW,lh){
+  const words=text.split(' ');let line='';
+  for(let n=0;n<words.length;n++){
+    const tl=line+words[n]+' ';
+    if(ctx.measureText(tl).width>maxW&&n>0){ctx.fillText(line,x,y);line=words[n]+' ';y+=lh;}
+    else{line=tl;}
+  }
+  ctx.fillText(line,x,y); return y+lh;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// SESI 5 — REALTIME MONITORING ENDPOINTS
-// ═══════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+// CAMERA API — getUserMedia (langsung buka kamera, no file picker)
+// ═══════════════════════════════════════════════════════
+let cameraStream   = null;
+let cameraType     = null; // 'do','rusak','sj','gagal'
+let capturedB64    = null;
 
-// ── GET BATCH DO STATUS (dipanggil dari routing optimizer setiap 2 menit) ──
-function getBatchDoStatus(docNosStr, date) {
-  if (!docNosStr) return { status:'ok', data:[] };
-  const docNos = String(docNosStr).split(',').map(d=>d.trim()).filter(Boolean);
-  if (!docNos.length) return { status:'ok', data:[] };
+async function openCamera(type) {
+  cameraType  = type;
+  capturedB64 = null;
 
-  const ss = getSS('OPERASIONAL');
-  const sh = ss.getSheetByName(SHEETS.do_status);
-  if (!sh) return { status:'ok', data:[] };
+  // Label per jenis foto
+  const labels = {
+    do    : '📄 Posisikan DO dalam bingkai',
+    rusak : '📦 Foto kerusakan barang',
+    sj    : '📋 Foto Surat Jalan',
+    gagal : '📍 Foto bukti gagal kirim',
+  };
+  const lbl = document.getElementById('camera-label');
+  if (lbl) lbl.textContent = labels[type] || '📷 Ambil foto';
 
-  const lr = sh.getLastRow();
-  if (lr < 2) return { status:'ok', data:[] };
+  // Reset preview
+  document.getElementById('camera-preview-wrap').classList.remove('show');
+  document.getElementById('camera-video').style.display = 'block';
+  document.querySelector('.camera-bottom').style.display = 'flex';
 
-  const rows = sh.getRange(2,1,lr-1,20).getValues();
-  const data = [];
-
-  docNos.forEach(docNo => {
-    const row = rows.find(r => String(r[4]||'').trim() === docNo);
-    if (!row) return;
-    data.push({
-      doc_no      : row[4],
-      plat        : row[1],
-      driver      : row[2],
-      status      : row[9],
-      jam_update  : row[10],
-      qty_terima  : row[12]||0,
-      qty_rusak   : row[13]||0,
-      alasan_gagal: row[14]||'',
-      is_urgent   : (row[14]==='Kendaraan Rusak'||row[14]==='Bencana Alam/Banjir')?'1':'0',
+  // Minta akses kamera belakang
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' }, // kamera belakang
+        width:  { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+      audio: false,
     });
-  });
-
-  return { status:'ok', data };
+    const video = document.getElementById('camera-video');
+    video.srcObject = cameraStream;
+    await video.play();
+    document.getElementById('camera-overlay').classList.add('show');
+  } catch(e) {
+    // Fallback ke file input jika getUserMedia tidak support
+    console.warn('[Camera] getUserMedia gagal:', e.message, '— fallback ke file input');
+    fallbackFileInput(type);
+  }
 }
 
-// ── GET GPS POSITIONS (semua kendaraan aktif hari ini) ────────────────────
-function getGPSPositions(platsStr, date) {
-  const ss  = getSS('OPERASIONAL');
-  const sh  = ss.getSheetByName(SHEETS_GPS?.gps_log || 'GPS Log');
-  if (!sh) return { status:'ok', positions:[] };
+function fallbackFileInput(type) {
+  // Buat input file sementara sebagai fallback
+  const inp = document.createElement('input');
+  inp.type    = 'file';
+  inp.accept  = 'image/*';
+  inp.capture = 'environment';
+  inp.style.display = 'none';
+  inp.onchange = function() { capturePhoto(type, inp); document.body.removeChild(inp); };
+  document.body.appendChild(inp);
+  inp.click();
+}
 
-  const lr = sh.getLastRow();
-  if (lr < 2) return { status:'ok', positions:[] };
+function captureFrame() {
+  const video  = document.getElementById('camera-video');
+  const canvas = document.getElementById('camera-canvas');
 
-  const plats = platsStr ? String(platsStr).split(',').map(p=>p.trim().toUpperCase()) : [];
-  const today = date || _now().slice(0,10);
+  // Ambil frame dari video
+  const W = video.videoWidth  || 1280;
+  const H = video.videoHeight || 720;
+  canvas.width  = Math.min(W, 1000);
+  canvas.height = Math.round(H * (canvas.width / W));
 
-  // Ambil baris terakhir per plat (posisi terbaru)
-  const rows = sh.getRange(2,1,lr-1,7).getValues();
-  // Kolom: Plat, Tanggal, Timestamp, Lat, Lng, KM Total, Speed
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  const latestPerPlat = {};
-  rows.forEach(r => {
-    const plat    = String(r[0]||'').trim().toUpperCase();
-    const tanggal = String(r[1]||'');
-    if (!plat) return;
-    if (plats.length && !plats.includes(plat)) return;
-    if (today && !tanggal.includes(today.slice(5))) return; // match MM-DD minimal
-    // Simpan baris terbaru per plat
-    latestPerPlat[plat] = {
-      plat     : r[0],
-      tanggal  : r[1],
-      timestamp: r[2],
-      lat      : parseFloat(r[3])||0,
-      lng      : parseFloat(r[4])||0,
-      km_total : parseFloat(r[5])||0,
-      speed    : parseFloat(r[6])||0,
+  capturedB64 = canvas.toDataURL('image/jpeg', 0.78);
+
+  // Tampilkan preview
+  document.getElementById('camera-preview-img').src = capturedB64;
+  document.getElementById('camera-preview-wrap').classList.add('show');
+  document.getElementById('camera-video').style.display = 'none';
+  document.querySelector('.camera-bottom').style.display = 'none';
+}
+
+function retakePhoto() {
+  capturedB64 = null;
+  document.getElementById('camera-preview-wrap').classList.remove('show');
+  document.getElementById('camera-video').style.display = 'block';
+  document.querySelector('.camera-bottom').style.display = 'flex';
+}
+
+async function usePhoto() {
+  if (!capturedB64) return;
+
+  // Proses watermark (non-blocking GPS geocode)
+  closeCamera();
+  await processAndSetPhoto(cameraType, capturedB64);
+}
+
+async function processAndSetPhoto(type, rawB64) {
+  // Koordinat GPS
+  const coords = modalCtx.gps_coords || (tripState.last_pos
+    ? tripState.last_pos.lat.toFixed(6)+','+tripState.last_pos.lng.toFixed(6) : '');
+
+  const canvas = document.getElementById('canvas-foto-'+type) || document.createElement('canvas');
+  const img    = new Image();
+  img.onload = function() {
+    const maxW = 600; // C: kompres lebih kecil → transfer cepat
+    let w = img.width, h = img.height;
+    if (w > maxW) { h = Math.round(h*(maxW/w)); w = maxW; }
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+
+    // Watermark
+    const now   = new Date().toLocaleString('id-ID',{timeZone:'Asia/Jakarta'});
+    const lines = [
+      'Plat         : '+driverState.plat,
+      'Driver       : '+driverState.driver,
+      'Koordinat    : '+(coords||'-'),
+      'DO           : '+modalCtx.doc_no,
+      'Waktu        : '+now,
+    ];
+    const pad=16,lh=16,textX=90,maxTW=w-textX-14;
+    ctx.font='11px Arial';
+    let totalH=0; lines.forEach(l=>{ totalH+=getTextH(ctx,l,maxTW,lh); });
+    const boxH=Math.max(totalH,44)+pad;
+    const boxY=h-boxH;
+    const grad=ctx.createLinearGradient(0,boxY,0,h);
+    grad.addColorStop(0,'rgba(0,0,0,.87)'); grad.addColorStop(1,'rgba(0,0,0,.7)');
+    ctx.fillStyle=grad; ctx.fillRect(0,boxY,w,boxH);
+
+    const logo=new Image(); logo.crossOrigin='anonymous';
+    logo.src='https://globalsentral.id/z/data/Logo.avif';
+    const done = () => {
+      ctx.fillStyle='#fff'; ctx.font='11px Arial';
+      let ty=boxY+18; lines.forEach(l=>{ ty=drawWrappedText(ctx,l,textX,ty,maxTW,lh); });
+      const b64=canvas.toDataURL('image/jpeg',0.65); // C: quality 0.75→0.65
+      setPhotoResult(type, b64);
     };
+    logo.onload=function(){
+      const lh2=40,lw=logo.width*(lh2/logo.height);
+      ctx.globalAlpha=.85; ctx.drawImage(logo,12,boxY+(boxH-lh2)/2,lw,lh2); ctx.globalAlpha=1;
+      done();
+    };
+    logo.onerror=done;
+  };
+  img.src = rawB64;
+}
+
+function closeCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  document.getElementById('camera-overlay').classList.remove('show');
+  document.getElementById('camera-video').srcObject = null;
+}
+
+// ═══════════════════════════════════════════════════════
+// BULK SELESAI — 1 foto untuk beberapa DO sekaligus
+// ═══════════════════════════════════════════════════════
+let bulkSelected = new Set();
+
+function toggleBulkSelect(docNo) {
+  const chk = document.getElementById('chk-'+docNo);
+  if (chk && chk.checked) {
+    bulkSelected.add(docNo);
+  } else {
+    bulkSelected.delete(docNo);
+  }
+  renderBulkBar();
+}
+
+function renderBulkBar() {
+  const bar = document.getElementById('bulk-bar');
+  const cnt = document.getElementById('bulk-count');
+  if (bulkSelected.size > 0) {
+    bar.classList.add('show');
+    cnt.textContent = bulkSelected.size + ' DO dipilih';
+  } else {
+    bar.classList.remove('show');
+  }
+}
+
+function openBulkSelesai() {
+  if (bulkSelected.size === 0) return;
+  // Ambil DO pertama sebagai referensi QTY
+  const firstTask = currentTasks.find(t => bulkSelected.has(t.doc_no));
+  if (!firstTask) return;
+
+  // Hitung total QTY semua DO yang dipilih
+  const totalQty = currentTasks
+    .filter(t => bulkSelected.has(t.doc_no))
+    .reduce((a,t) => a + (t.qty||0), 0);
+
+  const customerList = currentTasks
+    .filter(t => bulkSelected.has(t.doc_no))
+    .map(t => t.customer).join(', ');
+
+  // Set modalCtx untuk bulk — doc_no = semua yang dipilih dipisah koma
+  modalCtx = {
+    doc_no      : Array.from(bulkSelected).join(','),
+    qty_kirim   : totalQty,
+    qty_terima  : totalQty,
+    qty_rusak   : 0,
+    foto_do     : null, foto_rusak:null, foto_sj:null,
+    gps_coords  : modalCtx.gps_coords||'',
+    is_bulk     : true,
+    bulk_docs   : Array.from(bulkSelected),
+  };
+
+  document.getElementById('m-selesai-info').textContent =
+    bulkSelected.size + ' DO · ' + totalQty + ' DUS total';
+  document.getElementById('qty-kirim').textContent      = totalQty;
+  document.getElementById('qty-terima-disp').textContent = totalQty;
+  document.getElementById('qty-rusak-disp').textContent  = 0;
+  document.getElementById('group-foto-rusak').style.display = 'none';
+  document.getElementById('titip-sj').value  = 'Tidak';
+  document.getElementById('titip-extra').classList.remove('show');
+  document.getElementById('catatan-selesai').value = '';
+  // Reset foto
+  ['do','rusak','sj'].forEach(k => {
+    const prev=document.getElementById('prev-foto-'+k);
+    const icon=document.getElementById('icon-foto-'+k);
+    const txt =document.getElementById('txt-foto-'+k);
+    const wrap=document.getElementById('wrap-foto-'+k);
+    if (prev){prev.style.display='none';prev.src='';}
+    if (wrap) wrap.classList.remove('has-photo');
+    if (icon) icon.innerHTML='<i class="fas fa-camera" style="font-size:28px;color:#94a3b8"></i>';
+    if (txt)  txt.textContent = k==='do'?'Tap untuk ambil foto DO':'Tap untuk ambil foto';
+  });
+  openModal('m-selesai');
+}
+
+// Override submitSelesai untuk handle bulk
+const _origSubmitSelesai = submitSelesai;
+submitSelesai = async function() {
+  if (!modalCtx.is_bulk || !modalCtx.bulk_docs || modalCtx.bulk_docs.length <= 1) {
+    return _origSubmitSelesai();
+  }
+  // Bulk submit — kirim 1 per 1 dengan foto yang sama
+  if (!modalCtx.foto_do) { alert('Foto DO wajib diambil'); return; }
+  const btn = document.getElementById('btn-submit-selesai');
+  btn.disabled = true;
+  showSubmitOverlay('Mengirim ' + modalCtx.bulk_docs.length + ' laporan...');
+
+  const titipSJ  = document.getElementById('titip-sj').value;
+  const catatan  = document.getElementById('catatan-selesai').value;
+  const taskList = currentTasks.filter(t => modalCtx.bulk_docs.includes(t.doc_no));
+
+  for (const task of taskList) {
+    const payload = {
+      action:'submitSelesai', plat:driverState.plat, driver:driverState.driver,
+      doc_no:task.doc_no, date:driverState.date,
+      qty_kirim:task.qty||0, qty_terima:task.qty||0, qty_rusak:0,
+      catatan:catatan, titip_sj:titipSJ,
+      nama_spg:'', jabatan_spg:'SPG',
+      gps_coords:modalCtx.gps_coords,
+      foto_do:modalCtx.foto_do,
+      timestamp:new Date().toISOString(),
+    };
+    await gasPost(payload);
+    // Update snapshot
+    lastTasksSnap[task.doc_no] = 'Selesai';
+  }
+
+  hideSubmitOverlay();
+  btn.disabled = false;
+  closeModal('m-selesai');
+  bulkSelected.clear();
+  renderBulkBar();
+  stopsDone += taskList.length;
+
+  addNotification({
+    type:'self', icon:'change',
+    title:'✅ ' + taskList.length + ' DO Selesai',
+    msg: taskList.map(t=>t.doc_no).join(', '),
   });
 
-  return { status:'ok', positions: Object.values(latestPerPlat) };
-}
+  await loadTasks(false);
+  checkAllDone();
+};
+
+// Close overlays on outside tap
+document.addEventListener('click', function(e) {
+  const overlay=document.getElementById('settings-overlay');
+  if (e.target===overlay) closeSettings();
+});
+</script>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- CAMERA OVERLAY — getUserMedia direct camera        -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="camera-overlay" id="camera-overlay">
+  <!-- Live preview -->
+  <video id="camera-video" class="camera-video" autoplay playsinline muted></video>
+  <!-- Frame guide -->
+  <div class="camera-frame">
+    <div class="camera-guide">
+    <div class="camera-guide-tr"></div>
+    <div class="camera-guide-bl"></div>
+  </div>
+    <div class="camera-label" id="camera-label">📄 Posisikan dokumen dalam bingkai</div>
+  </div>
+  <!-- Controls -->
+  <div class="camera-bottom">
+    <button class="camera-cancel" onclick="closeCamera()">✕ Batal</button>
+    <button class="camera-shutter" onclick="captureFrame()">📷</button>
+    <div style="width:72px"></div>
+  </div>
+  <!-- Preview setelah ambil foto -->
+  <div class="camera-preview-wrap" id="camera-preview-wrap">
+    <img id="camera-preview-img" class="camera-preview-img">
+    <div class="camera-preview-actions">
+      <button class="camera-retake-btn" onclick="retakePhoto()">🔄 Ambil Ulang</button>
+      <button class="camera-use-btn" onclick="usePhoto()">✓ Gunakan Foto</button>
+    </div>
+  </div>
+  <canvas id="camera-canvas" style="display:none"></canvas>
+</div>
+
+</body>
+</html>
