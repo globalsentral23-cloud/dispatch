@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>GST Logistics — Driver App v3</title>
+<title>GST Logistics — Driver App v3.2</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <style>
 :root{
@@ -262,6 +262,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
   <!-- KM BAR -->
   <div class="km-bar" id="km-bar" style="display:none">
     <div><div class="km-val" id="km-val">0.0</div><div>km tercatat</div></div>
+    <div><div class="km-val" id="wakelock-val" style="font-size:10px;color:#86efac">●</div><div>layar aktif</div></div>
     <div><div class="km-val" id="dur-val">0 mnt</div><div>durasi</div></div>
     <div><div class="km-val"><span id="stop-done">0</span>/<span id="stop-total">0</span></div><div>stop selesai</div></div>
   </div>
@@ -348,7 +349,12 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
   <div class="settings-box">
     <button class="settings-close" onclick="closeSettings()">×</button>
     <div class="settings-title">⚙ Pengaturan Driver</div>
-    <div class="settings-sub">v3.0 · GlobalSentral Transport</div>
+    <div class="settings-sub">v3.2 · GlobalSentral Transport</div>
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:11px;color:#92400e;line-height:1.7">
+      <strong>⚡ Tips GPS tidak mati saat layar terkunci:</strong><br>
+      Pengaturan → Aplikasi → Chrome → Baterai → <strong>"Tidak ada batasan"</strong><br>
+      Pengaturan → Baterai → Optimasi baterai → Chrome → <strong>"Jangan optimalkan"</strong>
+    </div>
     <div class="settings-field">
       <label class="settings-label">Nomor Plat Kendaraan</label>
       <input class="settings-input" id="s-plat" type="text" placeholder="Contoh: B9648MJ"
@@ -609,7 +615,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v3.0';
+const APP_VERSION    = 'v3.2';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -652,6 +658,7 @@ let modalCtx = {
 };
 
 let strukPhotos = { tol:null, parkir:null, bensin:null };
+let wakeLock = null;  // Wake Lock API — cegah layar mati saat trip
 
 // ═══════════════════════════════════════════════════════
 // INIT
@@ -811,6 +818,12 @@ function updateKMDisplay() {
   const elMin = Math.floor((Date.now() - tripState.start_time)/60000);
   document.getElementById('dur-val').textContent = elMin + ' mnt';
   document.getElementById('stop-done').textContent = stopsDone;
+  // Update wake lock indicator
+  const wlEl = document.getElementById('wakelock-val');
+  if (wlEl) wlEl.textContent = wakeLock ? '● ON' : '○ OFF';
+  if (wlEl) wlEl.style.color = wakeLock ? '#86efac' : '#fca5a5';
+  // Auto re-acquire jika lepas
+  if (!wakeLock && tripState.started) requestWakeLock();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -880,9 +893,6 @@ function buildCard(t) {
               : isBatal? '<span class="do-badge" style="background:#f1f5f9;color:#64748b">Batal</span>'
               : `<span class="do-badge">${t.status||'—'}</span>`;
 
-  const bars = Array.from({length:28},(_,i)=>
-    `<span style="height:${22+Math.sin(i*.8+1)*18}px;width:${i%5===0?3:2}px"></span>`).join('');
-
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.alamat||'')}`;
 
   const actions = isNew
@@ -913,10 +923,8 @@ function buildCard(t) {
       </div>
       ${badge}
     </div>
-    <div class="barcode-wrap" onclick="toggleDetail('${t.doc_no}')">
-      <div class="barcode-lines">${bars}</div>
-      <div class="barcode-num">${t.doc_no||'—'}</div>
-      <div style="font-size:11px;color:var(--accent);margin-top:3px">Detail <i class="fas fa-chevron-down"></i></div>
+    <div onclick="toggleDetail('${t.doc_no}')" style="padding:8px 14px;text-align:center;border-bottom:1px solid var(--border);cursor:pointer;color:var(--accent);font-size:12px;font-weight:600">
+      Detail &nbsp;<i class="fas fa-chevron-down"></i>
     </div>
     <div class="do-detail" id="detail-${t.doc_no}" style="display:none">
       <div class="detail-section">
@@ -1219,6 +1227,7 @@ async function startJob(docNo) {
   tripState.started    = true;
   tripState.start_time = Date.now();
   document.getElementById('km-bar').style.display = 'flex';
+  requestWakeLock(); // Cegah layar mati saat trip dimulai
 
   const pos = tripState.last_pos || {lat:0, lng:0};
   await gasGet('startJob', {
@@ -1558,6 +1567,7 @@ async function submitStruk() {
   closeModal('m-struk');
   document.getElementById('km-bar').style.display='none';
   tripState.started = false;
+  releaseWakeLock(); // Lepas wake lock setelah trip selesai
 
   addNotification({
     type:'self', icon:'change',
@@ -1766,6 +1776,42 @@ function confirmLogout() {
 // ═══════════════════════════════════════════════════════
 // UI HELPERS
 // ═══════════════════════════════════════════════════════
+// ── WAKE LOCK API — cegah layar mati saat trip ───────────────────────────────
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) {
+    console.log('[WakeLock] Tidak didukung di browser ini');
+    return;
+  }
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => {
+      console.log('[WakeLock] Dilepas oleh sistem');
+      wakeLock = null;
+    });
+    console.log('[WakeLock] ✅ Aktif — layar tidak akan mati');
+    // Update status bar
+    const dot = document.getElementById('gps-txt');
+    if (dot) dot.textContent = 'GPS aktif · Layar terkunci';
+  } catch(e) {
+    console.log('[WakeLock] Gagal:', e.message);
+  }
+}
+
+async function releaseWakeLock() {
+  if (wakeLock) {
+    await wakeLock.release();
+    wakeLock = null;
+    console.log('[WakeLock] Dilepas');
+  }
+}
+
+// Re-acquire wake lock setelah tab kembali visible (misal balik dari WA)
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && tripState.started && !wakeLock) {
+    await requestWakeLock();
+  }
+});
+
 function openModal(id)  { document.getElementById(id).classList.add('show'); }
 function closeModal(id) { document.getElementById(id).classList.remove('show'); }
 
