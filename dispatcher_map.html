@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dispatcher Map — GlobalSentral</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',sans-serif}
+html,body{height:100%;overflow:hidden}
+
+/* LAYOUT */
+.app{display:flex;flex-direction:column;height:100vh}
+.topbar{background:#0b1f3a;color:#fff;padding:0 16px;height:50px;
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;z-index:1000}
+.topbar h1{font-size:13px;font-weight:700;letter-spacing:.04em}
+.topbar .sub{font-size:10px;color:#64748b;margin-top:1px}
+.main{display:flex;flex:1;overflow:hidden}
+
+/* SIDEBAR */
+.sidebar{width:300px;background:#fff;border-right:1px solid #e2e8f0;
+  display:flex;flex-direction:column;flex-shrink:0;overflow:hidden}
+.sidebar-head{padding:10px 12px;border-bottom:1px solid #e2e8f0;flex-shrink:0}
+.sidebar-filter{display:flex;gap:6px;margin-top:8px}
+.sidebar-filter select{flex:1;padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;
+  font-size:11px;color:#334155;background:#f8fafc}
+.sidebar-list{flex:1;overflow-y:auto}
+
+/* VEHICLE CARD */
+.veh-card{padding:10px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer;
+  transition:background .1s;position:relative}
+.veh-card:hover{background:#f8fafc}
+.veh-card.selected{background:#eff6ff;border-left:3px solid #2563eb}
+.veh-card.onprocess{border-left:3px solid #2563eb}
+.veh-card.selesai{border-left:3px solid #16a34a}
+.veh-card.warning{border-left:3px solid #dc2626}
+.veh-card.baru{border-left:3px solid #94a3b8}
+.plat{font-size:12px;font-weight:800;color:#0f172a;font-family:monospace}
+.driver{font-size:11px;font-weight:600;color:#334155;margin-top:1px}
+.gudang{font-size:10px;color:#64748b}
+
+/* PROGRESS BAR */
+.prog-wrap{margin-top:6px;background:#e2e8f0;border-radius:10px;height:5px;overflow:hidden}
+.prog-bar{height:100%;border-radius:10px;transition:width .4s}
+.prog-blue{background:#2563eb}
+.prog-green{background:#16a34a}
+.prog-red{background:#dc2626}
+.prog-gray{background:#94a3b8}
+
+.do-counts{display:flex;gap:6px;margin-top:5px;flex-wrap:wrap}
+.dc{font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px}
+.dc-selesai{background:#dcfce7;color:#15803d}
+.dc-process{background:#dbeafe;color:#1d4ed8}
+.dc-muat{background:#fef3c7;color:#92400e}
+.dc-gagal{background:#fee2e2;color:#b91c1c}
+.dc-baru{background:#f1f5f9;color:#475569}
+.dc-km{background:#f3e8ff;color:#7c3aed}
+.dc-speed{background:#ecfdf5;color:#059669;font-size:9px}
+
+/* MAP */
+#map{flex:1;z-index:1}
+
+/* KPI STRIP */
+.kpi-strip{background:#1e3a5f;padding:6px 16px;display:flex;gap:20px;
+  align-items:center;flex-shrink:0}
+.kpi-item{text-align:center}
+.kpi-label{font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em}
+.kpi-val{font-size:16px;font-weight:800;color:#fff}
+.kpi-item.green .kpi-val{color:#4ade80}
+.kpi-item.amber .kpi-val{color:#fbbf24}
+.kpi-item.red .kpi-val{color:#f87171}
+.kpi-item.blue .kpi-val{color:#60a5fa}
+.kpi-sep{width:1px;height:32px;background:#334155}
+
+/* REFRESH INDICATOR */
+.refresh-ring{width:10px;height:10px;border-radius:50%;background:#22c55e;
+  flex-shrink:0;position:relative}
+.refresh-ring.loading{background:#fbbf24;animation:pulse .8s ease-in-out infinite}
+.refresh-ring.err{background:#f87171}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.refresh-txt{font-size:10px;color:#64748b;margin-left:4px}
+.countdown{font-size:10px;color:#475569;font-family:monospace}
+
+/* POPUP CUSTOM */
+.leaflet-popup-content{font-size:12px;min-width:200px}
+.pop-head{font-weight:800;font-size:13px;margin-bottom:6px;font-family:monospace}
+.pop-row{display:flex;justify-content:space-between;margin-bottom:3px}
+.pop-label{color:#64748b}
+.pop-val{font-weight:600}
+
+/* MARKER ICONS via CSS */
+.marker-icon{width:32px;height:32px;border-radius:50%;border:3px solid #fff;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,.3);font-weight:800;color:#fff}
+.mi-blue{background:#2563eb}
+.mi-green{background:#16a34a}
+.mi-red{background:#dc2626}
+.mi-gray{background:#94a3b8}
+.mi-amber{background:#d97706}
+
+/* EMPTY */
+.empty-sidebar{padding:24px 16px;text-align:center;color:#94a3b8;font-size:12px}
+
+/* BOTTOM LEGEND */
+.legend{display:flex;gap:14px;align-items:center;padding:4px 16px;
+  background:#f8fafc;border-top:1px solid #e2e8f0;flex-shrink:0;flex-wrap:wrap}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:10px;color:#475569}
+.leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div style="display:flex;align-items:center;gap:12px">
+    <img src="https://globalsentral.id/z/data/Logo.avif" height="32" alt="" onerror="this.style.display='none'">
+    <div>
+      <div class="topbar h1">DISPATCHER MAP</div>
+      <div class="sub">Live monitoring — GlobalSentral Transport</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <input type="date" id="date-pick" style="padding:4px 8px;border:1px solid #334155;
+      background:#1e3a5f;color:#93c5fd;border-radius:6px;font-size:11px;font-family:monospace"
+      onchange="loadData()">
+    <div class="refresh-ring" id="refresh-ring"></div>
+    <span class="refresh-txt" id="refresh-txt">Menghubungkan...</span>
+    <span class="countdown" id="countdown"></span>
+    <button onclick="loadData()" style="background:#2563eb;color:#fff;border:none;
+      border-radius:6px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer">
+      ↺ Refresh
+    </button>
+  </div>
+</div>
+
+<!-- KPI STRIP -->
+<div class="kpi-strip">
+  <div class="kpi-item"><div class="kpi-label">Total Kendaraan</div><div class="kpi-val" id="k-total">—</div></div>
+  <div class="kpi-sep"></div>
+  <div class="kpi-item blue"><div class="kpi-label">On Process</div><div class="kpi-val" id="k-proc">—</div></div>
+  <div class="kpi-item amber"><div class="kpi-label">Muat Kargo</div><div class="kpi-val" id="k-muat">—</div></div>
+  <div class="kpi-item"><div class="kpi-label">Belum Jalan</div><div class="kpi-val" id="k-baru">—</div></div>
+  <div class="kpi-sep"></div>
+  <div class="kpi-item green"><div class="kpi-label">DO Selesai</div><div class="kpi-val" id="k-selesai">—</div></div>
+  <div class="kpi-item red"><div class="kpi-label">DO Gagal</div><div class="kpi-val" id="k-gagal">—</div></div>
+  <div class="kpi-sep"></div>
+  <div class="kpi-item green"><div class="kpi-label">Kendaraan Selesai</div><div class="kpi-val" id="k-done">—</div></div>
+  <div style="flex:1"></div>
+  <div style="font-size:10px;color:#475569" id="last-update">—</div>
+</div>
+
+<!-- MAIN AREA -->
+<div class="main">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-head">
+      <div style="font-size:12px;font-weight:700;color:#0f172a">Armada Hari Ini</div>
+      <div class="sidebar-filter">
+        <select id="f-gudang" onchange="renderSidebar()">
+          <option value="">Semua Gudang</option>
+          <option>DAAN MOGOT</option>
+          <option>DOYONG</option>
+          <option>CIKUDA</option>
+        </select>
+        <select id="f-status" onchange="renderSidebar()">
+          <option value="">Semua Status</option>
+          <option value="onprocess">On Process</option>
+          <option value="baru">Belum Jalan</option>
+          <option value="warning">Ada Gagal</option>
+          <option value="selesai">Selesai</option>
+        </select>
+      </div>
+    </div>
+    <div class="sidebar-list" id="sidebar-list">
+      <div class="empty-sidebar">Memuat data armada...</div>
+    </div>
+  </div>
+
+  <!-- MAP -->
+  <div id="map"></div>
+</div>
+
+<!-- LEGEND -->
+<div class="legend">
+  <span style="font-size:10px;font-weight:700;color:#475569">LEGENDA:</span>
+  <div class="leg-item"><div class="leg-dot" style="background:#2563eb"></div>On Process</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#d97706"></div>Muat Kargo</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#94a3b8"></div>Belum Jalan</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#16a34a"></div>Selesai Semua</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#dc2626"></div>Ada Gagal Kirim</div>
+  <div style="flex:1"></div>
+  <span style="font-size:10px;color:#94a3b8">Auto-refresh: 2 menit</span>
+</div>
+
+</div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzWW4NJXYEZxcG5jiygObB6sitBmuQFi0m22C9vH2Wp2vnchw3lGv99I9E1mJ5uPXChNA/exec';
+let map, vehicles = [], markers = {}, selectedPlat = null;
+let refreshTimer, countdownVal = 120;
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+window.onload = () => {
+  // Set tanggal hari ini
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('date-pick').value = today;
+
+  // Init Leaflet map — center Jabodetabek
+  map = L.map('map', { zoomControl:true }).setView([-6.2146, 106.8451], 11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution:'© OpenStreetMap',
+    maxZoom:18,
+  }).addTo(map);
+
+  // Batas Jabodetabek (visual reference)
+  L.rectangle([[-7.0,-6.4],[106.4,107.3]], {color:'none',fill:false}).addTo(map);
+
+  loadData();
+  startCountdown();
+};
+
+// ── LOAD DATA ─────────────────────────────────────────────────────────────────
+async function loadData() {
+  setStatus('loading','Memuat...');
+  clearInterval(refreshTimer);
+  countdownVal = 120;
+
+  const dateInput = document.getElementById('date-pick').value;
+  const [y,m,d]   = dateInput.split('-');
+  const dateStr   = `${d}/${m}/${y}`;
+
+  try {
+    const r = await fetch(`${GAS_URL}?action=getDispatcherView&date=${encodeURIComponent(dateStr)}`,
+      {redirect:'follow'});
+    const data = await r.json();
+    vehicles = data.vehicles || [];
+    renderKPI();
+    renderSidebar();
+    renderMapMarkers();
+    setStatus('ok', `Update: ${new Date().toLocaleTimeString('id-ID')}`);
+  } catch(e) {
+    setStatus('err', 'Gagal: '+e.message);
+  }
+
+  startCountdown();
+}
+
+// ── KPI ───────────────────────────────────────────────────────────────────────
+function renderKPI() {
+  const total   = vehicles.length;
+  const proc    = vehicles.filter(v=>v.overallStatus==='onprocess').length;
+  const muat    = vehicles.filter(v=>v.counts && v.counts['Muat Kargo']>0 && v.overallStatus!=='onprocess').length;
+  const baru    = vehicles.filter(v=>v.overallStatus==='baru').length;
+  const done    = vehicles.filter(v=>v.overallStatus==='selesai').length;
+  const doSel   = vehicles.reduce((a,v)=>(a+(v.counts&&v.counts['Selesai']||0)),0);
+  const doGagal = vehicles.reduce((a,v)=>(a+(v.counts&&v.counts['Gagal Kirim']||0)),0);
+
+  document.getElementById('k-total').textContent   = total;
+  document.getElementById('k-proc').textContent    = proc;
+  document.getElementById('k-muat').textContent    = muat;
+  document.getElementById('k-baru').textContent    = baru;
+  document.getElementById('k-selesai').textContent = doSel;
+  document.getElementById('k-gagal').textContent   = doGagal;
+  document.getElementById('k-done').textContent    = done+'/'+total;
+  document.getElementById('last-update').textContent = new Date().toLocaleString('id-ID');
+}
+
+// ── SIDEBAR ───────────────────────────────────────────────────────────────────
+function renderSidebar() {
+  const fGudang = document.getElementById('f-gudang').value.toUpperCase();
+  const fStatus = document.getElementById('f-status').value;
+
+  let list = vehicles;
+  if (fGudang) list = list.filter(v=>(v.gudang||'').toUpperCase().includes(fGudang));
+  if (fStatus) list = list.filter(v=>v.overallStatus===fStatus);
+
+  const el = document.getElementById('sidebar-list');
+  if (!list.length) {
+    el.innerHTML = '<div class="empty-sidebar">Tidak ada kendaraan ditemukan</div>';
+    return;
+  }
+
+  el.innerHTML = list.map(v => {
+    const c = v.counts || {};
+    const pct = v.progress || 0;
+    const progCls = v.overallStatus==='selesai'?'prog-green':
+      v.overallStatus==='warning'?'prog-red':
+      v.overallStatus==='onprocess'?'prog-blue':'prog-gray';
+    const isSel = v.plat === selectedPlat;
+
+    return `<div class="veh-card ${v.overallStatus} ${isSel?'selected':''}"
+        onclick="selectVehicle('${esc(v.plat)}')">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div class="plat">${esc(v.plat)}</div>
+          <div class="driver">${esc(v.driver||'—')}</div>
+          <div class="gudang">${esc((v.gudang||'').replace('GUDANG ',''))}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:16px;font-weight:800;color:${
+            v.overallStatus==='selesai'?'#16a34a':
+            v.overallStatus==='warning'?'#dc2626':
+            v.overallStatus==='onprocess'?'#2563eb':'#94a3b8'}">${pct}%</div>
+          <div style="font-size:9px;color:#64748b">${(c['Selesai']||0)}/${v.totalDO||0} DO</div>
+          ${v.speed>0?`<div style="font-size:9px;color:#059669">${Math.round(v.speed)} km/h</div>`:''}
+        </div>
+      </div>
+      <div class="prog-wrap"><div class="prog-bar ${progCls}" style="width:${pct}%"></div></div>
+      <div class="do-counts">
+        ${(c['On Process']||0)>0?`<span class="dc dc-process">🚚 ${c['On Process']} proses</span>`:''}
+        ${(c['Muat Kargo']||0)>0?`<span class="dc dc-muat">📦 ${c['Muat Kargo']} muat</span>`:''}
+        ${(c['Selesai']||0)>0?`<span class="dc dc-selesai">✓ ${c['Selesai']} selesai</span>`:''}
+        ${(c['Gagal Kirim']||0)>0?`<span class="dc dc-gagal">✗ ${c['Gagal Kirim']} gagal</span>`:''}
+        ${(c['Baru']||0)>0?`<span class="dc dc-baru">○ ${c['Baru']} baru</span>`:''}
+        ${v.km>0?`<span class="dc dc-km">${Math.round(v.km)} km</span>`:''}
+      </div>
+      <div style="font-size:9px;color:#94a3b8;margin-top:3px">
+        ${v.lastUpdate?'Update: '+v.lastUpdate:'Belum ada update'}
+        ${v.gpsTs?` · GPS: ${String(v.gpsTs).split(' ').pop()}`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── MAP MARKERS ───────────────────────────────────────────────────────────────
+function renderMapMarkers() {
+  // Hapus marker lama
+  Object.values(markers).forEach(m => map.removeLayer(m));
+  markers = {};
+
+  const colored = {
+    onprocess: '#2563eb',
+    selesai:   '#16a34a',
+    warning:   '#dc2626',
+    baru:      '#94a3b8',
+  };
+
+  let hasMarker = false;
+  vehicles.forEach(v => {
+    if (!v.lat || !v.lng) return;
+    const color = colored[v.overallStatus] || '#94a3b8';
+    const c = v.counts || {};
+
+    // Custom icon
+    const iconHtml = `<div class="marker-icon" style="background:${color}">
+      ${String(v.plat||'').slice(-3)}
+    </div>`;
+    const icon = L.divIcon({
+      html: iconHtml,
+      className: '',
+      iconSize:[32,32],
+      iconAnchor:[16,16],
+      popupAnchor:[0,-20],
+    });
+
+    const m = L.marker([v.lat, v.lng], {icon})
+      .bindPopup(popupHtml(v))
+      .addTo(map);
+
+    m.on('click', () => selectVehicle(v.plat));
+    markers[v.plat] = m;
+    hasMarker = true;
+  });
+
+  if (hasMarker) {
+    const group = L.featureGroup(Object.values(markers));
+    map.fitBounds(group.getBounds().pad(0.1));
+  }
+}
+
+function popupHtml(v) {
+  const c = v.counts || {};
+  return `<div class="pop-head">${v.plat}</div>
+    <div class="pop-row"><span class="pop-label">Driver</span><span class="pop-val">${v.driver||'—'}</span></div>
+    <div class="pop-row"><span class="pop-label">Gudang</span><span class="pop-val">${(v.gudang||'').replace('GUDANG ','')}</span></div>
+    <div class="pop-row"><span class="pop-label">Progress</span><span class="pop-val">${v.progress||0}% · ${c['Selesai']||0}/${v.totalDO||0} DO</span></div>
+    ${c['On Process']>0?`<div class="pop-row"><span class="pop-label">On Process</span><span class="pop-val" style="color:#2563eb">${c['On Process']} DO</span></div>`:''}
+    ${c['Gagal Kirim']>0?`<div class="pop-row"><span class="pop-label">Gagal</span><span class="pop-val" style="color:#dc2626">${c['Gagal Kirim']} DO</span></div>`:''}
+    ${v.km>0?`<div class="pop-row"><span class="pop-label">KM</span><span class="pop-val">${Math.round(v.km)} km</span></div>`:''}
+    ${v.speed>0?`<div class="pop-row"><span class="pop-label">Kecepatan</span><span class="pop-val">${Math.round(v.speed)} km/h</span></div>`:''}
+    <div class="pop-row"><span class="pop-label">GPS Update</span><span class="pop-val">${v.gpsTs?String(v.gpsTs).split(' ').pop():'—'}</span></div>`;
+}
+
+// ── SELECT VEHICLE ─────────────────────────────────────────────────────────────
+function selectVehicle(plat) {
+  selectedPlat = plat;
+  renderSidebar();
+
+  const v = vehicles.find(x=>x.plat===plat);
+  if (!v) return;
+
+  if (v.lat && v.lng && markers[plat]) {
+    map.setView([v.lat, v.lng], 14, {animate:true});
+    markers[plat].openPopup();
+  } else if (!v.lat) {
+    alert(`${plat} — ${v.driver}\n\nBelum ada data GPS untuk kendaraan ini hari ini.\nDriver belum mengaktifkan GPS tracking.`);
+  }
+
+  // Scroll sidebar ke card yang dipilih
+  const el = document.getElementById('sidebar-list');
+  const cards = el.querySelectorAll('.veh-card');
+  const list = [...(document.getElementById('f-gudang').value || document.getElementById('f-status').value ?
+    vehicles.filter(v => {
+      const fg = document.getElementById('f-gudang').value.toUpperCase();
+      const fs = document.getElementById('f-status').value;
+      return (!fg || (v.gudang||'').toUpperCase().includes(fg)) && (!fs || v.overallStatus===fs);
+    }) : vehicles)];
+  const idx = list.findIndex(x=>x.plat===plat);
+  if (idx >= 0 && cards[idx]) cards[idx].scrollIntoView({block:'nearest'});
+}
+
+// ── COUNTDOWN ─────────────────────────────────────────────────────────────────
+function startCountdown() {
+  clearInterval(refreshTimer);
+  countdownVal = 120;
+  updateCountdown();
+  refreshTimer = setInterval(() => {
+    countdownVal--;
+    updateCountdown();
+    if (countdownVal <= 0) loadData();
+  }, 1000);
+}
+
+function updateCountdown() {
+  const m = Math.floor(countdownVal/60);
+  const s = countdownVal % 60;
+  document.getElementById('countdown').textContent =
+    `Refresh dalam ${m}:${String(s).padStart(2,'0')}`;
+}
+
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+function setStatus(state, msg) {
+  const ring = document.getElementById('refresh-ring');
+  const txt  = document.getElementById('refresh-txt');
+  ring.className = 'refresh-ring' + (state==='loading'?' loading':state==='err'?' err':'');
+  txt.textContent = msg;
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
