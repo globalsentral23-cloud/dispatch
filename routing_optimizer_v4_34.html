@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.32</title>
+<title>Routing Optimizer v4.34</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -401,7 +401,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     <div style="text-align:center;margin-bottom:32px">
       <div style="font-size:40px;margin-bottom:8px">⬡</div>
       <div style="font-size:20px;font-weight:800;color:#fff;letter-spacing:.04em">ROUTING OPTIMIZER</div>
-      <div style="font-size:11px;color:#64748b;margin-top:4px">v4.32 · GlobalSentral Transport</div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px">v4.34 · GlobalSentral Transport</div>
     </div>
 
     <!-- Login Card -->
@@ -488,13 +488,12 @@ body.dispatch-active .dispatch-bar{display:flex}
       <div class="dz-hint">Upload manual jika tidak pakai Google Sheets</div>
       <div class="dz-file" id="fn-master"></div>
     </div>
-    <div class="drop-zone" id="dz-gagal" style="border-color:#f59e0b;border-style:dashed" ondragover="dzDrag(event,this)" ondragleave="dzLeave(this)" ondrop="dzDrop(event,'gagal',this)">
-      <input type="file" accept=".xlsx,.xls" onchange="dzFile(event,'gagal',document.getElementById('dz-gagal'))">
-      <div class="dz-icon">📂</div>
+    <div class="drop-zone" id="dz-gagal" style="border-color:#f59e0b;border-style:dashed;cursor:pointer" onclick="autoLoadCarryOver()">
+      <div class="dz-icon">📥</div>
       <div class="dz-label" style="color:#92400e">DO Gagal Kirim</div>
-      <div class="dz-hint">Export routing kemarin (opsional)</div>
+      <div class="dz-hint">Klik untuk load otomatis dari Google Sheets</div>
       <div class="dz-hint" style="font-size:9px;color:#d97706;margin-top:2px">Akan masuk sebagai Carry Over prioritas tinggi</div>
-      <div class="dz-file" id="fn-gagal"></div>
+      <div class="dz-file" id="fn-gagal">Belum dimuat</div>
     </div>
   </div>
 
@@ -505,7 +504,7 @@ body.dispatch-active .dispatch-bar{display:flex}
 <!-- APP -->
 <div id="app-screen">
   <div class="topbar">
-    <div class="tb-logo">⬡ ROUTING v4.32</div>
+    <div class="tb-logo">⬡ ROUTING v4.33</div>
     <span class="tb-sep">|</span>
     <div class="tb-date" id="tb-date">—</div>
     <button class="tab-btn active" onclick="switchTab('routing',this)">Routing</button>
@@ -517,6 +516,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota">Pending Besok</button>
     <button class="tab-btn" onclick="switchTab('biaya',this)">💰 Biaya Ops</button>
     <button class="tab-btn" onclick="switchTab('settlement',this)">📋 Settlement T+1</button>
+    <button class="tab-btn" onclick="switchTab('history',this)">📅 History</button>
     <div class="tb-right">
       <button class="tb-btn g" onclick="exportExcel()">⬇ Excel</button>
       <button class="tb-btn" onclick="printPickingList()">📋 Picking List</button>
@@ -679,7 +679,34 @@ body.dispatch-active .dispatch-bar{display:flex}
     </div>
   </div>
   <div class="tab-pane" id="tab-biaya"><div class="main-content" id="main-biaya" style="padding:0"></div></div>
-  <div class="tab-pane" id="tab-settlement"><div id="main-settlement" style="padding:0"></div></div>
+  <div class="tab-pane" id="tab-settlement"><div id="main-settlement" style="padding:0"></div>
+  <div id="main-history" class="tab-content" style="display:none">
+    <div style="padding:16px 20px 0">
+      <div style="font-size:15px;font-weight:700;color:var(--navy);margin-bottom:12px">📅 History Routing</div>
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+        <input type="date" id="history-date-input"
+          style="padding:7px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:12px;color:#0f172a">
+        <button onclick="loadHistoryRouting()"
+          style="padding:7px 16px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">
+          🔍 Cari
+        </button>
+        <button onclick="loadHistoryRouting('today')"
+          style="padding:7px 16px;background:#f1f5f9;color:#334155;border:1px solid #ddd;border-radius:8px;font-size:12px;cursor:pointer">
+          Hari Ini
+        </button>
+        <button onclick="loadHistoryRouting('yesterday')"
+          style="padding:7px 16px;background:#f1f5f9;color:#334155;border:1px solid #ddd;border-radius:8px;font-size:12px;cursor:pointer">
+          Kemarin
+        </button>
+      </div>
+      <div id="history-content">
+        <div style="text-align:center;padding:40px;color:#94a3b8">
+          <div style="font-size:32px;margin-bottom:8px">📅</div>
+          <div style="font-size:13px">Pilih tanggal untuk melihat history routing</div>
+        </div>
+      </div>
+    </div>
+  </div></div>
 </div>
 
 <!-- EDIT MODAL -->
@@ -2042,6 +2069,61 @@ function getVehiclesForWH(wh){
 }
 
 // ── HELPER: Parse carry over DO from yesterday's export ──
+// ── AUTO LOAD CARRY OVER dari DO Status Sheet ────────────────────────────────
+async function autoLoadCarryOver() {
+  const gsUrl = document.getElementById('gs-id')?.value.trim() || localStorage.getItem('gs_url') || '';
+  if (!gsUrl || !gsConnected) {
+    alert('Connect Google Sheets dulu sebelum load carry over');
+    return;
+  }
+
+  const dz  = document.getElementById('dz-gagal');
+  const fn  = document.getElementById('fn-gagal');
+  if (dz) dz.style.background = '#fefce8';
+  if (fn) fn.textContent = '⏳ Memuat...';
+
+  try {
+    // Hitung tanggal kemarin
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yStr = yesterday.toLocaleDateString('id-ID', {day:'2-digit',month:'2-digit',year:'numeric'});
+
+    // Fetch DO dengan status Gagal Kirim dari kemarin
+    const res = await fetch(`${gsUrl}?action=getFailedDOs&date=${encodeURIComponent(yStr)}`, {redirect:'follow'});
+    const data = await res.json();
+
+    if (data.error) throw new Error(data.error);
+
+    const failedDOs = data.tasks || [];
+    if (!failedDOs.length) {
+      if (fn) fn.textContent = '✅ Tidak ada DO gagal kemarin';
+      if (dz) dz.style.background = '#f0fdf4';
+      return;
+    }
+
+    // Convert ke format carryOverItems
+    carryOverItems = failedDOs.map(d => ({
+      doc_no   : String(d.doc_no||'').trim(),
+      customer : String(d.customer||'').trim(),
+      qty      : parseFloat(d.qty)||0,
+      wh_cons  : String(d.gudang||'').trim(),
+      kirim    : String(d.alamat||'').trim(),
+      carry_over: true,
+      priority : 2,
+      alasan   : String(d.remark||d.alasan_gagal||'Gagal kirim kemarin'),
+    }));
+
+    if (fn) fn.textContent = `✅ ${carryOverItems.length} DO carry over dimuat`;
+    if (dz) dz.style.background = '#fef9c3';
+    checkReady();
+    console.log(`[CarryOver] ✅ ${carryOverItems.length} DO gagal kemarin dimuat`);
+  } catch(e) {
+    if (fn) fn.textContent = '⚠ Gagal: ' + e.message;
+    if (dz) dz.style.background = '#fef2f2';
+    console.error('[CarryOver]', e);
+  }
+}
+
 function parseCarryOver(raw){
   if(!raw||raw.length<2) return [];
   const hd=raw[0]||[];
@@ -5245,7 +5327,9 @@ function printPickingList(){
         <td>${item.stock_name.slice(0,35)}</td>
         <td>${item.shade||'—'}</td>
         <td>${item.size}</td>
-        <td style="font-family:monospace;font-weight:700;text-align:right">${item.qty}</td>
+        <td style="font-family:monospace;font-weight:700;text-align:right;background:#fef9c3">${item.qty}</td>
+        <td style="text-align:center;background:#dcfce7;border:2px dashed #86efac;min-width:48px"></td>
+        <td style="text-align:center;background:#fef9c3;min-width:40px"></td>
         <td>${item.uom}</td>
         <td style="text-align:center">Stop ${item.stop_order}</td>
         <td style="text-align:center"><span class="pl-check"></span></td>
@@ -5277,7 +5361,7 @@ function printPickingList(){
       <table class="pl-tbl">
         <thead><tr>
           <th style="width:30px">Muat</th><th style="width:70px">DO No</th>
-          <th>Customer</th><th>Nama Barang</th><th>Shade</th><th>Size</th>
+          <th>Customer</th><th>Nama Barang</th><th>Shade</th><th>Size</th><th style="background:#fef9c3">QTY SAP</th><th style="background:#dcfce7">QTY Aktual</th><th style="background:#fef9c3">Selisih</th>
           <th style="width:35px">QTY</th><th style="width:28px">UOM</th>
           <th style="width:35px">Stop</th><th style="width:22px">✓</th>
         </tr></thead>
@@ -6225,6 +6309,146 @@ function downloadVendorMaster(){
 // ═══════════════════════════════════════════════════════
 // UTILS
 // ═══════════════════════════════════════════════════════
+// ── HISTORY ROUTING ──────────────────────────────────────────────────────────
+async function loadHistoryRouting(preset) {
+  const gsUrl = document.getElementById('gs-id')?.value.trim() || localStorage.getItem('gs_url') || '';
+  if (!gsUrl || !gsConnected) { alert('Connect Google Sheets dulu'); return; }
+
+  const inp = document.getElementById('history-date-input');
+  let dateStr = '';
+
+  if (preset === 'today') {
+    const today = new Date();
+    dateStr = today.toLocaleDateString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric'});
+    inp.value = today.toISOString().slice(0,10);
+  } else if (preset === 'yesterday') {
+    const yday = new Date(); yday.setDate(yday.getDate()-1);
+    dateStr = yday.toLocaleDateString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric'});
+    inp.value = yday.toISOString().slice(0,10);
+  } else if (inp.value) {
+    const [y,m,d] = inp.value.split('-');
+    dateStr = `${d}/${m}/${y}`;
+  }
+
+  if (!dateStr) { alert('Pilih tanggal dulu'); return; }
+
+  const el = document.getElementById('history-content');
+  el.innerHTML = '<div style="text-align:center;padding:40px;color:#94a3b8"><div style="font-size:24px">⏳</div><div style="font-size:12px;margin-top:8px">Memuat history...</div></div>';
+
+  try {
+    const res = await fetch(`${gsUrl}?action=getSettlement&date=${encodeURIComponent(dateStr)}`, {redirect:'follow'});
+    const data = await res.json();
+
+    // Juga fetch routing log
+    const res2 = await fetch(`${gsUrl}?action=getRoutingLog&date=${encodeURIComponent(dateStr)}`, {redirect:'follow'});
+    const data2 = await res2.json().catch(()=>({data:[]}));
+
+    renderHistoryContent(dateStr, data?.data||[], data2?.data||[]);
+  } catch(e) {
+    el.innerHTML = `<div style="text-align:center;padding:40px;color:#ef4444">Error: ${e.message}</div>`;
+  }
+}
+
+function renderHistoryContent(dateStr, settlementRows, routingLog) {
+  const el = document.getElementById('history-content');
+
+  if (!routingLog.length && !settlementRows.length) {
+    el.innerHTML = `<div style="text-align:center;padding:40px;color:#94a3b8">
+      <div style="font-size:32px;margin-bottom:8px">📭</div>
+      <div>Tidak ada data untuk ${dateStr}</div>
+    </div>`;
+    return;
+  }
+
+  // Summary dari routing log
+  const totalDO  = routingLog.reduce((a,r)=>a+(r.total_do||0),0);
+  const totalDUS = routingLog.reduce((a,r)=>a+(r.total_qty||0),0);
+  const totalKM  = routingLog.reduce((a,r)=>a+(r.km_est||0),0);
+  const kend     = routingLog.length;
+
+  let html = `
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">
+    ${[
+      ['📦 Total DO', totalDO],
+      ['📫 Total DUS', totalDUS],
+      ['🚛 Kendaraan', kend],
+      ['📍 Est. KM', Math.round(totalKM)+' km'],
+    ].map(([l,v])=>`
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;text-align:center">
+      <div style="font-size:11px;color:#64748b;margin-bottom:4px">${l}</div>
+      <div style="font-size:18px;font-weight:800;color:#0f172a">${v}</div>
+    </div>`).join('')}
+  </div>`;
+
+  if (routingLog.length) {
+    html += `
+    <div style="font-size:12px;font-weight:700;color:#334155;margin-bottom:8px">🚛 Detail Kendaraan</div>
+    <div style="overflow-x:auto;margin-bottom:16px">
+    <table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead>
+        <tr style="background:#1e3a5f;color:#fff">
+          <th style="padding:8px;text-align:left">Plat / Driver</th>
+          <th style="padding:8px">Gudang</th>
+          <th style="padding:8px">DO</th>
+          <th style="padding:8px">DUS</th>
+          <th style="padding:8px">KM Est</th>
+          <th style="padding:8px">Util Berat</th>
+          <th style="padding:8px">ETA</th>
+          <th style="padding:8px">Flag</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${routingLog.map((r,i)=>`
+        <tr style="background:${i%2?'#f8fafc':'#fff'};border-bottom:1px solid #e2e8f0">
+          <td style="padding:7px 8px;font-weight:600">${r.plat||'—'}<br><span style="font-weight:400;color:#64748b;font-size:10px">${r.driver||''}</span></td>
+          <td style="padding:7px 8px;text-align:center">${(r.gudang||'').replace('GUDANG ','')}</td>
+          <td style="padding:7px 8px;text-align:center;font-weight:700">${r.total_do||0}</td>
+          <td style="padding:7px 8px;text-align:center;font-weight:700">${r.total_qty||0}</td>
+          <td style="padding:7px 8px;text-align:center">${r.km_est||0}</td>
+          <td style="padding:7px 8px;text-align:center">
+            <span style="background:${(r.util_berat||0)>90?'#fef2f2':(r.util_berat||0)>70?'#fffbeb':'#f0fdf4'};
+              color:${(r.util_berat||0)>90?'#b91c1c':(r.util_berat||0)>70?'#92400e':'#15803d'};
+              padding:2px 7px;border-radius:10px;font-weight:600">
+              ${r.util_berat||0}%
+            </span>
+          </td>
+          <td style="padding:7px 8px;text-align:center;color:${r.eta_ok==='Y'?'#15803d':'#b91c1c'}">${r.eta_selesai||'—'}</td>
+          <td style="padding:7px 8px;text-align:center;font-size:10px;color:#7c3aed">${r.flag||''}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  }
+
+  // Download button
+  html += `
+  <div style="display:flex;gap:8px;margin-top:8px">
+    <button onclick="downloadHistoryExcel('${dateStr}')"
+      style="padding:7px 14px;background:#059669;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer">
+      ⬇ Export Excel
+    </button>
+  </div>`;
+
+  el.innerHTML = html;
+  // Store for export
+  window._historyData = {dateStr, routingLog, settlementRows};
+}
+
+function downloadHistoryExcel(dateStr) {
+  const d = window._historyData;
+  if (!d || !d.routingLog.length) { alert('Tidak ada data'); return; }
+  const wb = XLSX.utils.book_new();
+  const h  = ['Plat','Driver','Tipe','Gudang','Route No','Total DO','Total DUS','Vol (m³)','KM Est','Util Berat (%)','Util Vol (%)','ETA Selesai','ETA OK','Flag'];
+  const rows = [h, ...d.routingLog.map(r=>[
+    r.plat,r.driver,r.tipe,r.gudang,r.route_no,
+    r.total_do,r.total_qty,r.total_vol,r.km_est,
+    r.util_berat,r.util_vol,r.eta_selesai,r.eta_ok,r.flag
+  ])];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:10},{wch:20},{wch:8},{wch:14},{wch:8},{wch:8},{wch:8},{wch:8},{wch:8},{wch:10},{wch:8},{wch:10},{wch:6},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Routing Log');
+  XLSX.writeFile(wb, 'history_routing_'+dateStr.replace(/\//g,'')+'.xlsx');
+}
+
 function switchTab(tab,btn){
   document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
