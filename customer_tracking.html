@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cek Status Pengiriman — GlobalSentral</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',sans-serif}
+body{background:#f4f7fb;min-height:100vh;display:flex;flex-direction:column}
+.hero{background:linear-gradient(135deg,#0b1f3a 0%,#1e3a5f 100%);
+  padding:32px 20px 40px;text-align:center;color:#fff}
+.hero img{height:44px;margin-bottom:12px;opacity:.9}
+.hero h1{font-size:20px;font-weight:700;margin-bottom:4px}
+.hero .sub{font-size:13px;color:#93c5fd}
+.search-box{max-width:480px;margin:-22px auto 24px;padding:0 16px}
+.search-wrap{background:#fff;border-radius:14px;padding:20px;
+  box-shadow:0 8px 32px rgba(0,0,0,.12)}
+.search-label{font-size:12px;font-weight:700;color:#334155;margin-bottom:6px;
+  text-transform:uppercase;letter-spacing:.06em}
+.search-row{display:flex;gap:8px}
+.search-input{flex:1;padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:10px;
+  font-size:14px;color:#0f172a;font-family:monospace}
+.search-input:focus{outline:none;border-color:#2563eb}
+.search-btn{padding:11px 20px;background:#2563eb;color:#fff;border:none;border-radius:10px;
+  font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
+.search-btn:hover{background:#1d4ed8}
+.result{max-width:480px;margin:0 auto 24px;padding:0 16px}
+
+/* STATUS CARD */
+.status-card{background:#fff;border-radius:14px;padding:20px;
+  box-shadow:0 4px 16px rgba(0,0,0,.08);margin-bottom:12px}
+.sc-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+.do-no{font-size:16px;font-weight:800;color:#0f172a;font-family:monospace}
+.customer{font-size:13px;color:#334155;font-weight:600;margin-top:2px}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:5px 13px;
+  border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+.b-selesai{background:#dcfce7;color:#15803d;border:1.5px solid #86efac}
+.b-process{background:#dbeafe;color:#1d4ed8;border:1.5px solid #93c5fd}
+.b-muat{background:#fef3c7;color:#92400e;border:1.5px solid #fde68a}
+.b-gagal{background:#fee2e2;color:#b91c1c;border:1.5px solid #fca5a5}
+.b-baru{background:#f1f5f9;color:#475569;border:1.5px solid #cbd5e1}
+
+/* PROGRESS STEPS */
+.steps{display:flex;align-items:center;margin:16px 0}
+.step{display:flex;flex-direction:column;align-items:center;flex:1;position:relative}
+.step-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:11px;font-weight:700;z-index:1;
+  border:2px solid #e2e8f0;background:#f1f5f9;color:#94a3b8}
+.step-dot.done{background:#16a34a;border-color:#16a34a;color:#fff}
+.step-dot.active{background:#2563eb;border-color:#2563eb;color:#fff}
+.step-dot.fail{background:#dc2626;border-color:#dc2626;color:#fff}
+.step-label{font-size:9px;color:#94a3b8;margin-top:5px;text-align:center;max-width:54px;line-height:1.3}
+.step-label.done{color:#15803d;font-weight:600}
+.step-label.active{color:#1d4ed8;font-weight:700}
+.step-line{flex:1;height:2px;background:#e2e8f0;margin-top:-14px}
+.step-line.done{background:#16a34a}
+
+/* DETAIL ROWS */
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.detail-item{background:#f8fafc;border-radius:8px;padding:10px 12px}
+.detail-label{font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;
+  letter-spacing:.06em;margin-bottom:3px}
+.detail-val{font-size:13px;font-weight:600;color:#0f172a}
+
+/* ATTEMPTS */
+.attempt-wrap{margin-top:14px;border-top:1px solid #f1f5f9;padding-top:12px}
+.attempt-title{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;
+  letter-spacing:.06em;margin-bottom:8px}
+.attempt-item{display:flex;align-items:center;gap:10px;padding:7px 0;
+  border-bottom:1px solid #f8fafc;font-size:12px}
+.attempt-try{width:48px;font-weight:700;color:#64748b;flex-shrink:0;font-size:10px}
+.attempt-status{flex-shrink:0}
+.attempt-info{color:#64748b;font-size:11px}
+
+/* NOT FOUND */
+.notfound{background:#fff;border-radius:14px;padding:32px 20px;
+  text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.08)}
+.notfound .icon{font-size:36px;margin-bottom:10px}
+.notfound p{font-size:13px;color:#64748b}
+
+.footer{text-align:center;padding:16px;font-size:11px;color:#94a3b8;margin-top:auto}
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+  <img src="https://globalsentral.id/z/data/Logo.avif" alt="GlobalSentral" onerror="this.style.display='none'">
+  <h1>Cek Status Pengiriman</h1>
+  <div class="sub">Masukkan nomor DO untuk melihat status kiriman Anda</div>
+</div>
+
+<!-- SEARCH -->
+<div class="search-box">
+  <div class="search-wrap">
+    <div class="search-label">Nomor DO</div>
+    <div class="search-row">
+      <input class="search-input" id="do-input" type="text" placeholder="Contoh: 261024882"
+        onkeydown="if(event.key==='Enter')search()">
+      <button class="search-btn" onclick="search()">🔍 Cek</button>
+    </div>
+    <div style="font-size:11px;color:#94a3b8;margin-top:8px">
+      Nomor DO tertera di Surat Jalan / invoice pengiriman Anda
+    </div>
+  </div>
+</div>
+
+<!-- RESULT -->
+<div class="result" id="result"></div>
+
+<div class="footer">GlobalSentral Transport · Sistem Tracking Pengiriman</div>
+
+<script>
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzWW4NJXYEZxcG5jiygObB6sitBmuQFi0m22C9vH2Wp2vnchw3lGv99I9E1mJ5uPXChNA/exec";
+
+// Auto-cek dari URL parameter ?do=xxxxxxx
+window.onload = () => {
+  const params = new URLSearchParams(location.search);
+  const doNo   = params.get("do") || params.get("docno") || "";
+  if (doNo) {
+    document.getElementById("do-input").value = doNo;
+    search();
+  }
+};
+
+async function search() {
+  const doNo = document.getElementById("do-input").value.trim();
+  if (!doNo) { alert("Masukkan nomor DO dulu"); return; }
+
+  const el = document.getElementById("result");
+  el.innerHTML = '<div style="text-align:center;padding:32px;color:#94a3b8">⏳ Mencari data...</div>';
+
+  try {
+    const r = await fetch(`${GAS_URL}?action=getSalesView&dateFrom=&dateTo=`, {redirect:"follow"});
+    const d = await r.json();
+    const all  = d.data || [];
+    const item = all.find(x => String(x.doc_no||"").trim() === doNo.trim());
+
+    if (!item) {
+      el.innerHTML = `<div class="notfound">
+        <div class="icon">📦</div>
+        <strong>DO tidak ditemukan</strong>
+        <p style="margin-top:8px">Nomor DO <b>${esc(doNo)}</b> tidak ada dalam sistem hari ini.<br>
+        Pastikan nomor DO sudah benar atau coba besok jika barang baru dikirim.</p>
+      </div>`;
+      return;
+    }
+
+    el.innerHTML = renderResult(item);
+  } catch(e) {
+    el.innerHTML = '<div class="notfound"><div class="icon">⚠️</div><p>Gagal menghubungi server. Coba lagi beberapa saat.</p></div>';
+  }
+}
+
+function renderResult(d) {
+  const statuses = ["Baru","Muat Kargo","On Process","Selesai"];
+  const isFail   = d.status === "Gagal Kirim";
+  const currIdx  = isFail ? 2 : statuses.indexOf(d.status);
+
+  // Status badge
+  const bMap = {
+    "Selesai":"b-selesai","On Process":"b-process",
+    "Muat Kargo":"b-muat","Gagal Kirim":"b-gagal","Baru":"b-baru"
+  };
+  const badge = `<span class="badge ${bMap[d.status]||"b-baru"}">${d.status||"—"}</span>`;
+
+  // Steps
+  const stepLabels = ["Dijadwalkan","Muat Kargo","Dalam Perjalanan",isFail?"Gagal Kirim":"Terkirim"];
+  const steps = stepLabels.map((label, i) => {
+    const done   = i < currIdx;
+    const active = i === currIdx;
+    const fail   = isFail && i === 3;
+    const dotCls = fail?"fail":done?"done":active?"active":"";
+    const lblCls = fail?"fail":done?"done":active?"active":"";
+    const lineCls = i < stepLabels.length-1 ? (done || (active && !isFail) ? "done" : "") : "";
+    const icon   = fail?"✗":done?"✓":active?"▶":"○";
+    return `
+      <div class="step">
+        <div class="step-dot ${dotCls}">${icon}</div>
+        <div class="step-label ${lblCls}">${label}</div>
+      </div>
+      ${i < stepLabels.length-1 ? `<div class="step-line ${lineCls}"></div>` : ""}
+    `;
+  }).join("");
+
+  // Attempts
+  let attemptsHtml = "";
+  if (d.attempts && d.attempts.length > 1) {
+    const tryLabels = ["1st","2nd try","3rd try","4th try","5th try"];
+    attemptsHtml = `<div class="attempt-wrap">
+      <div class="attempt-title">Riwayat Pengiriman (${d.attempts.length} attempt)</div>
+      ${d.attempts.map((a,i) => {
+        const bCls = a.status==="Selesai"?"b-selesai":a.status==="Gagal Kirim"?"b-gagal":"b-process";
+        return `<div class="attempt-item">
+          <span class="attempt-try">${tryLabels[i]||((i+1)+"th try")}</span>
+          <span class="attempt-status"><span class="badge ${bCls}" style="padding:2px 8px">${a.status}</span></span>
+          <span class="attempt-info">${a.tgl_do||""} ${a.alasan_gagal?"· "+a.alasan_gagal:""}</span>
+        </div>`;
+      }).join("")}
+    </div>`;
+  }
+
+  return `<div class="status-card">
+    <div class="sc-header">
+      <div>
+        <div class="do-no">DO: ${esc(d.doc_no)}</div>
+        <div class="customer">${esc(d.customer||"—")}</div>
+      </div>
+      ${badge}
+    </div>
+    <div class="steps">${steps}</div>
+    <div class="detail-grid">
+      <div class="detail-item">
+        <div class="detail-label">Alamat Tujuan</div>
+        <div class="detail-val" style="font-size:11px">${esc((d.alamat||"—").slice(0,60))}</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">Driver</div>
+        <div class="detail-val">${esc(d.driver||"—")}</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">QTY Kirim</div>
+        <div class="detail-val">${d.qty_kirim||0} DUS</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">QTY Diterima</div>
+        <div class="detail-val" style="color:${d.qty_terima>0?"#16a34a":"#94a3b8"}">
+          ${d.qty_terima||0} DUS
+        </div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">Tanggal</div>
+        <div class="detail-val">${esc(d.tgl_terakhir||"—")}</div>
+      </div>
+      <div class="detail-item">
+        <div class="detail-label">Update Terakhir</div>
+        <div class="detail-val" style="font-size:11px">${esc(d.jam_update||"—")}</div>
+      </div>
+    </div>
+    ${attemptsHtml}
+  </div>`;
+}
+
+function esc(s) {
+  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+</script>
+</body>
+</html>
