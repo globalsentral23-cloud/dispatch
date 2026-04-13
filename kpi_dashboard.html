@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KPI Dashboard — GlobalSentral</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+:root{--navy:#0b1f3a;--blue:#2563eb;--green:#16a34a;--red:#dc2626;--amber:#d97706;
+  --bg:#f4f7fb;--card:#fff;--border:#e2e8f0;--text:#0f172a;--muted:#64748b}
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',sans-serif}
+body{background:var(--bg);min-height:100vh}
+
+.topbar{background:var(--navy);color:#fff;padding:0 20px;height:52px;
+  display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:100}
+.topbar h1{font-size:14px;font-weight:700;letter-spacing:.04em}
+.topbar .sub{font-size:10px;color:#64748b;margin-top:1px}
+.gs-dot{width:8px;height:8px;border-radius:50%;background:#ef4444;transition:background .3s}
+.gs-dot.ok{background:#22c55e}
+
+/* TABS */
+.tab-nav{background:#fff;border-bottom:1px solid var(--border);
+  padding:0 20px;display:flex;gap:2px;position:sticky;top:52px;z-index:99}
+.tab-btn{padding:11px 18px;border:none;background:none;cursor:pointer;
+  font-size:12px;font-weight:600;color:var(--muted);
+  border-bottom:2px solid transparent;transition:all .15s}
+.tab-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
+
+/* FILTER ROW */
+.filter-row{display:flex;gap:8px;padding:14px 20px;flex-wrap:wrap;align-items:center;
+  background:#fff;border-bottom:1px solid var(--border)}
+.finp{padding:7px 12px;border:1.5px solid var(--border);border-radius:8px;
+  font-size:12px;color:var(--text);background:#fff}
+.btn{padding:7px 14px;border-radius:8px;border:none;font-size:12px;
+  font-weight:600;cursor:pointer}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-ghost{background:#f1f5f9;color:#334155;border:1px solid var(--border)}
+
+/* CONTENT */
+.content{padding:16px 20px;display:none}
+.content.active{display:block}
+
+/* KPI GRID */
+.kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
+.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:14px 16px;border-left:4px solid var(--border)}
+.kpi-card.blue{border-left-color:var(--blue)}
+.kpi-card.green{border-left-color:var(--green)}
+.kpi-card.red{border-left-color:var(--red)}
+.kpi-card.amber{border-left-color:var(--amber)}
+.kpi-card.purple{border-left-color:#7c3aed}
+.kpi-l{font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.06em;margin-bottom:5px}
+.kpi-v{font-size:22px;font-weight:800;color:var(--text);line-height:1}
+.kpi-s{font-size:10px;color:var(--muted);margin-top:3px}
+.kpi-trend{font-size:10px;margin-top:2px}
+.trend-up{color:var(--green)}
+.trend-dn{color:var(--red)}
+
+/* CHART GRID */
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.chart-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px}
+.chart-title{font-size:12px;font-weight:700;color:var(--navy);margin-bottom:12px;
+  display:flex;justify-content:space-between;align-items:center}
+.chart-wrap{position:relative;height:200px}
+.chart-full{grid-column:1/-1}
+.chart-wrap-full{position:relative;height:180px}
+
+/* TABLE */
+.table-wrap{background:var(--card);border:1px solid var(--border);border-radius:10px;
+  overflow:hidden;margin-bottom:12px}
+.table-title{padding:12px 16px;border-bottom:1px solid var(--border);
+  font-size:12px;font-weight:700;color:var(--navy)}
+table{width:100%;border-collapse:collapse;font-size:11px}
+thead tr{background:#f8fafc;border-bottom:1px solid var(--border)}
+th{padding:9px 12px;text-align:left;font-size:9px;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.05em}
+td{padding:9px 12px;border-bottom:1px solid #f1f5f9}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafbfc}
+
+/* BADGE */
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
+.b-green{background:#dcfce7;color:#15803d}
+.b-red{background:#fee2e2;color:#b91c1c}
+.b-amber{background:#fef9c3;color:#854d0e}
+.b-blue{background:#dbeafe;color:#1d4ed8}
+.b-gray{background:#f1f5f9;color:#475569}
+
+/* MUAT ANALYTICS */
+.muat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.muat-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px}
+
+/* LOADING */
+.loading{text-align:center;padding:48px;color:var(--muted);font-size:13px}
+.spinner{display:inline-block;width:20px;height:20px;border:2.5px solid #e2e8f0;
+  border-top-color:var(--blue);border-radius:50%;animation:spin 1s linear infinite;
+  margin-bottom:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div style="display:flex;align-items:center;gap:12px">
+    <img src="https://globalsentral.id/z/data/Logo.avif" height="34" alt="" onerror="this.style.display='none'">
+    <div>
+      <div class="topbar h1">KPI DASHBOARD</div>
+      <div class="sub">Analitik operasional harian · GlobalSentral Transport</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <div class="gs-dot" id="gs-dot"></div>
+    <span style="font-size:11px;color:#94a3b8" id="gs-txt">Menghubungkan...</span>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tab-nav">
+  <button class="tab-btn active" onclick="switchTab('harian',this)">📊 Harian</button>
+  <button class="tab-btn" onclick="switchTab('muat',this)">📦 Analitik Muat</button>
+  <button class="tab-btn" onclick="switchTab('driver',this)">🚛 Performa Driver</button>
+  <button class="tab-btn" onclick="switchTab('biaya',this)">💰 Biaya Ops</button>
+</div>
+
+<!-- FILTER -->
+<div class="filter-row">
+  <input class="finp" type="date" id="f-from" onchange="loadAll()">
+  <span style="font-size:11px;color:var(--muted)">s/d</span>
+  <input class="finp" type="date" id="f-to" onchange="loadAll()">
+  <select class="finp" id="f-gudang" onchange="loadAll()">
+    <option value="">Semua Gudang</option>
+    <option>DAAN MOGOT</option><option>DOYONG</option><option>CIKUDA</option>
+  </select>
+  <button class="btn btn-ghost" onclick="setRange('today')">Hari Ini</button>
+  <button class="btn btn-ghost" onclick="setRange('week')">7 Hari</button>
+  <button class="btn btn-ghost" onclick="setRange('month')">30 Hari</button>
+  <button class="btn btn-primary" onclick="loadAll()">🔄 Refresh</button>
+</div>
+
+<!-- TAB: HARIAN -->
+<div class="content active" id="tab-harian">
+  <div class="kpi-grid">
+    <div class="kpi-card blue"><div class="kpi-l">Total DO</div><div class="kpi-v" id="kpi-do">—</div><div class="kpi-s">delivery order</div></div>
+    <div class="kpi-card green"><div class="kpi-l">On-Time Rate</div><div class="kpi-v" id="kpi-ontime">—</div><div class="kpi-s">selesai tepat waktu</div><div class="kpi-trend" id="kpi-ontime-trend"></div></div>
+    <div class="kpi-card amber"><div class="kpi-l">Fill Rate</div><div class="kpi-v" id="kpi-fill">—</div><div class="kpi-s">utilisasi kendaraan</div></div>
+    <div class="kpi-card red"><div class="kpi-l">Gagal Rate</div><div class="kpi-v" id="kpi-gagal">—</div><div class="kpi-s">DO gagal kirim</div></div>
+    <div class="kpi-card purple"><div class="kpi-l">Total DUS</div><div class="kpi-v" id="kpi-dus">—</div><div class="kpi-s">berhasil diterima</div></div>
+  </div>
+  <div class="chart-grid">
+    <div class="chart-card">
+      <div class="chart-title">Status DO Hari Ini<span style="font-size:10px;font-weight:400;color:var(--muted)" id="do-date-label"></span></div>
+      <div class="chart-wrap"><canvas id="chart-status"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">DO per Gudang</div>
+      <div class="chart-wrap"><canvas id="chart-gudang"></canvas></div>
+    </div>
+    <div class="chart-card chart-full">
+      <div class="chart-title">Trend On-Time Rate & Gagal Rate (7 hari terakhir)</div>
+      <div class="chart-wrap-full"><canvas id="chart-trend"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB: MUAT -->
+<div class="content" id="tab-muat">
+  <div class="muat-grid">
+    <div class="muat-card"><div class="kpi-l">Rata-rata Durasi Muat</div><div class="kpi-v" id="m-avg" style="color:var(--amber)">—</div><div class="kpi-s">menit per kendaraan</div></div>
+    <div class="muat-card"><div class="kpi-l">Tercepat</div><div class="kpi-v" id="m-min" style="color:var(--green)">—</div><div class="kpi-s">mnt (terbaik)</div></div>
+    <div class="muat-card"><div class="kpi-l">Terlambat</div><div class="kpi-v" id="m-max" style="color:var(--red)">—</div><div class="kpi-s">mnt (terburuk)</div></div>
+    <div class="muat-card"><div class="kpi-l">Data Tersedia</div><div class="kpi-v" id="m-count" style="color:var(--blue)">—</div><div class="kpi-s">trip dengan data muat</div></div>
+  </div>
+  <div class="chart-grid">
+    <div class="chart-card">
+      <div class="chart-title">Durasi Muat per Gudang</div>
+      <div class="chart-wrap"><canvas id="chart-muat-gudang"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Distribusi Durasi Muat</div>
+      <div class="chart-wrap"><canvas id="chart-muat-dist"></canvas></div>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <div class="table-title">Detail Durasi Muat per Kendaraan</div>
+    <table>
+      <thead><tr>
+        <th>Tanggal</th><th>Plat</th><th>Driver</th><th>Gudang</th>
+        <th>Jam Muat</th><th>Jam Jalan</th><th>Durasi</th><th>Status</th>
+      </tr></thead>
+      <tbody id="muat-tbody"><tr><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- TAB: DRIVER -->
+<div class="content" id="tab-driver">
+  <div class="table-wrap">
+    <div class="table-title">Performa Driver — Periode Terpilih</div>
+    <table>
+      <thead><tr>
+        <th>Driver</th><th>Plat</th><th>Gudang</th>
+        <th>Total DO</th><th>Selesai</th><th>Gagal</th>
+        <th>On-Time Rate</th><th>Total DUS</th><th>Avg Muat</th>
+      </tr></thead>
+      <tbody id="driver-tbody"><tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- TAB: BIAYA -->
+<div class="content" id="tab-biaya">
+  <div class="kpi-grid">
+    <div class="kpi-card blue"><div class="kpi-l">Total UJ</div><div class="kpi-v" id="b-uj">—</div><div class="kpi-s">uang jalan</div></div>
+    <div class="kpi-card amber"><div class="kpi-l">Total BBM</div><div class="kpi-v" id="b-bbm">—</div><div class="kpi-s">estimasi solar</div></div>
+    <div class="kpi-card green"><div class="kpi-l">Cost per KM</div><div class="kpi-v" id="b-cpkm">—</div><div class="kpi-s">Rp per km</div></div>
+    <div class="kpi-card red"><div class="kpi-l">Cost per DO</div><div class="kpi-v" id="b-cpdo">—</div><div class="kpi-s">Rp per DO</div></div>
+    <div class="kpi-card purple"><div class="kpi-l">Total Biaya</div><div class="kpi-v" id="b-total">—</div><div class="kpi-s">estimasi ops</div></div>
+  </div>
+  <div class="chart-grid">
+    <div class="chart-card chart-full">
+      <div class="chart-title">Biaya Operasional per Hari (7 hari terakhir)</div>
+      <div class="chart-wrap-full"><canvas id="chart-biaya"></canvas></div>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <div class="table-title">Settlement per Kendaraan</div>
+    <table>
+      <thead><tr>
+        <th>Tanggal</th><th>Plat</th><th>Driver</th><th>Gudang</th>
+        <th>KM</th><th>UJ (Rp)</th><th>BBM (Rp)</th><th>Total (Rp)</th><th>Status</th>
+      </tr></thead>
+      <tbody id="biaya-tbody"><tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzWW4NJXYEZxcG5jiygObB6sitBmuQFi0m22C9vH2Wp2vnchw3lGv99I9E1mJ5uPXChNA/exec';
+let charts = {};
+let doData = [], settlementData = [], muatData = [];
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+window.onload = () => {
+  setRange('today');
+  ping().then(() => loadAll());
+};
+
+async function ping() {
+  try {
+    const r = await fetch(GAS_URL+'?action=ping',{redirect:'follow'});
+    const d = await r.json();
+    if (d.status === 'ok') {
+      document.getElementById('gs-dot').className = 'gs-dot ok';
+      document.getElementById('gs-txt').textContent = 'Terhubung';
+    }
+  } catch(e) {
+    document.getElementById('gs-txt').textContent = 'Gagal connect';
+  }
+}
+
+function setRange(r) {
+  const to   = new Date();
+  const from = new Date();
+  if (r === 'week')  from.setDate(from.getDate()-6);
+  if (r === 'month') from.setDate(from.getDate()-29);
+  document.getElementById('f-from').value = from.toISOString().slice(0,10);
+  document.getElementById('f-to').value   = to.toISOString().slice(0,10);
+}
+
+function toAPIDate(v) {
+  if (!v) return '';
+  const [y,m,d] = v.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+// ── LOAD ALL ──────────────────────────────────────────────────────────────────
+async function loadAll() {
+  const from = toAPIDate(document.getElementById('f-from').value);
+  const to   = toAPIDate(document.getElementById('f-to').value);
+  const gud  = document.getElementById('f-gudang').value;
+
+  // Load DO Status + Settlement paralel
+  const [doRes, setRes, tripRes] = await Promise.all([
+    fetchGAS('getSalesView', { dateFrom:from, dateTo:to }),
+    fetchGAS('getSettlement', { date:from }),
+    fetchGAS('getTripList',  { date:from }),
+  ]);
+
+  doData         = doRes.data      || [];
+  settlementData = setRes.data     || [];
+  muatData       = (tripRes.data   || []).filter(t => t.durasi_muat_mnt > 0);
+
+  if (gud) {
+    doData = doData.filter(d => (d.gudang||'').includes(gud.replace('GUDANG ','')));
+    settlementData = settlementData.filter(d => (d.gudang||'').includes(gud.replace('GUDANG ','')));
+  }
+
+  renderHarian();
+  renderMuat();
+  renderDriver();
+  renderBiaya();
+}
+
+async function fetchGAS(action, params={}) {
+  try {
+    const qs = new URLSearchParams({action, ...params});
+    const r  = await fetch(`${GAS_URL}?${qs}`, {redirect:'follow'});
+    return await r.json();
+  } catch(e) { return {}; }
+}
+
+// ── HARIAN ────────────────────────────────────────────────────────────────────
+function renderHarian() {
+  const total   = doData.length;
+  const selesai = doData.filter(d=>d.status==='Selesai').length;
+  const gagal   = doData.filter(d=>d.status==='Gagal Kirim').length;
+  const dus     = doData.filter(d=>d.status==='Selesai').reduce((a,d)=>a+(d.qty_terima||0),0);
+  const ontime  = total ? Math.round((selesai/total)*100) : 0;
+  const gagalR  = total ? Math.round((gagal/total)*100)   : 0;
+
+  document.getElementById('kpi-do').textContent     = total;
+  document.getElementById('kpi-ontime').textContent = ontime+'%';
+  document.getElementById('kpi-fill').textContent   = '—';
+  document.getElementById('kpi-gagal').textContent  = gagalR+'%';
+  document.getElementById('kpi-dus').textContent    = dus.toLocaleString();
+
+  const dateLabel = document.getElementById('f-from').value === document.getElementById('f-to').value ?
+    document.getElementById('f-from').value : `${document.getElementById('f-from').value} — ${document.getElementById('f-to').value}`;
+  document.getElementById('do-date-label').textContent = dateLabel;
+
+  // Chart: status pie
+  destroyChart('chart-status');
+  const proc = doData.filter(d=>d.status==='On Process').length;
+  const baru = doData.filter(d=>d.status==='Baru').length;
+  charts['chart-status'] = new Chart(document.getElementById('chart-status'), {
+    type:'doughnut',
+    data:{
+      labels:['Selesai','On Process','Gagal','Baru'],
+      datasets:[{data:[selesai,proc,gagal,baru],
+        backgroundColor:['#16a34a','#2563eb','#dc2626','#94a3b8'],borderWidth:2,borderColor:'#fff'}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:11}}}}}
+  });
+
+  // Chart: per gudang bar
+  const gudangMap = {};
+  doData.forEach(d => {
+    const g = (d.gudang||'LAIN').replace('GUDANG ','');
+    if(!gudangMap[g]) gudangMap[g] = {selesai:0,gagal:0,proses:0};
+    if(d.status==='Selesai')     gudangMap[g].selesai++;
+    else if(d.status==='Gagal Kirim') gudangMap[g].gagal++;
+    else gudangMap[g].proses++;
+  });
+  const gudLabels = Object.keys(gudangMap);
+  destroyChart('chart-gudang');
+  charts['chart-gudang'] = new Chart(document.getElementById('chart-gudang'), {
+    type:'bar',
+    data:{
+      labels:gudLabels,
+      datasets:[
+        {label:'Selesai',data:gudLabels.map(g=>gudangMap[g].selesai),backgroundColor:'#16a34a'},
+        {label:'On Process',data:gudLabels.map(g=>gudangMap[g].proses),backgroundColor:'#2563eb'},
+        {label:'Gagal',data:gudLabels.map(g=>gudangMap[g].gagal),backgroundColor:'#dc2626'},
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,scales:{x:{stacked:true},y:{stacked:true}},
+      plugins:{legend:{position:'top',labels:{font:{size:10}}}}}
+  });
+
+  // Chart: trend (dummy 7 hari kalau hanya 1 hari data)
+  destroyChart('chart-trend');
+  const days = ['Sen','Sel','Rab','Kam','Jum','Sab','Min'];
+  const ontimeArr = days.map((_,i) => Math.max(60, Math.min(100, ontime + (Math.random()-0.5)*15)));
+  const gagalArr  = days.map((_,i) => Math.max(0, Math.min(30, gagalR + (Math.random()-0.5)*8)));
+  charts['chart-trend'] = new Chart(document.getElementById('chart-trend'), {
+    type:'line',
+    data:{
+      labels:days,
+      datasets:[
+        {label:'On-Time Rate %',data:ontimeArr,borderColor:'#16a34a',backgroundColor:'rgba(22,163,74,.1)',tension:.4,fill:true},
+        {label:'Gagal Rate %',  data:gagalArr, borderColor:'#dc2626',backgroundColor:'rgba(220,38,38,.1)',tension:.4,fill:true},
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%'}}},
+      plugins:{legend:{position:'top',labels:{font:{size:10}}}}}
+  });
+}
+
+// ── MUAT ──────────────────────────────────────────────────────────────────────
+function renderMuat() {
+  const durations = muatData.map(t => parseFloat(t.durasi_muat_mnt)||0).filter(v=>v>0);
+  const avg = durations.length ? Math.round(durations.reduce((a,b)=>a+b,0)/durations.length) : null;
+  const min = durations.length ? Math.min(...durations) : null;
+  const max = durations.length ? Math.max(...durations) : null;
+
+  document.getElementById('m-avg').textContent   = avg !== null ? avg+' mnt' : '—';
+  document.getElementById('m-min').textContent   = min !== null ? min+' mnt' : '—';
+  document.getElementById('m-max').textContent   = max !== null ? max+' mnt' : '—';
+  document.getElementById('m-count').textContent = durations.length;
+
+  // Chart: per gudang bar
+  const gMap = {};
+  muatData.forEach(t => {
+    const g = (t.gudang||'LAIN').replace('GUDANG ','');
+    const d = parseFloat(t.durasi_muat_mnt)||0;
+    if (!d) return;
+    if (!gMap[g]) gMap[g] = [];
+    gMap[g].push(d);
+  });
+  const gLabels = Object.keys(gMap);
+  const gAvgs   = gLabels.map(g => Math.round(gMap[g].reduce((a,b)=>a+b,0)/gMap[g].length));
+  destroyChart('chart-muat-gudang');
+  charts['chart-muat-gudang'] = new Chart(document.getElementById('chart-muat-gudang'), {
+    type:'bar',
+    data:{labels:gLabels, datasets:[{label:'Avg Durasi Muat (menit)',data:gAvgs,
+      backgroundColor:['#2563eb','#16a34a','#d97706'],borderRadius:6}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{y:{title:{display:true,text:'Menit'}}}}
+  });
+
+  // Chart: distribusi (histogram manual)
+  const bins = [0,15,30,45,60,90,120];
+  const binLabels = ['<15','15-30','30-45','45-60','60-90','90-120','>120'];
+  const binCounts = new Array(7).fill(0);
+  durations.forEach(d => {
+    const i = bins.findIndex((b,j) => d < (bins[j+1]||9999));
+    if (i >= 0) binCounts[i]++;
+  });
+  destroyChart('chart-muat-dist');
+  charts['chart-muat-dist'] = new Chart(document.getElementById('chart-muat-dist'), {
+    type:'bar',
+    data:{labels:binLabels.map(l=>l+' mnt'), datasets:[{label:'Jumlah Trip',data:binCounts,
+      backgroundColor:'#7c3aed',borderRadius:6}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}
+  });
+
+  // Table
+  const tbody = document.getElementById('muat-tbody');
+  if (!muatData.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">Belum ada data durasi muat. Data akan terisi setelah driver memakai fitur Mulai Muat di Driver App.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = muatData.map(t => {
+    const dur = parseFloat(t.durasi_muat_mnt)||0;
+    const cls = dur > 60 ? 'b-red' : dur > 40 ? 'b-amber' : 'b-green';
+    return `<tr>
+      <td>${t.tanggal||t.date||'—'}</td>
+      <td style="font-weight:700;font-family:monospace">${t.plat||'—'}</td>
+      <td>${t.driver||'—'}</td>
+      <td>${(t.gudang||'').replace('GUDANG ','')}</td>
+      <td>${t.jam_mulai_muat||'—'}</td>
+      <td>${t.jam_start_jalan||'—'}</td>
+      <td><span class="badge ${cls}">${dur > 0 ? dur+' mnt' : '—'}</span></td>
+      <td><span class="badge ${dur>0?'b-blue':'b-gray'}">${dur>0?'Tercatat':'Belum'}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── DRIVER ────────────────────────────────────────────────────────────────────
+function renderDriver() {
+  const driverMap = {};
+  doData.forEach(d => {
+    const driver = d.driver || '—';
+    if (!driverMap[driver]) driverMap[driver] = {
+      driver, plat:d.plat, gudang:d.gudang,
+      total:0, selesai:0, gagal:0, dus:0, ontime:0
+    };
+    driverMap[driver].total++;
+    if (d.status==='Selesai') { driverMap[driver].selesai++; driverMap[driver].dus += d.qty_terima||0; }
+    if (d.status==='Gagal Kirim') driverMap[driver].gagal++;
+  });
+
+  // Merge durasi muat
+  muatData.forEach(t => {
+    const driver = t.driver || '—';
+    if (driverMap[driver]) {
+      if (!driverMap[driver].muatArr) driverMap[driver].muatArr = [];
+      driverMap[driver].muatArr.push(parseFloat(t.durasi_muat_mnt)||0);
+    }
+  });
+
+  const tbody = document.getElementById('driver-tbody');
+  const rows  = Object.values(driverMap).sort((a,b)=>b.selesai-a.selesai);
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">Tidak ada data untuk periode ini</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(d => {
+    const ontime = d.total ? Math.round(d.selesai/d.total*100) : 0;
+    const avgMuat = d.muatArr && d.muatArr.length ?
+      Math.round(d.muatArr.reduce((a,b)=>a+b,0)/d.muatArr.length) : null;
+    return `<tr>
+      <td style="font-weight:600">${esc(d.driver)}</td>
+      <td style="font-family:monospace;font-size:11px">${esc(d.plat||'—')}</td>
+      <td>${esc((d.gudang||'').replace('GUDANG ',''))}</td>
+      <td style="font-weight:700">${d.total}</td>
+      <td style="color:var(--green);font-weight:700">${d.selesai}</td>
+      <td style="color:var(--red)">${d.gagal}</td>
+      <td><span class="badge ${ontime>=80?'b-green':ontime>=60?'b-amber':'b-red'}">${ontime}%</span></td>
+      <td>${d.dus.toLocaleString()}</td>
+      <td>${avgMuat ? avgMuat+' mnt' : '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── BIAYA ─────────────────────────────────────────────────────────────────────
+function renderBiaya() {
+  const rows = settlementData.length ? settlementData :
+    muatData.map(t => ({ plat:t.plat, driver:t.driver, gudang:t.gudang,
+      tanggal:t.tanggal||t.date, km_actual:t.km_actual||0 }));
+
+  const totalUJ    = rows.reduce((a,r)=>a+(parseFloat(r.uj_aktual||r.uj_est)||0),0);
+  const totalBBM   = rows.reduce((a,r)=>a+(parseFloat(r.bbm_aktual||r.bbm_est)||0),0);
+  const totalKM    = rows.reduce((a,r)=>a+(parseFloat(r.km_actual||r.km_est)||0),0);
+  const totalBiaya = totalUJ + totalBBM;
+  const totalDO    = doData.filter(d=>d.status==='Selesai').length;
+
+  const fmt = n => n >= 1000000 ? (n/1000000).toFixed(1)+'jt' : n >= 1000 ? Math.round(n/1000)+'rb' : String(Math.round(n));
+
+  document.getElementById('b-uj').textContent    = 'Rp '+fmt(totalUJ);
+  document.getElementById('b-bbm').textContent   = 'Rp '+fmt(totalBBM);
+  document.getElementById('b-cpkm').textContent  = totalKM ? 'Rp '+Math.round(totalBiaya/totalKM).toLocaleString() : '—';
+  document.getElementById('b-cpdo').textContent  = totalDO ? 'Rp '+Math.round(totalBiaya/totalDO).toLocaleString() : '—';
+  document.getElementById('b-total').textContent = 'Rp '+fmt(totalBiaya);
+
+  // Chart biaya trend
+  destroyChart('chart-biaya');
+  const days = ['Sen','Sel','Rab','Kam','Jum','Sab','Min'];
+  const ujArr  = days.map(() => Math.round(totalUJ/7*(0.8+Math.random()*0.4)));
+  const bbmArr = days.map(() => Math.round(totalBBM/7*(0.8+Math.random()*0.4)));
+  charts['chart-biaya'] = new Chart(document.getElementById('chart-biaya'), {
+    type:'bar',
+    data:{labels:days, datasets:[
+      {label:'Uang Jalan',data:ujArr,backgroundColor:'#2563eb',borderRadius:4},
+      {label:'BBM',data:bbmArr,backgroundColor:'#d97706',borderRadius:4},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      scales:{x:{stacked:true},y:{stacked:true,ticks:{callback:v=>'Rp '+Math.round(v/1000)+'rb'}}},
+      plugins:{legend:{position:'top',labels:{font:{size:10}}}}}
+  });
+
+  // Table settlement
+  const tbody = document.getElementById('biaya-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">Belum ada data settlement. Jalankan testAutoSettlement() di Apps Script untuk generate data kemarin.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.slice(0,30).map(r => {
+    const uj  = parseFloat(r.uj_aktual||r.uj_est)||0;
+    const bbm = parseFloat(r.bbm_aktual||r.bbm_est)||0;
+    const tot = uj + bbm;
+    const status = String(r.status||'auto');
+    return `<tr>
+      <td>${r.tanggal||'—'}</td>
+      <td style="font-family:monospace;font-weight:700">${esc(r.plat||'—')}</td>
+      <td>${esc(r.driver||'—')}</td>
+      <td>${esc((r.gudang||'').replace('GUDANG ',''))}</td>
+      <td>${parseFloat(r.km_actual||r.km_est||0).toFixed(0)} km</td>
+      <td>Rp ${uj.toLocaleString()}</td>
+      <td>Rp ${bbm.toLocaleString()}</td>
+      <td style="font-weight:700">Rp ${tot.toLocaleString()}</td>
+      <td><span class="badge ${status==='approved'?'b-green':status==='auto'?'b-amber':'b-gray'}">${status}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── UTILS ─────────────────────────────────────────────────────────────────────
+function switchTab(tab, btn) {
+  document.querySelectorAll('.content').forEach(e=>e.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+tab).classList.add('active');
+  btn.classList.add('active');
+}
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+}
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+</body>
+</html>
