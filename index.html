@@ -628,41 +628,126 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 
 <!-- MODAL: STRUK -->
 <div class="modal-overlay" id="m-struk">
-  <div class="modal-box">
+  <div class="modal-box" style="max-height:90vh;overflow-y:auto">
     <button class="modal-close" onclick="closeModal('m-struk')">×</button>
-    <div class="modal-title">Foto Struk Perjalanan</div>
-    <div class="modal-sub">Struk tol, parkir, dan solar. Yang tidak ada boleh dilewati.</div>
-    <div class="struk-grid">
-      <div class="struk-item">
-        <div class="struk-btn" id="struk-btn-tol">
-          <i class="fas fa-road"></i><span>Tol</span>
-          <input type="file" accept="image/*" capture="environment" onchange="captureStruk('tol',this)">
+    <div class="modal-title">📋 Struk Perjalanan</div>
+    <div class="modal-sub">Isi semua pengeluaran. Yang tidak ada boleh dilewati.</div>
+
+    <!-- ── TOL ─────────────────────────────────────────────── -->
+    <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="font-size:18px">🛣</span>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#0b1f3a">Tol</div>
+          <div style="font-size:10px;color:#64748b">Foto semua struk tol dalam 1 frame</div>
         </div>
-        <div class="struk-lbl">Struk Tol</div>
       </div>
-      <div class="struk-item">
-        <div class="struk-btn" id="struk-btn-parkir">
-          <i class="fas fa-parking"></i><span>Parkir</span>
-          <input type="file" accept="image/*" capture="environment" onchange="captureStruk('parkir',this)">
-        </div>
-        <div class="struk-lbl">Struk Parkir</div>
+      <!-- Foto tol -->
+      <div class="struk-btn" id="struk-btn-tol" style="width:100%;height:90px;margin-bottom:10px;border-radius:10px;border:2px dashed #cbd5e1;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;font-size:12px;color:#64748b;position:relative;overflow:hidden">
+        <i class="fas fa-camera" style="font-size:20px"></i>
+        <span>Foto semua struk tol</span>
+        <input type="file" accept="image/*" capture="environment" onchange="captureStruk('tol',this)"
+          style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
       </div>
-      <div class="struk-item">
-        <div class="struk-btn" id="struk-btn-bensin">
-          <i class="fas fa-gas-pump"></i><span>Solar</span>
-          <input type="file" accept="image/*" capture="environment" onchange="captureStruk('bensin',this)">
+      <!-- Input nominal tol -->
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:#64748b;white-space:nowrap">Total Tol</span>
+        <div style="display:flex;align-items:center;flex:1;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:0 10px">
+          <span style="font-size:12px;color:#94a3b8;margin-right:4px">Rp</span>
+          <input id="nominal-tol" type="number" min="0" step="500" placeholder="0"
+            style="flex:1;border:none;outline:none;font-size:14px;font-weight:600;color:#0b1f3a;padding:9px 0"
+            oninput="updateTotalStruk()">
         </div>
-        <div class="struk-lbl">Solar/Bensin</div>
+      </div>
+      <div style="font-size:10px;color:#94a3b8;margin-top:4px">
+        💡 Tol bisa banyak struk — kumpulkan lalu foto sekaligus dalam 1 gambar
       </div>
     </div>
-    <div class="alert alert-warn" style="margin:12px 0 0">
-      <i class="fas fa-info-circle"></i>
-      Foto diambil langsung dari kamera. Struk yang tidak ada boleh dilewati.
+
+    <!-- ── PARKIR ────────────────────────────────────────────── -->
+    <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="font-size:18px">🅿️</span>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#0b1f3a">Parkir</div>
+          <div style="font-size:10px;color:#64748b">Foto karcis/struk parkir</div>
+        </div>
+      </div>
+      <div class="struk-btn" id="struk-btn-parkir" style="width:100%;height:90px;margin-bottom:10px;border-radius:10px;border:2px dashed #cbd5e1;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;font-size:12px;color:#64748b;position:relative;overflow:hidden">
+        <i class="fas fa-camera" style="font-size:20px"></i>
+        <span>Foto struk parkir</span>
+        <input type="file" accept="image/*" capture="environment" onchange="captureStruk('parkir',this)"
+          style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:#64748b;white-space:nowrap">Total Parkir</span>
+        <div style="display:flex;align-items:center;flex:1;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:0 10px">
+          <span style="font-size:12px;color:#94a3b8;margin-right:4px">Rp</span>
+          <input id="nominal-parkir" type="number" min="0" step="500" placeholder="0"
+            style="flex:1;border:none;outline:none;font-size:14px;font-weight:600;color:#0b1f3a;padding:9px 0"
+            oninput="updateTotalStruk()">
+        </div>
+      </div>
     </div>
-    <button class="btn-submit green" onclick="submitStruk()" style="margin-top:14px">
+
+    <!-- ── SOLAR / BENSIN ────────────────────────────────────── -->
+    <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="font-size:18px">⛽</span>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#0b1f3a">Solar / Bensin</div>
+          <div style="font-size:10px;color:#64748b">Foto struk SPBU</div>
+        </div>
+      </div>
+      <div class="struk-btn" id="struk-btn-bensin" style="width:100%;height:90px;margin-bottom:10px;border-radius:10px;border:2px dashed #cbd5e1;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;font-size:12px;color:#64748b;position:relative;overflow:hidden">
+        <i class="fas fa-camera" style="font-size:20px"></i>
+        <span>Foto struk SPBU</span>
+        <input type="file" accept="image/*" capture="environment" onchange="captureStruk('bensin',this)"
+          style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:#64748b;white-space:nowrap">Nominal Solar</span>
+        <div style="display:flex;align-items:center;flex:1;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:0 10px">
+          <span style="font-size:12px;color:#94a3b8;margin-right:4px">Rp</span>
+          <input id="nominal-bensin" type="number" min="0" step="1000" placeholder="0"
+            style="flex:1;border:none;outline:none;font-size:14px;font-weight:600;color:#0b1f3a;padding:9px 0"
+            oninput="updateTotalStruk()">
+        </div>
+      </div>
+    </div>
+
+    <!-- ── MAKAN / LAIN-LAIN ─────────────────────────────────── -->
+    <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="font-size:18px">🍱</span>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#0b1f3a">Makan & Lain-lain</div>
+          <div style="font-size:10px;color:#64748b">Uang makan, retribusi, dll</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:#64748b;white-space:nowrap">Nominal</span>
+        <div style="display:flex;align-items:center;flex:1;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:0 10px">
+          <span style="font-size:12px;color:#94a3b8;margin-right:4px">Rp</span>
+          <input id="nominal-makan" type="number" min="0" step="1000" placeholder="0"
+            style="flex:1;border:none;outline:none;font-size:14px;font-weight:600;color:#0b1f3a;padding:9px 0"
+            oninput="updateTotalStruk()">
+        </div>
+      </div>
+      <input id="ket-makan" type="text" placeholder="Keterangan (opsional)"
+        style="width:100%;margin-top:8px;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;box-sizing:border-box">
+    </div>
+
+    <!-- ── TOTAL ─────────────────────────────────────────────── -->
+    <div style="background:#0b1f3a;border-radius:12px;padding:14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:13px;font-weight:700;color:#93c5fd">Total Pengeluaran</div>
+      <div id="total-struk-display" style="font-size:18px;font-weight:800;color:#fff">Rp 0</div>
+    </div>
+
+    <button class="btn-submit green" onclick="submitStruk()" style="margin-top:4px;width:100%">
       <i class="fas fa-flag-checkered"></i> Selesai Perjalanan
     </button>
-    <button class="btn-back" onclick="closeModal('m-struk')">Kembali</button>
+    <button class="btn-back" onclick="closeModal('m-struk')" style="width:100%;margin-top:8px">Kembali</button>
   </div>
 </div>
 
@@ -674,7 +759,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 
 <script>
 // ── VERSION CHECK — paksa reload jika ada versi baru di cache ────────────────
-const CURRENT_BUILD = 'v3913-20260414';
+const CURRENT_BUILD = 'v3914-20260414';
 (function(){
   const prev = localStorage.getItem('gst_build');
   if (prev && prev !== CURRENT_BUILD) {
@@ -690,7 +775,7 @@ const CURRENT_BUILD = 'v3913-20260414';
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v3.9.13';
+const APP_VERSION    = 'v3.9.14';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -1842,6 +1927,16 @@ function setPhotoResult(type, b64) {
   if (txt)  txt.textContent='✅ Foto berhasil diambil';
 }
 
+function updateTotalStruk() {
+  const tol    = parseInt(document.getElementById('nominal-tol')?.value)||0;
+  const parkir = parseInt(document.getElementById('nominal-parkir')?.value)||0;
+  const bensin = parseInt(document.getElementById('nominal-bensin')?.value)||0;
+  const makan  = parseInt(document.getElementById('nominal-makan')?.value)||0;
+  const total  = tol + parkir + bensin + makan;
+  const el = document.getElementById('total-struk-display');
+  if (el) el.textContent = 'Rp ' + total.toLocaleString('id-ID');
+}
+
 function captureStruk(type, inputEl) {
   const file=inputEl.files[0]; if(!file)return;
   const reader=new FileReader();
@@ -1849,14 +1944,24 @@ function captureStruk(type, inputEl) {
     const img=new Image();
     img.onload=function(){
       const canvas=document.createElement('canvas');
-      const max=700; let w=img.width,h=img.height;
+      const max=800; let w=img.width,h=img.height;
       if(w>max){h=h*(max/w);w=max;}
       canvas.width=w; canvas.height=h;
       canvas.getContext('2d').drawImage(img,0,0,w,h);
-      strukPhotos[type]=canvas.toDataURL('image/jpeg',0.72);
+      strukPhotos[type]=canvas.toDataURL('image/jpeg',0.75);
       const btn=document.getElementById('struk-btn-'+type);
-      if(btn){btn.classList.add('done');
-        btn.innerHTML=`<img src="${strukPhotos[type]}"><i class="fas fa-check" style="position:relative;z-index:1;color:#fff;font-size:20px;text-shadow:0 0 8px #000"></i>`;}
+      if(btn){
+        // Tampilkan thumbnail foto + checkmark + tombol ulang
+        btn.style.position='relative';
+        btn.innerHTML=`
+          <img src="${strukPhotos[type]}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:10px">
+          <div style="position:absolute;inset:0;background:rgba(0,0,0,.35);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px">
+            <i class="fas fa-check-circle" style="color:#4ade80;font-size:24px"></i>
+            <span style="color:#fff;font-size:10px;font-weight:600">Foto OK · Tap untuk ganti</span>
+          </div>
+          <input type="file" accept="image/*" capture="environment" onchange="captureStruk('${type}',this)"
+            style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">`;
+      }
     };
     img.src=e.target.result;
   };
@@ -1968,16 +2073,30 @@ async function submitGagal() {
 async function submitStruk() {
   // Langsung execute — confirm() bisa silent fail di Chrome Android
 
+  // Ambil nominal dari form
+  const nomTol    = parseInt(document.getElementById('nominal-tol')?.value)||0;
+  const nomParkir = parseInt(document.getElementById('nominal-parkir')?.value)||0;
+  const nomBensin = parseInt(document.getElementById('nominal-bensin')?.value)||0;
+  const nomMakan  = parseInt(document.getElementById('nominal-makan')?.value)||0;
+  const ketMakan  = document.getElementById('ket-makan')?.value||'';
+  const totalStruk = nomTol + nomParkir + nomBensin + nomMakan;
+
   const payload = {
-    action      : 'submitStruk',
-    plat        : driverState.plat,
-    driver      : driverState.driver,
-    date        : driverState.date,
-    km_total    : tripState.km_total.toFixed(1),
-    foto_tol    : strukPhotos.tol    || null,
-    foto_parkir : strukPhotos.parkir || null,
-    foto_bensin : strukPhotos.bensin || null,
-    timestamp   : new Date().toISOString(),
+    action        : 'submitStruk',
+    plat          : driverState.plat,
+    driver        : driverState.driver,
+    date          : driverState.date,
+    km_total      : tripState.km_total.toFixed(1),
+    foto_tol      : strukPhotos.tol    || null,
+    foto_parkir   : strukPhotos.parkir || null,
+    foto_bensin   : strukPhotos.bensin || null,
+    nominal_tol   : nomTol,
+    nominal_parkir: nomParkir,
+    nominal_bensin: nomBensin,
+    nominal_makan : nomMakan,
+    ket_makan     : ketMakan,
+    total_struk   : totalStruk,
+    timestamp     : new Date().toISOString(),
   };
 
   showSubmitOverlay('Menutup perjalanan...');
