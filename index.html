@@ -696,8 +696,13 @@ const MAX_NOTIF      = 50;
 
 // Runtime GAS URL
 const _gasParam = new URLSearchParams(location.search).get('gas');
-let   GAS_URL   = _gasParam || localStorage.getItem('gps_gas_url') || '';
-if (_gasParam) localStorage.setItem('gps_gas_url', _gasParam);
+// GAS URL hardcoded - update ini jika deploy Apps Script baru
+const _FIXED_GAS_URL = 'https://script.google.com/macros/s/AKfycbzWW4NJXYEZxcG5jiygObB6sitBmuQFi0m22C9vH2Wp2vnchw3lGv99I9E1mJ5uPXChNA/exec';
+let   GAS_URL   = _gasParam || _FIXED_GAS_URL;
+// Selalu update localStorage ke URL terbaru
+localStorage.setItem('gps_gas_url', GAS_URL);
+if (_gasParam) console.log('[GAS] URL dari WA Blast parameter');
+else console.log('[GAS] URL dari hardcoded default');
 
 // Driver state (from URL or localStorage)
 const driverState = {
