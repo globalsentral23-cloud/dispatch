@@ -674,7 +674,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 
 <script>
 // ── VERSION CHECK — paksa reload jika ada versi baru di cache ────────────────
-const CURRENT_BUILD = 'v393-20260414';
+const CURRENT_BUILD = 'v394-20260414';
 (function(){
   const prev = localStorage.getItem('gst_build');
   if (prev && prev !== CURRENT_BUILD) {
@@ -690,7 +690,7 @@ const CURRENT_BUILD = 'v393-20260414';
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v3.9.3';
+const APP_VERSION    = 'v3.9.4';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -1784,9 +1784,11 @@ function checkAllDone() {
 // ═══════════════════════════════════════════════════════
 async function gasGet(action, params={}, timeoutMs=35000) {
   const url = GAS_URL || localStorage.getItem('gps_gas_url');
-  if (!url) { console.log('[NO GAS]', action, params); return null; }
-  const qs = new URLSearchParams({action, ...params});
-  // Timeout controller — batas tunggu 15 detik
+  if (!url) {
+    if (action === 'getDriverTasks') return await gvizFallback(params);
+    return null;
+  }
+  const qs   = new URLSearchParams({action, ...params});
   const ctrl = new AbortController();
   const tid  = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -1797,17 +1799,80 @@ async function gasGet(action, params={}, timeoutMs=35000) {
     clearTimeout(tid);
     if (e.name === 'AbortError') {
       console.warn('[gasGet] TIMEOUT:', action, timeoutMs+'ms');
-      return { error:'timeout', message:'Server tidak merespons dalam '+Math.round(timeoutMs/1000)+' detik' };
+      if (action === 'getDriverTasks') {
+        console.log('[gasGet] Apps Script timeout — switching to direct Sheets fallback...');
+        return await gvizFallback(params);
+      }
+      return { error:'timeout', message:'Server tidak merespons ('+Math.round(timeoutMs/1000)+'s)' };
     }
-    console.error('gasGet', action, e);
+    console.error('gasGet error:', action, e.message);
     return null;
   }
 }
 
-// ── FIX: POST (no-cors) untuk payload besar (foto base64) ────────────────────
-// GET params tidak bisa menampung foto (URL limit ~2KB, foto >50KB)
-// no-cors POST: data terkirim ke Apps Script, response tidak terbaca (opaque)
-// Apps Script harus handle di doPost() untuk action ini
+// ── GVIZ FALLBACK: Baca DO Status langsung dari Google Sheets ─────────────────
+// Aktif jika Apps Script timeout atau tidak ada GAS URL
+const _SS_FALLBACK = '1gvUU48LZkYyRCaNJ8ktPuvR_A1cNkL-B4Zk4yL9dLRA';
+async function gvizFallback(params) {
+  const ssId = _SS_FALLBACK || localStorage.getItem('gps_ss_id');
+  if (!ssId) { console.warn('[gviz] No Spreadsheet ID'); return null; }
+  try {
+    const plat = String(params.plat||'').trim().toUpperCase();
+    // Encode query: cari baris dimana kolom B (Plat) = plat
+    const tq  = encodeURIComponent("SELECT * WHERE B = '" + plat + "'");
+    const url = 'https://docs.google.com/spreadsheets/d/' + ssId +
+      '/gviz/tq?tqx=out:json&sheet=DO%20Status&tq=' + tq;
+    console.log('[gviz] Fetching direct from Sheets for plat:', plat);
+    const r   = await fetch(url, {redirect:'follow'});
+    const txt = await r.text();
+    // gviz returns: google.visualization.Query.setResponse({...})
+    const json = JSON.parse(txt.replace(/^[^(]+\(/, '').replace(/\);?$/, ''));
+    if (!json.table || !json.table.rows || !json.table.rows.length) {
+      return { status:'ok', tasks:[], count:0, source:'gviz_empty' };
+    }
+    const cols = (json.table.cols||[]).map(c => String(c.label||'').toLowerCase());
+    const ci = {
+      do_date : cols.findIndex(c=>c.includes('tanggal')||c==='a'),
+      plat    : cols.findIndex(c=>c==='plat'||c==='b'),
+      driver  : cols.findIndex(c=>c==='driver'||c==='c'),
+      gudang  : cols.findIndex(c=>c.includes('gudang')||c==='d'),
+      doc_no  : cols.findIndex(c=>c.includes('do no')||c==='e'),
+      customer: cols.findIndex(c=>c.includes('customer')||c==='f'),
+      alamat  : cols.findIndex(c=>c.includes('alamat')||c==='g'),
+      produk  : cols.findIndex(c=>c.includes('produk')||c==='h'),
+      qty     : cols.findIndex(c=>c.includes('qty')||c==='i'),
+      status  : cols.findIndex(c=>c==='status'||c==='j'),
+      jam_upd : cols.findIndex(c=>c.includes('jam')||c==='k'),
+    };
+    const normDate = d => String(d||'').replace(/\D/g,'');
+    const today = new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric'});
+    const todayNorm = normDate(today).slice(0,6);
+    const get = (row, i) => i >= 0 && row.c[i] ? String(row.c[i].v||'') : '';
+    const tasks = json.table.rows
+      .filter(row => normDate(get(row, ci.do_date)).slice(0,6) === todayNorm)
+      .map(row => ({
+        do_date   : get(row, ci.do_date),
+        plat      : get(row, ci.plat),
+        driver    : get(row, ci.driver),
+        gudang    : get(row, ci.gudang),
+        doc_no    : get(row, ci.doc_no),
+        customer  : get(row, ci.customer),
+        alamat    : get(row, ci.alamat),
+        produk    : get(row, ci.produk),
+        qty       : parseFloat(get(row, ci.qty))||0,
+        status    : get(row, ci.status)||'Baru',
+        jam_update: get(row, ci.jam_upd),
+        remark    : '',
+      }));
+    console.log('[gviz] ✅ ' + tasks.length + ' tugas hari ini via Sheets langsung');
+    return { status:'ok', tasks, count:tasks.length, source:'gviz_fallback' };
+  } catch(e) {
+    console.error('[gviz] Error:', e.message);
+    return null;
+  }
+}
+
+
 async function gasPost(payload) {
   const url = GAS_URL || localStorage.getItem('gps_gas_url');
 
