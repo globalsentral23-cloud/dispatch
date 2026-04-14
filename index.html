@@ -674,7 +674,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 
 <script>
 // ── VERSION CHECK — paksa reload jika ada versi baru di cache ────────────────
-const CURRENT_BUILD = 'v3910-20260414';
+const CURRENT_BUILD = 'v3911-20260414';
 (function(){
   const prev = localStorage.getItem('gst_build');
   if (prev && prev !== CURRENT_BUILD) {
@@ -690,7 +690,7 @@ const CURRENT_BUILD = 'v3910-20260414';
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v3.9.10';
+const APP_VERSION    = 'v3.9.11';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -1103,7 +1103,44 @@ async function loadTasks(showSpinner = true) {
     }
   }
 
-  document.getElementById('task-list').innerHTML = globalMuatHTML + allTasks.map(t => buildCard(t)).join('');
+  // ── Summary bar: tampil jika semua DO sudah selesai/gagal ─────────────────
+  const doneTasks  = allTasks.filter(t => t.status==='Selesai'||t.status==='Done');
+  const failTasks  = allTasks.filter(t => t.status==='Gagal Kirim');
+  const activeDO2  = allTasks.filter(t => t.status==='Baru'||t.status==='Muat Kargo'||t.status==='On Process');
+  const allDone    = allTasks.length > 0 && activeDO2.length === 0;
+
+  let summaryHTML = '';
+  if (allDone) {
+    const selesaiCount = doneTasks.length;
+    const gagalCount   = failTasks.length;
+    const allSuccess   = gagalCount === 0;
+    summaryHTML = `
+      <div style="margin-bottom:14px;padding:16px;border-radius:14px;text-align:center;
+        background:${allSuccess?'#f0fdf4':'#fffbeb'};
+        border:2px solid ${allSuccess?'#16a34a':'#d97706'}">
+        <div style="font-size:28px;margin-bottom:6px">${allSuccess?'🎉':'✅'}</div>
+        <div style="font-size:15px;font-weight:800;color:${allSuccess?'#15803d':'#92400e'}">
+          ${allSuccess?'Semua DO Selesai!':'Tugas Selesai'}
+        </div>
+        <div style="font-size:12px;color:#64748b;margin-top:4px">
+          ✓ ${selesaiCount} DO berhasil dikirim
+          ${gagalCount>0?`&nbsp;·&nbsp;✗ ${gagalCount} DO gagal`:''}
+        </div>
+        ${gagalCount>0?`
+          <div style="font-size:11px;color:#d97706;margin-top:6px">
+            DO gagal akan masuk carry over besok
+          </div>`:''
+        }
+        <button onclick="doEndTrip()"
+          style="margin-top:12px;padding:12px 32px;background:#0b1f3a;color:#fff;
+            border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;
+            width:100%">
+          🏁 Selesai — Kembali ke Gudang
+        </button>
+      </div>`;
+  }
+
+  document.getElementById('task-list').innerHTML = summaryHTML + globalMuatHTML + allTasks.map(t => buildCard(t)).join('');
 }
 
 function buildCard(t) {
@@ -1460,6 +1497,51 @@ function renderHistoryContent(tasks, dateStr) {
 // ═══════════════════════════════════════════════════════
 
 // ── MULAI MUAT KARGO ──────────────────────────────────────────────────────────
+
+
+// ── END TRIP: driver tap selesai kembali ke gudang ───────────────────────────
+async function doEndTrip() {
+  const now    = new Date();
+  const jamEnd = now.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+
+  // Kirim endTrip ke Apps Script
+  try {
+    const url = GAS_URL || localStorage.getItem('gps_gas_url');
+    if (url) {
+      fetch(url, {
+        method:'POST', mode:'no-cors',
+        headers:{'Content-Type':'text/plain'},
+        body: JSON.stringify({
+          action   : 'endTrip',
+          plat     : driverState.plat,
+          driver   : driverState.driver,
+          date     : driverState.date,
+          end_time : jamEnd,
+          km_total : tripState.km_total || 0,
+          lat      : tripState.last_pos?.lat || 0,
+          lng      : tripState.last_pos?.lng || 0,
+        }),
+      }).catch(()=>{});
+    }
+  } catch(e) {}
+
+  // Hapus localStorage muat hari ini
+  const muatKey = `muat_${driverState.plat}_${driverState.date}`;
+  localStorage.removeItem(muatKey);
+
+  // Tampilkan pesan selesai
+  document.getElementById('task-list').innerHTML = `
+    <div style="text-align:center;padding:48px 24px">
+      <div style="font-size:48px;margin-bottom:12px">🏁</div>
+      <div style="font-size:18px;font-weight:800;color:#0b1f3a">Terima Kasih!</div>
+      <div style="font-size:13px;color:#64748b;margin-top:8px">
+        Tugas hari ini selesai · ${jamEnd}
+      </div>
+      <div style="font-size:12px;color:#94a3b8;margin-top:6px">
+        Silakan kembali ke gudang dan serahkan dokumen
+      </div>
+    </div>`;
+}
 
 // ── GLOBAL MUAT: satu tombol untuk semua DO ──────────────────────────────────
 async function submitMuatKargoAll() {
