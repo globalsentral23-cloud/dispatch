@@ -674,7 +674,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 
 <script>
 // ── VERSION CHECK — paksa reload jika ada versi baru di cache ────────────────
-const CURRENT_BUILD = 'v399-20260414';
+const CURRENT_BUILD = 'v3910-20260414';
 (function(){
   const prev = localStorage.getItem('gst_build');
   if (prev && prev !== CURRENT_BUILD) {
@@ -690,7 +690,7 @@ const CURRENT_BUILD = 'v399-20260414';
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v3.9.9';
+const APP_VERSION    = 'v3.9.10';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -1122,12 +1122,8 @@ function buildCard(t) {
 
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.alamat||'')}`;
 
-  // isMuat: semua tugas aktif sudah berstatus Muat Kargo → tampilkan tombol START JALAN
-  const isMuat = currentTasks.length > 0 &&
-    currentTasks.every(task =>
-      task.status === 'Muat Kargo' || task.status === 'Selesai' ||
-      task.status === 'Gagal Kirim' || task.status === 'Batal'
-    ) && t.status === 'Muat Kargo';
+  // isMuat: DO ini status Muat Kargo → tampilkan tombol START JALAN
+  const isMuat = t.status === 'Muat Kargo';
 
   const actions = isMuat
     ? `<div class="action-row">
