@@ -674,7 +674,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 
 <script>
 // ── VERSION CHECK — paksa reload jika ada versi baru di cache ────────────────
-const CURRENT_BUILD = 'v3912-20260414';
+const CURRENT_BUILD = 'v3913-20260414';
 (function(){
   const prev = localStorage.getItem('gst_build');
   if (prev && prev !== CURRENT_BUILD) {
@@ -690,7 +690,7 @@ const CURRENT_BUILD = 'v3912-20260414';
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v3.9.12';
+const APP_VERSION    = 'v3.9.13';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -1106,8 +1106,13 @@ async function loadTasks(showSpinner = true) {
   // ── Summary bar: tampil jika semua DO sudah selesai/gagal ─────────────────
   const doneTasks  = allTasks.filter(t => t.status==='Selesai'||t.status==='Done');
   const failTasks  = allTasks.filter(t => t.status==='Gagal Kirim');
-  const activeDO2  = allTasks.filter(t => t.status==='Baru'||t.status==='Muat Kargo'||t.status==='On Process');
-  const allDone    = allTasks.length > 0 && activeDO2.length === 0;
+  const activeDO2  = allTasks.filter(t =>
+    t.status==='Baru' || t.status==='New' ||
+    t.status==='Muat Kargo' || t.status==='On Process');
+  // allDone: hanya jika ada DO dan semua sudah terminal (selesai/gagal/batal)
+  // Jika ada DO baru masuk → allDone = false → summary hilang
+  const allDone    = allTasks.length > 0 && activeDO2.length === 0 &&
+    (doneTasks.length + failTasks.length) > 0;
 
   let summaryHTML = '';
   if (allDone) {
@@ -1141,6 +1146,14 @@ async function loadTasks(showSpinner = true) {
   }
 
   document.getElementById('task-list').innerHTML = summaryHTML + globalMuatHTML + allTasks.map(t => buildCard(t)).join('');
+
+  // Jika ada DO baru masuk saat semua sudah selesai → scroll ke atas otomatis
+  if (activeDO2.length > 0 && !summaryHTML) {
+    setTimeout(() => {
+      const firstNew = document.querySelector('.do-card');
+      if (firstNew) firstNew.scrollIntoView({behavior:'smooth', block:'start'});
+    }, 200);
+  }
 }
 
 function buildCard(t) {
@@ -1150,7 +1163,7 @@ function buildCard(t) {
   const isFail = t.status==='Gagal Kirim';
   const isBatal= t.status==='Batal';
 
-  const badge = isNew  ? '<span class="do-badge badge-baru">★ Baru</span>'
+  const badge = isNew  ? '<span class="do-badge badge-baru" style="animation:pulse 1.5s infinite">★ Baru</span>'
               : isProc ? '<span class="do-badge badge-process">🚚 On Process</span>'
               : isDone ? '<span class="do-badge badge-selesai">✓ Selesai</span>'
               : isFail ? '<span class="do-badge badge-gagal">✗ Gagal</span>'
