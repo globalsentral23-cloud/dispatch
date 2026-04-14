@@ -674,7 +674,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 
 <script>
 // ── VERSION CHECK — paksa reload jika ada versi baru di cache ────────────────
-const CURRENT_BUILD = 'v397-20260414';
+const CURRENT_BUILD = 'v398-20260414';
 (function(){
   const prev = localStorage.getItem('gst_build');
   if (prev && prev !== CURRENT_BUILD) {
@@ -690,7 +690,7 @@ const CURRENT_BUILD = 'v397-20260414';
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v3.9.7';
+const APP_VERSION    = 'v3.9.8';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -1061,7 +1061,48 @@ async function loadTasks(showSpinner = true) {
     }
   });
 
-  document.getElementById('task-list').innerHTML = allTasks.map(t => buildCard(t)).join('');
+  // ── Render: Global Muat Button + DO cards ─────────────────────────────────
+  const muatKey2  = `muat_${driverState.plat}_${driverState.date}`;
+  const muatLocal2 = JSON.parse(localStorage.getItem(muatKey2)||'{}');
+  const anyMuat   = Object.values(muatLocal2).some(m => m.status === 'Muat Kargo');
+  const muatJam   = anyMuat ? (Object.values(muatLocal2)[0]||{}).jam : null;
+
+  // Hitung apakah semua DO aktif (Baru/Muat Kargo) sudah selesai
+  const activeDOs = allTasks.filter(t => t.status==='Baru'||t.status==='Muat Kargo'||t.status==='On Process');
+
+  // Global Muat Button HTML
+  let globalMuatHTML = '';
+  if (activeDOs.length > 0) {
+    if (anyMuat || allTasks.some(t => t.status==='Muat Kargo')) {
+      // Sudah muat — tampilkan freeze badge
+      const jam = muatJam || allTasks.find(t=>t.status==='Muat Kargo')?.jam_update || '';
+      globalMuatHTML = `
+        <div style="margin:0 0 12px 0;background:#fef3c7;border:2px solid #f59e0b;
+          border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px">
+          <span style="font-size:24px">📦</span>
+          <div>
+            <div style="font-size:13px;font-weight:800;color:#92400e">Muat Kargo Dimulai</div>
+            <div style="font-size:11px;color:#b45309;margin-top:2px">Jam: ${jam} · ${allTasks.filter(t=>t.status==='Muat Kargo').length} DO dalam proses muat</div>
+          </div>
+          <span style="margin-left:auto;font-size:18px">✓</span>
+        </div>`;
+    } else {
+      // Belum muat — tampilkan tombol global
+      globalMuatHTML = `
+        <button onclick="submitMuatKargoAll()"
+          style="width:100%;padding:16px;margin-bottom:12px;
+            background:#d97706;color:#fff;border:none;border-radius:12px;
+            font-size:15px;font-weight:800;cursor:pointer;
+            display:flex;align-items:center;justify-content:center;gap:10px;
+            box-shadow:0 4px 12px rgba(217,119,6,.35)">
+          <span style="font-size:20px">📦</span>
+          Mulai Muat Kargo
+          <span style="font-size:11px;font-weight:400;opacity:.85">(${activeDOs.length} DO)</span>
+        </button>`;
+    }
+  }
+
+  document.getElementById('task-list').innerHTML = globalMuatHTML + allTasks.map(t => buildCard(t)).join('');
 }
 
 function buildCard(t) {
@@ -1094,11 +1135,7 @@ function buildCard(t) {
         </button>
        </div>`
     : isNew
-    ? `<div style="padding:0 14px 12px">
-        <button class="btn-muat" onclick="submitMuatKargo('${escHtml(t.doc_no)}','${escHtml(t.customer||'')}')">
-          📦 Mulai Muat Kargo
-        </button>
-       </div>`
+    ? '' // Tombol muat ada di Global Muat Button (di atas semua DO)
     : isProc
     ? `<div class="action-row">
         <button class="btn-selesai" onclick="openSelesai('${escHtml(t.doc_no)}',${t.qty||0},'${escHtml(t.customer||'')}')">
@@ -1426,6 +1463,63 @@ function renderHistoryContent(tasks, dateStr) {
 // ═══════════════════════════════════════════════════════
 
 // ── MULAI MUAT KARGO ──────────────────────────────────────────────────────────
+
+// ── GLOBAL MUAT: satu tombol untuk semua DO ──────────────────────────────────
+async function submitMuatKargoAll() {
+  const now     = new Date();
+  const jamMuat = now.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const muatTs  = now.toISOString();
+
+  // Simpan ke localStorage untuk semua DO aktif
+  const muatKey = `muat_${driverState.plat}_${driverState.date}`;
+  let muatData  = JSON.parse(localStorage.getItem(muatKey)||'{}');
+
+  const doNos = currentTasks
+    .filter(t => t.status === 'Baru' || t.status === 'New')
+    .map(t => t.doc_no);
+
+  if (doNos.length === 0) return;
+
+  // Update semua DO di memory + localStorage
+  doNos.forEach(docNo => {
+    muatData[docNo] = { jam: jamMuat, iso: muatTs, status: 'Muat Kargo' };
+    const taskIdx = currentTasks.findIndex(t => t.doc_no === docNo);
+    if (taskIdx >= 0) {
+      currentTasks[taskIdx].status     = 'Muat Kargo';
+      currentTasks[taskIdx].jam_update = jamMuat;
+    }
+  });
+  localStorage.setItem(muatKey, JSON.stringify(muatData));
+
+  // Kirim ke Apps Script (fire & forget) — semua DO sekaligus
+  const payload = {
+    action      : 'submitMuatKargo',
+    doc_no      : doNos.join(','), // multi-DO
+    plat        : driverState.plat,
+    driver      : driverState.driver,
+    do_date     : driverState.date,
+    jam_muat    : jamMuat,
+    jam_muat_iso: muatTs,
+    lat         : tripState.last_pos?.lat || 0,
+    lng         : tripState.last_pos?.lng || 0,
+  };
+  try {
+    const url = GAS_URL || localStorage.getItem('gps_gas_url');
+    if (url) {
+      fetch(url, {
+        method : 'POST',
+        mode   : 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body   : JSON.stringify(payload),
+      }).catch(e => console.warn('[MuatAll] POST error:', e));
+    }
+  } catch(e) { console.warn('[MuatAll] error:', e); }
+
+  // Re-render semua card
+  await sleep(300);
+  await loadTasks(false);
+}
+
 async function submitMuatKargo(docNo, customer) {
   // Langsung execute tanpa confirm() — confirm bisa silent fail di Chrome Android
   const now     = new Date();
