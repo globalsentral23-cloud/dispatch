@@ -674,7 +674,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v3.9.1';
+const APP_VERSION    = 'v3.9.2';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -900,6 +900,46 @@ function updateKMDisplay() {
 // ═══════════════════════════════════════════════════════
 // TASK LOADING & RENDERING
 // ═══════════════════════════════════════════════════════
+
+async function warmupAndLoad() {
+  if (!GAS_URL && !localStorage.getItem('gps_gas_url')) {
+    await loadTasks(false);
+    return;
+  }
+  // Tampilkan pesan warmup
+  const taskEl = document.getElementById('task-list');
+  if (taskEl) taskEl.innerHTML =
+    '<div class="empty-state">' +
+    '<i class="fas fa-server" style="font-size:28px;color:#2563eb;margin-bottom:8px"></i>' +
+    '<p style="color:#2563eb;font-weight:600;margin-bottom:4px">Menghubungkan ke server...</p>' +
+    '<p style="font-size:11px;color:#64748b;max-width:240px;text-align:center">' +
+    'Normal 15-30 detik saat pertama dibuka. Harap tunggu.</p>' +
+    '<div style="width:200px;height:4px;background:#e2e8f0;border-radius:4px;margin-top:12px;overflow:hidden">' +
+    '<div id="warmup-bar" style="width:0%;height:100%;background:#2563eb;border-radius:4px;transition:width 0.5s"></div>' +
+    '</div></div>';
+
+  // Animasi progress bar selama warmup
+  let pct = 0;
+  const barEl = () => document.getElementById('warmup-bar');
+  const barTimer = setInterval(() => {
+    pct = Math.min(pct + 3, 90);
+    const b = barEl();
+    if (b) b.style.width = pct + '%';
+  }, 900);
+
+  // Ping untuk wake up Apps Script
+  await gasGet('ping', {}, 35000);
+  await sleep(500);
+
+  clearInterval(barTimer);
+  const b = barEl();
+  if (b) b.style.width = '100%';
+  await sleep(300);
+
+  // Load tugas setelah server warm
+  await loadTasks(true);
+}
+
 let _loadRetryCount = 0;
 async function loadTasks(showSpinner = true) {
   if (showSpinner) {
@@ -1363,7 +1403,8 @@ async function startJob(docNo) {
 
   // Update snapshot immediately to avoid false change detection
   lastTasksSnap[docNo] = 'On Process';
-  await loadTasks(false);
+  // Warmup Apps Script sebelum load tugas
+  await warmupAndLoad();
 }
 
 async function confirmBatal(docNo) {
@@ -1716,7 +1757,7 @@ function checkAllDone() {
 // ═══════════════════════════════════════════════════════
 // GAS COMMUNICATION
 // ═══════════════════════════════════════════════════════
-async function gasGet(action, params={}, timeoutMs=15000) {
+async function gasGet(action, params={}, timeoutMs=35000) {
   const url = GAS_URL || localStorage.getItem('gps_gas_url');
   if (!url) { console.log('[NO GAS]', action, params); return null; }
   const qs = new URLSearchParams({action, ...params});
