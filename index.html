@@ -674,7 +674,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 
 <script>
 // ── VERSION CHECK — paksa reload jika ada versi baru di cache ────────────────
-const CURRENT_BUILD = 'v395-20260414';
+const CURRENT_BUILD = 'v396-20260414';
 (function(){
   const prev = localStorage.getItem('gst_build');
   if (prev && prev !== CURRENT_BUILD) {
@@ -690,7 +690,7 @@ const CURRENT_BUILD = 'v395-20260414';
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v3.9.5';
+const APP_VERSION    = 'v3.9.6';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -1413,11 +1413,66 @@ function renderHistoryContent(tasks, dateStr) {
 // ═══════════════════════════════════════════════════════
 // JOB ACTIONS
 // ═══════════════════════════════════════════════════════
+
+// ── MULAI MUAT KARGO ──────────────────────────────────────────────────────────
+async function submitMuatKargo(docNo, customer) {
+  // Langsung execute tanpa confirm() — confirm bisa silent fail di Chrome Android
+  const now    = new Date();
+  const jamMuat = now.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const muatTs  = now.toISOString();
+
+  // Simpan timestamp muat ke localStorage
+  const muatKey = `muat_${driverState.plat}_${driverState.date}`;
+  let muatData  = JSON.parse(localStorage.getItem(muatKey)||'{}');
+  muatData[docNo] = { jam: jamMuat, iso: muatTs };
+  localStorage.setItem(muatKey, JSON.stringify(muatData));
+
+  // Update status ke Muat Kargo via Apps Script
+  const payload = {
+    action      : 'submitMuatKargo',
+    doc_no      : docNo,
+    plat        : driverState.plat,
+    driver      : driverState.driver,
+    do_date     : driverState.date,
+    jam_muat    : jamMuat,
+    jam_muat_iso: muatTs,
+    lat         : tripState.last_pos?.lat || 0,
+    lng         : tripState.last_pos?.lng || 0,
+  };
+
+  try {
+    // Fire and forget — tidak perlu tunggu response
+    const url = GAS_URL || localStorage.getItem('gps_gas_url');
+    if (url) {
+      fetch(url, {
+        method : 'POST',
+        mode   : 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body   : JSON.stringify(payload),
+      }).catch(()=>{});
+    }
+  } catch(e) { console.warn('submitMuatKargo error:', e); }
+
+  // Update UI langsung tanpa tunggu server
+  const card = document.getElementById('card-'+docNo);
+  if (card) {
+    // Ganti tombol Mulai Muat → tampilan Muat Kargo
+    const btn = card.querySelector('.btn-muat');
+    if (btn) {
+      btn.closest('div').innerHTML =
+        `<div style="padding:8px 14px;background:#fef3c7;border-radius:8px;margin:8px 14px;text-align:center">
+          <span style="font-size:12px;font-weight:700;color:#92400e">📦 Muat Kargo — ${jamMuat}</span>
+        </div>`;
+    }
+  }
+
+  // Reload tugas setelah 2 detik untuk update status dari server
+  await sleep(2000);
+  await loadTasks(false);
+}
+
 async function startJob(docNo) {
-  // Cari QTY dari task list untuk verifikasi
-  const task = currentTasks.find(t => t.doc_no === docNo);
-  const qtyInfo = task ? `\nQTY yang akan dikirim: ${task.qty||0} DUS\nCustomer: ${task.customer||'—'}` : '';
-  if (!confirm(`Mulai perjalanan untuk DO ${docNo}?${qtyInfo}\n\nPastikan barang sudah dimuat dengan benar.`)) return;
+  // Langsung execute tanpa confirm() — confirm bisa silent fail di Chrome Android
   tripState.started    = true;
   tripState.start_time = Date.now();
   document.getElementById('km-bar').style.display = 'flex';
