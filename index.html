@@ -674,7 +674,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 
 <script>
 // ── VERSION CHECK — paksa reload jika ada versi baru di cache ────────────────
-const CURRENT_BUILD = 'v398-20260414';
+const CURRENT_BUILD = 'v399-20260414';
 (function(){
   const prev = localStorage.getItem('gst_build');
   if (prev && prev !== CURRENT_BUILD) {
@@ -690,7 +690,7 @@ const CURRENT_BUILD = 'v398-20260414';
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v3.9.8';
+const APP_VERSION    = 'v3.9.9';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -725,6 +725,7 @@ let notifications = JSON.parse(localStorage.getItem('notif_list') || '[]');
 let unreadCount   = notifications.filter(n => !n.read).length;
 let offlineQueue  = JSON.parse(localStorage.getItem('offline_q') || '[]');
 let stopsDone     = 0;
+const submittingDOs = new Set(); // track DO yang sedang diproses — cegah double submit
 
 let tripState = {
   started: false, start_time: null, km_total: 0,
@@ -1617,6 +1618,11 @@ async function confirmBatal(docNo) {
 }
 
 function openSelesai(docNo, qty, customer) {
+  // Cegah double tap
+  if (submittingDOs.has(docNo)) {
+    console.warn('[openSelesai] DO '+docNo+' sedang diproses, skip double tap');
+    return;
+  }
   modalCtx = { doc_no:docNo, qty_kirim:qty, qty_terima:qty, qty_rusak:0,
     foto_do:null, foto_rusak:null, foto_sj:null, gps_coords:modalCtx.gps_coords||'' };
   document.getElementById('m-selesai-info').textContent = customer + ' · ' + qty + ' DUS';
@@ -2051,6 +2057,13 @@ async function gvizFallback(params) {
 
 
 async function gasPost(payload) {
+  // Guard: cegah double submit untuk DO yang sama
+  const docNo = payload.doc_no;
+  if (docNo && submittingDOs.has(docNo)) {
+    console.warn('[gasPost] Blocked double submit for DO:', docNo);
+    return false;
+  }
+  if (docNo) submittingDOs.add(docNo);
   const url = GAS_URL || localStorage.getItem('gps_gas_url');
 
   if (!navigator.onLine || !url) {
@@ -2077,6 +2090,7 @@ async function gasPost(payload) {
     }
     // Jika verifikasi gagal, tambahkan ke queue sebagai backup
     console.warn('[gasPost] Verification inconclusive — status not returned');
+    if (docNo) setTimeout(() => submittingDOs.delete(docNo), 30000); // clear after 30s
     return true; // Optimistic: data was sent via POST
   } catch(e) {
     console.error('gasPost error:', e);
