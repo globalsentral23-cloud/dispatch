@@ -19,7 +19,7 @@
   --blue:#1d4ed8;--blue-l:#dbeafe;
   --orange:#ea580c;--orange-l:#ffedd5;
   --purple:#7c3aed;--purple-l:#ede9fe;
-  --navy:#1e293b;
+  --navy:#0b1f3a;
   --sans:'Plus Jakarta Sans',sans-serif;
   --mono:'JetBrains Mono',monospace;
 }
@@ -83,9 +83,12 @@ button,input,select,textarea{font-family:var(--sans)}
 
 /* APP */
 #app-screen{display:none;min-height:100vh}
-.topbar{background:var(--navy);color:#fff;height:52px;display:flex;align-items:center;gap:10px;padding:0 20px;position:sticky;top:0;z-index:100}
-.tb-logo{font-family:var(--mono);font-weight:600;font-size:13px;color:#60a5fa;letter-spacing:.1em}
-.tb-sep{color:#374151;font-size:16px}
+.topbar{background:#0b1f3a;color:#fff;height:56px;display:flex;align-items:center;gap:10px;padding:0 16px;position:sticky;top:0;z-index:100;border-bottom:2px solid #1e3a5f;box-shadow:0 2px 12px rgba(0,0,0,.35)}
+.tb-logo{display:flex;align-items:center;gap:8px;text-decoration:none}
+.tb-sep{color:#1e3a5f;font-size:16px}
+.tb-logo-img{height:32px;width:auto;object-fit:contain;filter:brightness(0) invert(1);opacity:.9}
+.tb-logo-text{font-family:var(--mono);font-weight:700;font-size:11px;color:#93c5fd;letter-spacing:.12em;line-height:1.2}
+.tb-logo-sub{font-size:9px;color:#475569;font-family:var(--sans);letter-spacing:.05em;font-weight:400}
 .tb-date{font-family:var(--mono);font-size:12px;color:#94a3b8}
 .tab-btn{padding:5px 13px;border-radius:20px;border:none;cursor:pointer;font-size:12px;font-weight:500;transition:all .15s;background:transparent;color:#94a3b8}
 .tab-btn.active{background:#3b82f6;color:#fff}
@@ -503,7 +506,20 @@ body.dispatch-active .dispatch-bar{display:flex}
 <!-- APP -->
 <div id="app-screen">
   <div class="topbar">
-    <div class="tb-logo">⬡ ROUTING v4.33</div>
+    <div class="tb-logo">
+      <img class="tb-logo-img" 
+           src="https://globalsentral23-cloud.github.io/dispatch/gst_logo.svg"
+           onerror="this.style.display='none';document.getElementById('logo-fallback').style.display='flex'"
+           alt="GST Logo">
+      <div class="tb-logo-text" style="display:none;flex-direction:column">
+        <span>GST</span>
+        <span class="tb-logo-sub">GlobalSentral</span>
+      </div>
+    </div>
+    <div class="tb-logo-text" style="flex-direction:column;display:flex">
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.36</span></span>
+      <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
+    </div>
     <span class="tb-sep">|</span>
     <div class="tb-date" id="tb-date">—</div>
     <button class="tab-btn active" onclick="switchTab('routing',this)">Routing</button>
@@ -4032,7 +4048,7 @@ function renderKPI(){
     ['TOTAL DO AKTIF',myRoutes.reduce((a,r)=>a+new Set(r.items.map(i=>i.doc_no)).size,0),'DO'],
     ['TOTAL DUS',totalQty.toLocaleString('id'),'keseluruhan'],
     ['RUTE 1',r1,'kendaraan'],
-    ['RUTE 2',r2,'kendaraan'],
+
     ['🔁 TRIP 2',rT2,'kendaraan'],
     ['TRANSFER',transferItems.length,'DO'],
     ['SKIP',skipped.length,'item'],
