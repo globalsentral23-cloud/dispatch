@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -675,7 +674,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v3.9';
+const APP_VERSION    = 'v3.9.1';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -901,6 +900,7 @@ function updateKMDisplay() {
 // ═══════════════════════════════════════════════════════
 // TASK LOADING & RENDERING
 // ═══════════════════════════════════════════════════════
+let _loadRetryCount = 0;
 async function loadTasks(showSpinner = true) {
   if (showSpinner) {
     document.getElementById('task-list').innerHTML =
@@ -909,18 +909,50 @@ async function loadTasks(showSpinner = true) {
 
   const data = await gasGet('getDriverTasks', {
     plat: driverState.plat, date: driverState.date
-  });
+  }, 15000); // timeout 15 detik
 
   // Update poll indicator
   document.getElementById('poll-bar').style.display = GAS_URL ? 'flex' : 'none';
   document.getElementById('last-poll-txt').textContent =
     'Update: ' + new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
 
+  // Handle timeout — tampilkan pesan jelas + tombol retry
+  if (data && data.error === 'timeout') {
+    _loadRetryCount++;
+    const retryMsg = _loadRetryCount <= 2
+      ? 'Server lambat merespons. Mencoba ulang... ('+_loadRetryCount+'/2)'
+      : 'Server tidak merespons. Pastikan internet aktif lalu tap Refresh.';
+    document.getElementById('task-list').innerHTML =
+      '<div class="empty-state" style="gap:12px">'+
+      '<i class="fas fa-wifi" style="font-size:32px;color:#f59e0b"></i>'+
+      '<p style="color:#92400e;font-weight:600">Koneksi Lambat</p>'+
+      '<p style="font-size:12px;color:#64748b">'+retryMsg+'</p>'+
+      (_loadRetryCount <= 2
+        ? '<button onclick="loadTasks(true)" style="padding:8px 20px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;margin-top:4px">↺ Coba Lagi</button>'
+        : '<button onclick="loadTasks(true)" style="padding:8px 20px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;margin-top:4px">↺ Refresh</button>')+
+      '</div>';
+    // Auto-retry sekali jika masih di bawah 2x
+    if (_loadRetryCount <= 1) {
+      await sleep(5000);
+      return loadTasks(true);
+    }
+    return;
+  }
+
+  _loadRetryCount = 0; // reset counter kalau berhasil
+
   if (!data || data.error || !data.tasks || !data.tasks.length) {
     currentTasks = [];
+    const noDataMsg = !GAS_URL
+      ? '⚠ GAS URL belum dikonfigurasi — buka Settings'
+      : (data && data.error && data.error !== 'timeout')
+        ? '⚠ Error: ' + (data.message || data.error)
+        : 'Tidak ada tugas aktif hari ini\n(Mungkin dispatcher belum sync)';
     document.getElementById('task-list').innerHTML =
-      '<div class="empty-state"><i class="fas fa-check-circle"></i><p>'+
-      (GAS_URL ? 'Tidak ada tugas aktif hari ini' : '⚠ GAS URL belum dikonfigurasi')+'</p></div>';
+      '<div class="empty-state"><i class="fas fa-inbox"></i><p style="white-space:pre-line">'+
+      noDataMsg+'</p>'+
+      '<button onclick="loadTasks(true)" style="padding:7px 18px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;margin-top:8px">↺ Refresh</button>'+
+      '</div>';
     document.getElementById('stop-total').textContent = 0;
     return;
   }
@@ -1684,14 +1716,26 @@ function checkAllDone() {
 // ═══════════════════════════════════════════════════════
 // GAS COMMUNICATION
 // ═══════════════════════════════════════════════════════
-async function gasGet(action, params={}) {
+async function gasGet(action, params={}, timeoutMs=15000) {
   const url = GAS_URL || localStorage.getItem('gps_gas_url');
   if (!url) { console.log('[NO GAS]', action, params); return null; }
+  const qs = new URLSearchParams({action, ...params});
+  // Timeout controller — batas tunggu 15 detik
+  const ctrl = new AbortController();
+  const tid  = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const qs = new URLSearchParams({action, ...params});
-    const r  = await fetch(`${url}?${qs}`, {redirect:'follow'});
+    const r = await fetch(`${url}?${qs}`, {redirect:'follow', signal:ctrl.signal});
+    clearTimeout(tid);
     return await r.json();
-  } catch(e) { console.error('gasGet', action, e); return null; }
+  } catch(e) {
+    clearTimeout(tid);
+    if (e.name === 'AbortError') {
+      console.warn('[gasGet] TIMEOUT:', action, timeoutMs+'ms');
+      return { error:'timeout', message:'Server tidak merespons dalam '+Math.round(timeoutMs/1000)+' detik' };
+    }
+    console.error('gasGet', action, e);
+    return null;
+  }
 }
 
 // ── FIX: POST (no-cors) untuk payload besar (foto base64) ────────────────────
