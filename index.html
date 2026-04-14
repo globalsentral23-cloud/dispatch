@@ -2,6 +2,9 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <title>GST Logistics — Driver App v3.9</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
@@ -670,11 +673,24 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 </div>
 
 <script>
+// ── VERSION CHECK — paksa reload jika ada versi baru di cache ────────────────
+const CURRENT_BUILD = 'v393-20260414';
+(function(){
+  const prev = localStorage.getItem('gst_build');
+  if (prev && prev !== CURRENT_BUILD) {
+    localStorage.setItem('gst_build', CURRENT_BUILD);
+    if ('caches' in window) caches.keys().then(ks => ks.forEach(k => caches.delete(k)));
+    setTimeout(() => window.location.reload(true), 200);
+  } else {
+    localStorage.setItem('gst_build', CURRENT_BUILD);
+  }
+})();
+
 // ═══════════════════════════════════════════════════════
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v3.9.2';
+const APP_VERSION    = 'v3.9.3';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -912,19 +928,28 @@ async function warmupAndLoad() {
     '<div class="empty-state">' +
     '<i class="fas fa-server" style="font-size:28px;color:#2563eb;margin-bottom:8px"></i>' +
     '<p style="color:#2563eb;font-weight:600;margin-bottom:4px">Menghubungkan ke server...</p>' +
-    '<p style="font-size:11px;color:#64748b;max-width:240px;text-align:center">' +
-    'Normal 15-30 detik saat pertama dibuka. Harap tunggu.</p>' +
-    '<div style="width:200px;height:4px;background:#e2e8f0;border-radius:4px;margin-top:12px;overflow:hidden">' +
+    '<p style="font-size:11px;color:#64748b;max-width:260px;text-align:center;line-height:1.5">' +
+    'Normal 15–30 detik saat pertama dibuka.<br>Pastikan internet aktif dan tunggu.</p>' +
+    '<div style="width:200px;height:5px;background:#e2e8f0;border-radius:4px;margin-top:12px;overflow:hidden">' +
     '<div id="warmup-bar" style="width:0%;height:100%;background:#2563eb;border-radius:4px;transition:width 0.5s"></div>' +
-    '</div></div>';
+    '</div>' +
+    '<div id="warmup-eta" style="font-size:10px;color:#94a3b8;margin-top:6px">Estimasi: 15–30 detik</div>' +
+    '</div>';
 
   // Animasi progress bar selama warmup
   let pct = 0;
   const barEl = () => document.getElementById('warmup-bar');
+  let secs = 0;
   const barTimer = setInterval(() => {
     pct = Math.min(pct + 3, 90);
+    secs++;
     const b = barEl();
     if (b) b.style.width = pct + '%';
+    const eta = document.getElementById('warmup-eta');
+    if (eta) eta.textContent = secs < 10
+      ? 'Menunggu server... (' + secs + 's)'
+      : secs < 25 ? 'Hampir selesai... (' + secs + 's)'
+      : 'Segera selesai... (' + secs + 's)';
   }, 900);
 
   // Ping untuk wake up Apps Script
