@@ -674,7 +674,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 
 <script>
 // ── VERSION CHECK — paksa reload jika ada versi baru di cache ────────────────
-const CURRENT_BUILD = 'v3911-20260414';
+const CURRENT_BUILD = 'v3912-20260414';
 (function(){
   const prev = localStorage.getItem('gst_build');
   if (prev && prev !== CURRENT_BUILD) {
@@ -690,7 +690,7 @@ const CURRENT_BUILD = 'v3911-20260414';
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v3.9.11';
+const APP_VERSION    = 'v3.9.12';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -1499,48 +1499,9 @@ function renderHistoryContent(tasks, dateStr) {
 // ── MULAI MUAT KARGO ──────────────────────────────────────────────────────────
 
 
-// ── END TRIP: driver tap selesai kembali ke gudang ───────────────────────────
+// ── END TRIP: buka modal struk → submitStruk yang handle end trip ────────────
 async function doEndTrip() {
-  const now    = new Date();
-  const jamEnd = now.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
-
-  // Kirim endTrip ke Apps Script
-  try {
-    const url = GAS_URL || localStorage.getItem('gps_gas_url');
-    if (url) {
-      fetch(url, {
-        method:'POST', mode:'no-cors',
-        headers:{'Content-Type':'text/plain'},
-        body: JSON.stringify({
-          action   : 'endTrip',
-          plat     : driverState.plat,
-          driver   : driverState.driver,
-          date     : driverState.date,
-          end_time : jamEnd,
-          km_total : tripState.km_total || 0,
-          lat      : tripState.last_pos?.lat || 0,
-          lng      : tripState.last_pos?.lng || 0,
-        }),
-      }).catch(()=>{});
-    }
-  } catch(e) {}
-
-  // Hapus localStorage muat hari ini
-  const muatKey = `muat_${driverState.plat}_${driverState.date}`;
-  localStorage.removeItem(muatKey);
-
-  // Tampilkan pesan selesai
-  document.getElementById('task-list').innerHTML = `
-    <div style="text-align:center;padding:48px 24px">
-      <div style="font-size:48px;margin-bottom:12px">🏁</div>
-      <div style="font-size:18px;font-weight:800;color:#0b1f3a">Terima Kasih!</div>
-      <div style="font-size:13px;color:#64748b;margin-top:8px">
-        Tugas hari ini selesai · ${jamEnd}
-      </div>
-      <div style="font-size:12px;color:#94a3b8;margin-top:6px">
-        Silakan kembali ke gudang dan serahkan dokumen
-      </div>
-    </div>`;
+  openStrukModal();
 }
 
 // ── GLOBAL MUAT: satu tombol untuk semua DO ──────────────────────────────────
@@ -1992,7 +1953,7 @@ async function submitGagal() {
 }
 
 async function submitStruk() {
-  if (!confirm('Tutup perjalanan hari ini? Semua data akan final.')) return;
+  // Langsung execute — confirm() bisa silent fail di Chrome Android
 
   const payload = {
     action      : 'submitStruk',
@@ -2026,8 +1987,21 @@ async function submitStruk() {
     msg:`Total ${tripState.km_total.toFixed(1)} km · ${stopsDone} stop diselesaikan`,
   });
 
-  alert(`✅ Perjalanan selesai!\nTotal: ${tripState.km_total.toFixed(1)} km\nData tersimpan ke Google Sheets.`);
-  await loadTasks(false);
+  // Tampilkan layar selesai
+  document.getElementById('task-list').innerHTML = `
+    <div style="text-align:center;padding:48px 24px">
+      <div style="font-size:56px;margin-bottom:12px">🏁</div>
+      <div style="font-size:20px;font-weight:800;color:#0b1f3a">Perjalanan Selesai!</div>
+      <div style="font-size:13px;color:#64748b;margin-top:10px;line-height:1.6">
+        Total: ${tripState.km_total.toFixed(1)} km<br>
+        ${stopsDone} stop diselesaikan<br>
+        <span style="color:#16a34a">Data tersimpan ✓</span>
+      </div>
+      <div style="margin-top:20px;padding:14px;background:#f0fdf4;border-radius:10px;
+        font-size:12px;color:#15803d;font-weight:600">
+        Silakan serahkan dokumen SJ &amp; struk ke dispatcher
+      </div>
+    </div>`;
 }
 
 function checkAllDone() {
