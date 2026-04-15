@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.36</title>
+<title>Routing Optimizer v4.37</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -403,7 +403,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     <div style="text-align:center;margin-bottom:32px">
       <div style="font-size:40px;margin-bottom:8px">⬡</div>
       <div style="font-size:20px;font-weight:800;color:#fff;letter-spacing:.04em">ROUTING OPTIMIZER</div>
-      <div style="font-size:11px;color:#64748b;margin-top:4px">v4.36 · GlobalSentral Transport</div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px">v4.37 · GlobalSentral Transport</div>
     </div>
 
     <!-- Login Card -->
@@ -517,7 +517,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.36</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.37</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -1270,6 +1270,76 @@ function normalizeArea(area){
   return area||'Lainnya';
 }
 
+
+// ── KOTA NORMALIZATION — extract + normalize KOTA from KIRIM field ──────────
+const KOTA_ALIAS = {
+  'JAKPUS':'JAKARTA PUSAT','JAK PUSAT':'JAKARTA PUSAT','JAK PUS':'JAKARTA PUSAT',
+  'JAKSEL':'JAKARTA SELATAN','JAK SELATAN':'JAKARTA SELATAN',
+  'JAKUT':'JAKARTA UTARA','JAK UTARA':'JAKARTA UTARA',
+  'JAKTIM':'JAKARTA TIMUR','JAK TIMUR':'JAKARTA TIMUR',
+  'JAKBAR':'JAKARTA BARAT','JAK BARAT':'JAKARTA BARAT',
+  'TANGSEL':'TANGERANG SELATAN','KAB. TANGERANG':'TANGERANG',
+  'KAB.TANGERANG':'TANGERANG','KOTA TANGERANG':'TANGERANG',
+  'KABUPATEN TANGERANG':'TANGERANG','TANGERAMG':'TANGERANG',
+  'BEKASI SELATAN':'BEKASI','BEKASI UTARA':'BEKASI',
+  'BEKASI TIMUR':'BEKASI','BEKASI BARAT':'BEKASI',
+  'CIKARANG':'BEKASI','CIBUBUR':'BOGOR',
+  'BOGOR SELATAN':'BOGOR','BOGOR BARAT':'BOGOR','BOGOR UTARA':'BOGOR',
+  'KABUPATEN BOGOR':'BOGOR',
+  'JAKARTA BARAT SY':'JAKARTA BARAT','JAKARTA TIMUR SY':'JAKARTA TIMUR',
+  'JAKARTA UTARA SY':'JAKARTA UTARA','JAKARTA SELATAN SY':'JAKARTA SELATAN',
+};
+// Daftar KOTA Jabodetabek + sekitar yang masuk routing GST
+const KOTA_JABO = new Set([
+  'TANGERANG','TANGERANG SELATAN','BEKASI','DEPOK','BOGOR',
+  'JAKARTA PUSAT','JAKARTA SELATAN','JAKARTA BARAT','JAKARTA UTARA','JAKARTA TIMUR',
+  'KARAWANG','PURWAKARTA','SERANG','BANTEN','CIBUBUR',
+]);
+// KOTA yang boleh digabung dalam 1 kendaraan (adjacency — searah dari gudang)
+const KOTA_ADJACENT = {
+  'TANGERANG':      ['TANGERANG SELATAN'],
+  'TANGERANG SELATAN': ['TANGERANG'],
+  'BEKASI':         ['KARAWANG'],
+  'KARAWANG':       ['BEKASI'],
+  'JAKARTA UTARA':  ['JAKARTA TIMUR','JAKARTA PUSAT'],
+  'JAKARTA TIMUR':  ['JAKARTA UTARA'],
+  'JAKARTA SELATAN':['JAKARTA PUSAT'],
+  'JAKARTA PUSAT':  ['JAKARTA SELATAN','JAKARTA UTARA'],
+  'BOGOR':          ['DEPOK','PURWAKARTA'],
+  'DEPOK':          ['BOGOR'],
+  'SERANG':         ['BANTEN'],
+  'BANTEN':         ['SERANG'],
+};
+
+function normalizeKota(kirim) {
+  if (!kirim) return '';
+  const s = String(kirim).toUpperCase().trim();
+  // Extract teks setelah titik-koma ";"
+  let kota = '';
+  if (s.includes(';')) {
+    kota = s.split(';').pop().trim();
+  } else {
+    // Fallback: cek apakah nama kota ada di dalam teks
+    for (const k of KOTA_JABO) {
+      if (s.includes(k)) { kota = k; break; }
+    }
+    if (!kota) return '';
+  }
+  // Hapus suffix yang tidak perlu
+  kota = kota.replace(/SY|ID|PS/g,'')
+             .replace(/KAB\.\B|KOTA/g,'')
+             .replace(/\s+/g,' ').trim();
+  // Normalisasi alias
+  return KOTA_ALIAS[kota] || kota;
+}
+
+function isKotaCompatible(vehicleKota, newKota) {
+  if (!vehicleKota || !newKota) return true; // jika salah satu kosong, tetap boleh
+  if (vehicleKota === newKota) return true;   // sama persis
+  const adj = KOTA_ADJACENT[vehicleKota] || [];
+  return adj.includes(newKota);              // cek adjacency
+}
+
 async function geocodeAll(items){
   const need=new Map();
   items.forEach(item=>{
@@ -1493,6 +1563,7 @@ function processData(sapRaw,pgRaw){
       remarks:String(r[SC.remarks]||'').trim(),
       kirim,kecamatan:String(r[SC.kecamatan]||'').trim(),
       hp:String(r[SC.hp]||'').trim(),source:'SAP',
+      kota:normalizeKota(kirim),
       ...getSpec(String(r[SC.size]||'').trim()),
     });
   }
@@ -1599,6 +1670,7 @@ function processData(sapRaw,pgRaw){
       size:sz,qty,uom:'DUS',
       remarks:('PG | '+String(r[PC.remarks_j]||'')+' '+rem).trim(),
       kirim:pgFinalKirim,kecamatan:pgFinalKec,lat:pgFinalLat,lng:pgFinalLng,zona:pgFinalZona,hp:'',source:'PG',
+      kota:normalizeKota(pgFinalKirim)||normalizeKota(toAddress)||'',
       is_transfer:dropOverride?true:false,
       transfer_to:dropOverride?dropOverride.toName:'',
       from_pg:true,
@@ -2326,11 +2398,28 @@ function clusterFirstAssign(doGroups,vehicles,origin,wh,svol,swt){
   const loads=vehicles.map(v=>({vehicle:v,groups:[],vol:0,wt:0,scs:new Set(),avgBrg:0}));
   const unassigned=[];
   for(const dg of sorted){
-    const cands=loads.filter(vl=>
-      isEligible(vl,dg)&&
-      vl.vol+dg.total_vol<=vl.vehicle.vol_m3*svol&&
-      vl.wt+dg.total_wt<=vl.vehicle.max_kg*swt
-    );
+    // KOTA lock: extract primary KOTA kendaraan dari DO yang sudah ada
+    const dgKota = dg.items&&dg.items[0] ? (dg.items[0].kota||'') : (dg.kota||'');
+    const cands=loads.filter(vl=>{
+      if(!isEligible(vl,dg)) return false;
+      if(vl.vol+dg.total_vol>vl.vehicle.vol_m3*svol) return false;
+      if(vl.wt+dg.total_wt>vl.vehicle.max_kg*swt) return false;
+      // KOTA compatibility check — cegah zigzag lintas kota
+      if(dgKota && vl.groups.length > 0) {
+        // Hitung primary KOTA kendaraan ini (KOTA paling banyak)
+        const kotaCounts = {};
+        vl.groups.forEach(g => {
+          const k = g.items&&g.items[0] ? (g.items[0].kota||'') : (g.kota||'');
+          if(k) kotaCounts[k] = (kotaCounts[k]||0) + (g.total_vol||1);
+        });
+        const primaryKota = Object.entries(kotaCounts).sort((a,b)=>b[1]-a[1])[0];
+        if(primaryKota) {
+          const vehKota = primaryKota[0];
+          if(!isKotaCompatible(vehKota, dgKota)) return false;
+        }
+      }
+      return true;
+    });
     if(!cands.length){unassigned.push(dg);continue;}
     cands.sort((a,b)=>{
       const aH=a.groups.length>0,bH=b.groups.length>0;
