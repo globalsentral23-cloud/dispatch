@@ -529,7 +529,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     <button class="tab-btn" onclick="switchTab('deferred',this)">Ditunda</button>
     <button class="tab-btn" onclick="switchTab('vendor',this)">DO Unplot (<span id="cnt-vendor">0</span>)</button>
     <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota">Pending Besok</button>
-    <button class="tab-btn" onclick="switchTab('biaya',this)">💰 Biaya Ops</button>
+    <button class="tab-btn" id="tab-btn-biaya" onclick="switchTab('biaya',this)">💰 Biaya Ops</button>
     <button class="tab-btn" onclick="switchTab('settlement',this)">📋 Settlement T+1</button>
     <button class="tab-btn" onclick="switchTab('history',this)">📅 History</button>
     <div class="tb-right">
@@ -4372,8 +4372,9 @@ function vcardHTML(r){
       ${r.has_knek?'<span class="badge b-knek">★ KNEK</span>':''}
       ${prioLbl}
       <div class="head-right">
-        <button class="icon-btn" onclick="openEdit(${r.id})">✏ Edit</button>
-        <button class="icon-btn pr" onclick="printVehicle(${r.id})">🖨 Print</button>
+        <button class="icon-btn pr" onclick="printVehicle(${r.id})"
+          style="${dispatchMode?'':'opacity:0.4;cursor:not-allowed'}"
+          title="${dispatchMode?'Print SJ':'Klik Dispatch dulu sebelum Print'}">🖨 Print</button>
       </div>
     </div>
     ${warnBanner}
@@ -4636,11 +4637,12 @@ function renderVendor(){
 let currentUser = null;
 
 const ROLE_ACCESS = {
-  dispatcher : { canRoute:true,  canDispatch:true,  canSettle:false, canViewAll:false },
-  settlement : { canRoute:false, canDispatch:false, canSettle:true,  canViewAll:false },
-  kepala     : { canRoute:false, canDispatch:false, canSettle:true,  canViewAll:false },
-  pusat      : { canRoute:false, canDispatch:false, canSettle:true,  canViewAll:true  },
-  superadmin : { canRoute:true,  canDispatch:true,  canSettle:true,  canViewAll:true  },
+  dispatcher : { canRoute:true,  canDispatch:true,  canSettle:false, canViewAll:false, canBiaya:false },
+  settlement : { canRoute:false, canDispatch:false, canSettle:true,  canViewAll:false, canBiaya:true  },
+  kepala     : { canRoute:false, canDispatch:false, canSettle:true,  canViewAll:false, canBiaya:true  },
+  pusat      : { canRoute:false, canDispatch:false, canSettle:true,  canViewAll:true,  canBiaya:true  },
+  superadmin : { canRoute:true,  canDispatch:true,  canSettle:true,  canViewAll:true,  canBiaya:true  },
+  keuangan   : { canRoute:false, canDispatch:false, canSettle:false, canViewAll:true,  canBiaya:true  },
 };
 
 const GUDANG_LABEL = {
@@ -4735,6 +4737,15 @@ function updateUserBadge() {
 function applyAccessControl() {
   if (!currentUser) return;
   const acc = ROLE_ACCESS[currentUser.role]||ROLE_ACCESS.pusat;
+  // Sembunyikan tab Biaya Ops untuk non-keuangan
+  const biayaBtn = document.getElementById('tab-btn-biaya');
+  if (biayaBtn) {
+    if (!acc.canBiaya) {
+      biayaBtn.style.display = 'none';
+    } else {
+      biayaBtn.style.display = '';
+    }
+  }
   const tabMap={routing:acc.canRoute,map:true,transfer:acc.canRoute,skipped:acc.canRoute,
     deferred:acc.canRoute,vendor:acc.canRoute,luarkota:acc.canRoute,
     biaya:acc.canRoute||acc.canSettle,settlement:acc.canSettle};
@@ -5336,6 +5347,10 @@ function saveEdit(){closeEdit();}
 // PRINT — SURAT JALAN
 // ═══════════════════════════════════════════════════════
 function printVehicle(id){
+  if(!dispatchMode){
+    alert('⚠ Klik tombol Dispatch terlebih dahulu sebelum Print SJ.');
+    return;
+  }
   buildSJPrint([routes.find(x=>x.id===id)]);
   setTimeout(()=>window.print(),400);
 }
@@ -7353,6 +7368,12 @@ function saveTambahDO() {
   const produk  = document.getElementById('tdo-produk').value.trim() || 'DO Manual';
   const qty     = parseInt(document.getElementById('tdo-qty').value) || 0;
   const routeId = parseInt(document.getElementById('tdo-kendaraan').value);
+  // ── Validasi wajib — cegah undefined di card ──────────────────────────────
+  if (!docNo)    { alert('⚠ No DO wajib diisi.'); document.getElementById('tdo-docno').focus(); return; }
+  if (!customer) { alert('⚠ Nama Customer wajib diisi.'); document.getElementById('tdo-customer').focus(); return; }
+  if (!alamat)   { alert('⚠ Alamat/Kirim wajib diisi.'); document.getElementById('tdo-alamat').focus(); return; }
+  if (qty <= 0)  { alert('⚠ QTY harus lebih dari 0.'); document.getElementById('tdo-qty').focus(); return; }
+  if (!routeId)  { alert('⚠ Pilih kendaraan terlebih dahulu.'); return; }
   const catatan = document.getElementById('tdo-catatan').value.trim();
   const errEl   = document.getElementById('tdo-error');
 
