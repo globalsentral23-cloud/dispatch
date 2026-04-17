@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tracking Pengiriman — GST</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg:       #F0F4F8;
+    --card:     #FFFFFF;
+    --border:   #E2E8F0;
+    --text:     #1A202C;
+    --muted:    #718096;
+    --accent:   #2563EB;
+    --accent2:  #1D4ED8;
+    --green:    #16A34A;
+    --amber:    #D97706;
+    --red:      #DC2626;
+    --gray:     #94A3B8;
+    --shadow:   0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.06);
+    --radius:   14px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0 0 60px;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    background: var(--accent);
+    padding: 18px 20px 22px;
+    text-align: center;
+    position: relative;
+  }
+  .header-logo {
+    display: flex; align-items: center; justify-content: center;
+    gap: 10px; margin-bottom: 4px;
+  }
+  .header-logo svg { width: 28px; height: 28px; }
+  .header-brand {
+    font-size: 15px; font-weight: 800;
+    color: #fff; letter-spacing: -.3px;
+  }
+  .header-sub {
+    font-size: 12px; color: rgba(255,255,255,.75);
+    font-weight: 400;
+  }
+
+  /* ── SEARCH BOX ── */
+  .search-wrap {
+    padding: 20px 20px 0;
+    max-width: 520px; margin: 0 auto;
+  }
+  .search-label {
+    font-size: 12px; font-weight: 600; color: var(--muted);
+    letter-spacing: .06em; text-transform: uppercase;
+    margin-bottom: 8px; display: block;
+  }
+  .search-row {
+    display: flex; gap: 8px;
+  }
+  .search-input {
+    flex: 1;
+    padding: 13px 16px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px; font-weight: 500;
+    background: var(--card);
+    color: var(--text);
+    outline: none;
+    transition: border-color .15s;
+  }
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--gray); }
+  .search-btn {
+    padding: 13px 22px;
+    background: var(--accent);
+    color: #fff;
+    border: none; border-radius: var(--radius);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 14px; font-weight: 700;
+    cursor: pointer;
+    transition: background .15s, transform .1s;
+    white-space: nowrap;
+  }
+  .search-btn:hover { background: var(--accent2); }
+  .search-btn:active { transform: scale(.97); }
+  .search-btn:disabled { background: var(--gray); cursor: not-allowed; }
+
+  /* ── LOADING ── */
+  .loading {
+    display: none; text-align: center;
+    padding: 48px 20px;
+  }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading p { font-size: 13px; color: var(--muted); }
+
+  /* ── RESULT CARD ── */
+  .result-wrap {
+    max-width: 520px; margin: 20px auto 0;
+    padding: 0 20px;
+    display: none;
+  }
+
+  .card {
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    animation: fadeUp .25s ease;
+  }
+  @keyframes fadeUp {
+    from { opacity:0; transform: translateY(8px); }
+    to   { opacity:1; transform: translateY(0); }
+  }
+
+  /* Status banner */
+  .status-banner {
+    padding: 18px 20px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .status-icon {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0;
+  }
+  .status-text-wrap { flex: 1; }
+  .status-label {
+    font-size: 11px; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .status-main {
+    font-size: 17px; font-weight: 800; line-height: 1.2;
+  }
+  .status-time {
+    font-size: 12px; color: var(--muted); margin-top: 3px;
+  }
+
+  /* Status colors */
+  .s-waiting  { background: #EFF6FF; }
+  .s-waiting .status-icon  { background: #DBEAFE; }
+  .s-waiting .status-label { color: var(--accent); }
+  .s-waiting .status-main  { color: var(--accent2); }
+
+  .s-onroad { background: #ECFDF5; }
+  .s-onroad .status-icon  { background: #D1FAE5; }
+  .s-onroad .status-label { color: var(--green); }
+  .s-onroad .status-main  { color: #15803D; }
+
+  .s-done { background: #F0FDF4; }
+  .s-done .status-icon  { background: #BBF7D0; }
+  .s-done .status-label { color: var(--green); }
+  .s-done .status-main  { color: #166534; }
+
+  .s-failed { background: #FEF2F2; }
+  .s-failed .status-icon  { background: #FEE2E2; }
+  .s-failed .status-label { color: var(--red); }
+  .s-failed .status-main  { color: #991B1B; }
+
+  .s-loading { background: #F8FAFC; }
+
+  /* Timeline steps */
+  .timeline {
+    padding: 0 20px 4px;
+    border-top: 1px solid var(--border);
+  }
+  .timeline-title {
+    font-size: 11px; font-weight: 700;
+    color: var(--muted); letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: 14px 0 10px;
+  }
+  .tl-steps { position: relative; }
+  .tl-step {
+    display: flex; gap: 14px;
+    padding-bottom: 16px; position: relative;
+  }
+  .tl-step:last-child { padding-bottom: 4px; }
+  .tl-left {
+    display: flex; flex-direction: column;
+    align-items: center; flex-shrink: 0;
+    width: 22px;
+  }
+  .tl-dot {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+    flex-shrink: 0; z-index: 1;
+  }
+  .tl-line {
+    width: 2px; flex: 1; margin-top: 4px;
+    background: var(--border);
+    min-height: 12px;
+  }
+  .tl-dot.done  { background: var(--green); color: #fff; }
+  .tl-dot.active{ background: var(--accent); color: #fff;
+                  box-shadow: 0 0 0 4px rgba(37,99,235,.15); }
+  .tl-dot.idle  { background: var(--border); color: var(--muted); }
+  .tl-dot.fail  { background: var(--red); color: #fff; }
+
+  .tl-right { flex: 1; padding-top: 1px; }
+  .tl-step-name {
+    font-size: 13px; font-weight: 600; line-height: 1.3;
+  }
+  .tl-step-time {
+    font-size: 11px; color: var(--muted); margin-top: 1px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .tl-step.idle .tl-step-name { color: var(--muted); font-weight: 500; }
+
+  /* Info rows */
+  .info-section {
+    border-top: 1px solid var(--border);
+    padding: 14px 20px;
+  }
+  .info-title {
+    font-size: 11px; font-weight: 700;
+    color: var(--muted); letter-spacing: .06em;
+    text-transform: uppercase; margin-bottom: 10px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between;
+    align-items: flex-start; gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-key { color: var(--muted); flex-shrink: 0; }
+  .info-val { font-weight: 600; text-align: right; max-width: 60%; word-break: break-word; }
+  .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+  /* CTA buttons */
+  .cta-section {
+    padding: 14px 20px 18px;
+    display: flex; gap: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .cta-btn {
+    flex: 1; padding: 12px 10px;
+    border-radius: 10px; border: none;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 13px; font-weight: 700;
+    cursor: pointer; text-align: center;
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px; text-decoration: none;
+    transition: opacity .15s, transform .1s;
+  }
+  .cta-btn:hover { opacity: .85; }
+  .cta-btn:active { transform: scale(.97); }
+  .cta-wa-driver   { background: #16A34A; color: #fff; }
+  .cta-wa-dispatch { background: #1D4ED8; color: #fff; }
+  .cta-photo       { background: #F8FAFC; color: var(--text);
+                     border: 1.5px solid var(--border); }
+
+  /* Foto bukti */
+  .foto-section {
+    padding: 14px 20px 18px;
+    border-top: 1px solid var(--border);
+  }
+  .foto-thumb {
+    width: 100%; border-radius: 10px;
+    object-fit: cover; max-height: 240px;
+    cursor: pointer;
+  }
+  .foto-caption {
+    font-size: 11px; color: var(--muted);
+    text-align: center; margin-top: 6px;
+  }
+
+  /* Not found */
+  .not-found {
+    text-align: center; padding: 40px 20px;
+  }
+  .not-found-icon { font-size: 40px; margin-bottom: 12px; }
+  .not-found h3 {
+    font-size: 16px; font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .not-found p { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+  /* Error */
+  .error-msg {
+    background: #FEF2F2;
+    border: 1px solid #FECACA;
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 13px; color: var(--red);
+    margin-top: 12px; text-align: center;
+    display: none;
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 24px 20px 0;
+    font-size: 11px; color: var(--muted);
+  }
+
+  /* Qty badges */
+  .qty-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11px; font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .qty-ok   { background: #D1FAE5; color: #166534; }
+  .qty-warn { background: #FEF3C7; color: #92400E; }
+  .qty-fail { background: #FEE2E2; color: #991B1B; }
+
+  /* Config modal */
+  .config-overlay {
+    display: none; position: fixed;
+    inset: 0; background: rgba(0,0,0,.5);
+    z-index: 100; align-items: flex-end;
+  }
+  .config-overlay.open { display: flex; }
+  .config-sheet {
+    background: var(--card);
+    border-radius: 20px 20px 0 0;
+    padding: 20px;
+    width: 100%; max-width: 520px;
+    margin: 0 auto;
+    animation: slideUp .2s ease;
+  }
+  @keyframes slideUp {
+    from { transform: translateY(40px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+  .config-title {
+    font-size: 14px; font-weight: 700;
+    margin-bottom: 14px;
+  }
+  .config-label {
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .06em;
+    margin-bottom: 6px; display: block;
+  }
+  .config-input {
+    width: 100%; padding: 11px 14px;
+    border: 1.5px solid var(--border); border-radius: 10px;
+    font-size: 12px; font-family: 'JetBrains Mono', monospace;
+    outline: none; color: var(--text);
+    transition: border-color .15s;
+  }
+  .config-input:focus { border-color: var(--accent); }
+  .config-save {
+    width: 100%; margin-top: 12px;
+    padding: 12px; background: var(--accent); color: #fff;
+    border: none; border-radius: 10px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 14px; font-weight: 700;
+    cursor: pointer;
+  }
+  .config-hint {
+    font-size: 11px; color: var(--muted);
+    margin-top: 6px; line-height: 1.5;
+  }
+  .gear-btn {
+    position: absolute; top: 16px; right: 16px;
+    background: rgba(255,255,255,.2);
+    border: none; border-radius: 8px;
+    padding: 6px 8px; cursor: pointer;
+    font-size: 16px; color: #fff;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <button class="gear-btn" onclick="openConfig()" title="Pengaturan">⚙️</button>
+  <div class="header-logo">
+    <svg viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill="rgba(255,255,255,.2)"/>
+      <path d="M6 20L10 8h3l2 7 2-7h3l4 12h-3l-2.5-8-2.5 8H14l-2.5-8L9 20H6z" fill="#fff"/>
+    </svg>
+    <span class="header-brand">Global Sentral Transport</span>
+  </div>
+  <div class="header-sub">Lacak status pengiriman Anda</div>
+</div>
+
+<div class="search-wrap">
+  <label class="search-label" for="do-input">Nomor DO / Surat Jalan</label>
+  <div class="search-row">
+    <input class="search-input" id="do-input" type="text"
+           placeholder="contoh: 261026669"
+           autocomplete="off" autocapitalize="off"
+           onkeydown="if(event.key==='Enter')doTrack()">
+    <button class="search-btn" id="track-btn" onclick="doTrack()">Lacak</button>
+  </div>
+  <div class="error-msg" id="err-msg"></div>
+</div>
+
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  <p>Mencari data pengiriman…</p>
+</div>
+
+<div class="result-wrap" id="result-wrap">
+  <div class="card" id="result-card"></div>
+</div>
+
+<div class="footer" id="footer-text">
+  Masukkan nomor DO yang tertera di surat jalan Anda
+</div>
+
+<!-- Config Modal -->
+<div class="config-overlay" id="config-overlay" onclick="closeConfigIfOutside(event)">
+  <div class="config-sheet">
+    <div class="config-title">⚙️ Pengaturan</div>
+    <label class="config-label">GAS URL (Apps Script)</label>
+    <input class="config-input" id="config-gas" type="text"
+           placeholder="https://script.google.com/macros/s/.../exec">
+    <p class="config-hint">
+      URL ini didapat dari deployment Google Apps Script sistem GST.<br>
+      Hubungi dispatcher jika belum tersedia.
+    </p>
+    <button class="config-save" onclick="saveConfig()">Simpan</button>
+  </div>
+</div>
+
+<script>
+const GAS_KEY = 'gst_track_gas_url';
+const DEFAULT_GAS = 'https://script.google.com/macros/s/AKfycbzWW4NJXYEZxcG5jiygObB6sitBmuQFi0m22C9vH2Wp2vnchw3lGv99I9E1mJ5uPXChNA/exec';
+
+function getGasUrl() {
+  return localStorage.getItem(GAS_KEY) || DEFAULT_GAS;
+}
+
+// ── Auto-read from URL param (?do=261026669)
+window.addEventListener('DOMContentLoaded', () => {
+  const p = new URLSearchParams(location.search);
+  const doNo = p.get('do') || p.get('doc_no') || p.get('no');
+  if (doNo) {
+    document.getElementById('do-input').value = doNo.trim();
+    doTrack();
+  }
+  // Restore saved GAS URL
+  const saved = localStorage.getItem(GAS_KEY);
+  if (saved) document.getElementById('config-gas').value = saved;
+});
+
+async function doTrack() {
+  const raw = document.getElementById('do-input').value.trim();
+  if (!raw) { showErr('Masukkan nomor DO terlebih dahulu.'); return; }
+
+  const doNo = raw.replace(/\D/g,'').replace(/^0+/,'') || raw;
+
+  setLoading(true);
+  hideErr();
+  document.getElementById('result-wrap').style.display = 'none';
+  document.getElementById('footer-text').style.display = 'none';
+
+  try {
+    const url = `${getGasUrl()}?action=getDoStatus&doc_no=${encodeURIComponent(raw)}`;
+    const res  = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+
+    if (json.error) throw new Error(json.error);
+    if (!json.data) {
+      renderNotFound(raw);
+    } else {
+      renderResult(json.data);
+    }
+  } catch(e) {
+    showErr('Gagal memuat data. Periksa koneksi internet atau hubungi dispatcher. (' + e.message + ')');
+  } finally {
+    setLoading(false);
+  }
+}
+
+function renderResult(d) {
+  const wrap = document.getElementById('result-wrap');
+  const card = document.getElementById('result-card');
+
+  // ── Determine status class & icon
+  const st = String(d.status || '').toLowerCase();
+  let sClass, sIcon, sLabel, sMain;
+  if (st.includes('selesai') || st.includes('terkirim') || st.includes('done') || st.includes('completed')) {
+    sClass='s-done'; sIcon='✅'; sLabel='TERKIRIM'; sMain='Barang sudah diterima';
+  } else if (st.includes('jalan') || st.includes('onroad') || st.includes('start') || st.includes('otw') || st.includes('muat')) {
+    sClass='s-onroad'; sIcon='🚛'; sLabel='DALAM PERJALANAN'; sMain='Kendaraan sedang menuju lokasi Anda';
+  } else if (st.includes('gagal') || st.includes('failed') || st.includes('cancel')) {
+    sClass='s-failed'; sIcon='❌'; sLabel='GAGAL KIRIM'; sMain='Pengiriman tidak berhasil';
+  } else if (st.includes('siap') || st.includes('menunggu') || st.includes('pending') || st.includes('waiting') || st.includes('muat')) {
+    sClass='s-waiting'; sIcon='⏳'; sLabel='MENUNGGU KEBERANGKATAN'; sMain='Barang sedang disiapkan';
+  } else {
+    sClass='s-waiting'; sIcon='📦'; sLabel='DIPROSES'; sMain=d.status || 'Sedang diproses';
+  }
+
+  // ── Timeline steps
+  const steps = buildTimeline(st, d);
+
+  // ── Qty info
+  let qtyHtml = '';
+  if (d.qty_kirim) {
+    const qKirim   = parseInt(d.qty_kirim)||0;
+    const qTerima  = parseInt(d.qty_terima)||0;
+    const qRusak   = parseInt(d.qty_rusak)||0;
+    const ok = qTerima > 0;
+    const hasRusak = qRusak > 0;
+    qtyHtml = `
+      <span class="qty-badge ${ok?'qty-ok':'qty-warn'}">${qKirim} DUS dikirim</span>
+      ${ok ? `<span class="qty-badge qty-ok">✓ ${qTerima} diterima</span>` : ''}
+      ${hasRusak ? `<span class="qty-badge qty-warn">⚠ ${qRusak} rusak</span>` : ''}
+    `;
+  }
+
+  // ── Alasan gagal
+  let alasanHtml = '';
+  if (d.alasan_gagal) {
+    alasanHtml = `
+      <div class="info-row">
+        <span class="info-key">Alasan gagal</span>
+        <span class="info-val" style="color:var(--red)">${d.alasan_gagal}</span>
+      </div>`;
+  }
+
+  // ── CTA buttons
+  let ctaHtml = '';
+  const driverWA  = cleanPhone(d.driver_phone);
+  const dispatchWA= cleanPhone(d.dispatcher_phone);
+  const fotoUrl   = d.foto_do_url;
+  const ctaBtns   = [];
+
+  if (driverWA && (sClass==='s-onroad')) {
+    const msg = encodeURIComponent(`Halo ${d.driver||'Driver'}, saya ingin konfirmasi pengiriman DO ${d.doc_no} ke ${d.alamat||'lokasi saya'}.`);
+    ctaBtns.push(`<a class="cta-btn cta-wa-driver" href="https://wa.me/${driverWA}?text=${msg}" target="_blank">📱 WA Driver</a>`);
+  }
+  if (dispatchWA) {
+    const msg2 = encodeURIComponent(`Halo Dispatcher GST, saya ingin tanya status pengiriman DO ${d.doc_no}.`);
+    ctaBtns.push(`<a class="cta-btn cta-wa-dispatch" href="https://wa.me/${dispatchWA}?text=${msg2}" target="_blank">☎️ Hubungi Dispatcher</a>`);
+  }
+
+  let ctaSection = '';
+  if (ctaBtns.length > 0) {
+    ctaSection = `<div class="cta-section">${ctaBtns.join('')}</div>`;
+  }
+
+  // ── Foto bukti
+  let fotoSection = '';
+  if (fotoUrl && sClass==='s-done') {
+    fotoSection = `
+      <div class="foto-section">
+        <div class="info-title">Foto Bukti Terima</div>
+        <img class="foto-thumb" src="${fotoUrl}" alt="Bukti pengiriman"
+             onclick="window.open('${fotoUrl}','_blank')">
+        <div class="foto-caption">Tap untuk perbesar</div>
+      </div>`;
+  }
+
+  // ── Render
+  card.innerHTML = `
+    <div class="status-banner ${sClass}">
+      <div class="status-icon">${sIcon}</div>
+      <div class="status-text-wrap">
+        <div class="status-label">${sLabel}</div>
+        <div class="status-main">${sMain}</div>
+        ${d.jam_update ? `<div class="status-time">Update: ${d.jam_update}</div>` : ''}
+      </div>
+    </div>
+
+    ${qtyHtml ? `<div style="padding:10px 20px 0;display:flex;flex-wrap:wrap;gap:6px">${qtyHtml}</div>` : ''}
+
+    <div class="timeline">
+      <div class="timeline-title">Status Pengiriman</div>
+      <div class="tl-steps">
+        ${steps.map((s,i)=>`
+          <div class="tl-step ${s.state}">
+            <div class="tl-left">
+              <div class="tl-dot ${s.state}">${s.state==='done'?'✓':s.state==='active'?'●':s.state==='fail'?'✕':(i+1)}</div>
+              ${i<steps.length-1?'<div class="tl-line"></div>':''}
+            </div>
+            <div class="tl-right">
+              <div class="tl-step-name">${s.name}</div>
+              ${s.time?`<div class="tl-step-time">${s.time}</div>`:''}
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="info-section">
+      <div class="info-title">Detail Pengiriman</div>
+      ${row('No. DO', `<span class="mono">${d.doc_no||'-'}</span>`)}
+      ${row('Tgl Kirim', d.do_date||'-')}
+      ${row('Customer', d.customer||'-')}
+      ${row('Alamat', d.alamat||'-')}
+      ${d.produk ? row('Produk', d.produk) : ''}
+      ${row('Kendaraan', d.plat ? `${d.plat}${d.driver?' · '+d.driver:''}` : '-')}
+      ${row('Gudang', d.gudang||'-')}
+      ${alasanHtml}
+      ${d.keterangan ? row('Catatan', d.keterangan) : ''}
+    </div>
+
+    ${ctaSection}
+    ${fotoSection}
+  `;
+
+  wrap.style.display = 'block';
+  document.getElementById('footer-text').style.display = 'block';
+  document.getElementById('footer-text').textContent = 'PT. Global Sentral Transport — Jika ada pertanyaan hubungi dispatcher';
+}
+
+function row(key, val) {
+  return `<div class="info-row">
+    <span class="info-key">${key}</span>
+    <span class="info-val">${val||'-'}</span>
+  </div>`;
+}
+
+function buildTimeline(st, d) {
+  const isMuat     = st.includes('muat');
+  const isOnroad   = st.includes('jalan')||st.includes('onroad')||st.includes('start')||st.includes('otw');
+  const isDone     = st.includes('selesai')||st.includes('terkirim')||st.includes('done')||st.includes('completed');
+  const isFailed   = st.includes('gagal')||st.includes('failed')||st.includes('cancel');
+  const isPending  = !isMuat&&!isOnroad&&!isDone&&!isFailed;
+
+  return [
+    {
+      name: 'Pesanan diterima sistem',
+      time: d.do_date || '',
+      state: 'done',
+    },
+    {
+      name: 'Barang disiapkan di gudang',
+      time: isMuat ? d.jam_update : '',
+      state: isPending ? 'active' : 'done',
+    },
+    {
+      name: 'Kendaraan berangkat',
+      time: isOnroad||isDone ? d.jam_update : '',
+      state: isPending ? 'idle' : isMuat ? 'active' : 'done',
+    },
+    {
+      name: isFailed ? 'Pengiriman gagal' : isDone ? 'Barang diterima' : 'Estimasi tiba',
+      time: isDone ? d.jam_update : '',
+      state: isPending||isMuat ? 'idle' : isOnroad ? 'active' : isDone ? 'done' : 'fail',
+    },
+  ];
+}
+
+function renderNotFound(doNo) {
+  const wrap = document.getElementById('result-wrap');
+  const card = document.getElementById('result-card');
+  card.innerHTML = `
+    <div class="not-found">
+      <div class="not-found-icon">🔍</div>
+      <h3>Data Tidak Ditemukan</h3>
+      <p>Nomor DO <strong>${doNo}</strong> tidak ditemukan dalam sistem.<br>
+      Pastikan nomor DO sudah benar atau hubungi dispatcher.</p>
+    </div>`;
+  wrap.style.display = 'block';
+}
+
+function cleanPhone(raw) {
+  if (!raw) return '';
+  let p = String(raw).replace(/\D/g,'');
+  if (p.startsWith('0')) p = '62' + p.slice(1);
+  if (!p.startsWith('62')) p = '62' + p;
+  return p.length >= 10 ? p : '';
+}
+
+function setLoading(v) {
+  document.getElementById('loading').style.display = v ? 'block' : 'none';
+  document.getElementById('track-btn').disabled = v;
+  document.getElementById('track-btn').textContent = v ? '…' : 'Lacak';
+}
+
+function showErr(msg) {
+  const el = document.getElementById('err-msg');
+  el.textContent = msg; el.style.display = 'block';
+}
+function hideErr() {
+  document.getElementById('err-msg').style.display = 'none';
+}
+
+function openConfig() {
+  const saved = localStorage.getItem(GAS_KEY);
+  if (saved) document.getElementById('config-gas').value = saved;
+  document.getElementById('config-overlay').classList.add('open');
+}
+function closeConfigIfOutside(e) {
+  if (e.target === document.getElementById('config-overlay'))
+    document.getElementById('config-overlay').classList.remove('open');
+}
+function saveConfig() {
+  const url = document.getElementById('config-gas').value.trim();
+  if (url) { localStorage.setItem(GAS_KEY, url); }
+  document.getElementById('config-overlay').classList.remove('open');
+}
+</script>
+</body>
+</html>
