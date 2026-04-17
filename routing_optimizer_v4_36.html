@@ -517,7 +517,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.37</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.38</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -1311,25 +1311,68 @@ const KOTA_ADJACENT = {
   'BANTEN':         ['SERANG'],
 };
 
+
+// ── ZONA → KOTA mapping (fallback jika KIRIM tidak punya titik-koma) ────────
+const ZONA_TO_KOTA = {
+  'JAKARTA TIMUR':'JAKARTA TIMUR','JAKARTA BARAT':'JAKARTA BARAT',
+  'JAKARTA UTARA':'JAKARTA UTARA','JAKARTA SELATAN':'JAKARTA SELATAN',
+  'JAKARTA PUSAT':'JAKARTA PUSAT','JAKARTA':'JAKARTA PUSAT',
+  'TANGERANG':'TANGERANG','TANGERANG SELATAN':'TANGERANG SELATAN',
+  'BEKASI':'BEKASI','DEPOK':'DEPOK','BOGOR':'BOGOR',
+  'KARAWANG':'KARAWANG','PURWAKARTA':'PURWAKARTA',
+  'SERANG':'SERANG','BANTEN':'BANTEN','CIKARANG':'BEKASI',
+  'CIBUBUR':'BOGOR',
+};
+
+function zonaToKota(zona) {
+  if (!zona) return '';
+  const z = String(zona).toUpperCase().trim();
+  // Direct match
+  if (ZONA_TO_KOTA[z]) return ZONA_TO_KOTA[z];
+  // Partial match — "JakTim-Barat" → "JAKARTA TIMUR"
+  if (z.includes('JAKAR')) {
+    if (z.includes('TIM')) return 'JAKARTA TIMUR';
+    if (z.includes('BAR')) return 'JAKARTA BARAT';
+    if (z.includes('UTAR')) return 'JAKARTA UTARA';
+    if (z.includes('SEL')) return 'JAKARTA SELATAN';
+    if (z.includes('PUS')) return 'JAKARTA PUSAT';
+  }
+  if (z.includes('TANG') && z.includes('SEL')) return 'TANGERANG SELATAN';
+  if (z.includes('TANG')) return 'TANGERANG';
+  if (z.includes('BEKASI') || z.includes('CIKARANG')) return 'BEKASI';
+  if (z.includes('DEPOK')) return 'DEPOK';
+  if (z.includes('BOGOR') || z.includes('CIBUBUR') || z.includes('CILEUNGSI')) return 'BOGOR';
+  if (z.includes('SERANG') || z.includes('BANTEN') || z.includes('CILEGON')) return 'SERANG';
+  if (z.includes('KARAWANG')) return 'KARAWANG';
+  if (z.includes('PURWAKARTA')) return 'PURWAKARTA';
+  return '';
+}
+
 function normalizeKota(kirim) {
   if (!kirim) return '';
   const s = String(kirim).toUpperCase().trim();
-  // Extract teks setelah titik-koma ";"
   let kota = '';
   if (s.includes(';')) {
     kota = s.split(';').pop().trim();
   } else {
-    // Fallback: cek apakah nama kota ada di dalam teks
-    for (const k of KOTA_JABO) {
-      if (s.includes(k)) { kota = k; break; }
+    // Fallback: scan nama kota Jabodetabek dalam teks KIRIM
+    const SCAN = ['JAKARTA PUSAT','JAKARTA SELATAN','JAKARTA BARAT','JAKARTA UTARA',
+      'JAKARTA TIMUR','TANGERANG SELATAN','TANGERANG','BEKASI','DEPOK','BOGOR',
+      'KARAWANG','PURWAKARTA','SERANG','BANTEN'];
+    for (const k of SCAN) { if (s.includes(k)) { kota = k; break; } }
+    if (!kota) {
+      if (s.includes('JAKPUS')||s.includes('JAK PUS')) kota='JAKARTA PUSAT';
+      else if (s.includes('JAKSEL')) kota='JAKARTA SELATAN';
+      else if (s.includes('JAKUT')) kota='JAKARTA UTARA';
+      else if (s.includes('JAKTIM')) kota='JAKARTA TIMUR';
+      else if (s.includes('JAKBAR')) kota='JAKARTA BARAT';
+      else if (s.includes('TANGSEL')) kota='TANGERANG SELATAN';
     }
     if (!kota) return '';
   }
-  // Hapus suffix yang tidak perlu
-  kota = kota.replace(/SY|ID|PS/g,'')
-             .replace(/KAB\.\B|KOTA/g,'')
+  kota = kota.replace(/\bSY\b|\bID\b|\bPS\b/g,'')
+             .replace(/\bKAB\.?\b|\bKOTA\b|\bKABUPATEN\b/g,'')
              .replace(/\s+/g,' ').trim();
-  // Normalisasi alias
   return KOTA_ALIAS[kota] || kota;
 }
 
@@ -2398,23 +2441,24 @@ function clusterFirstAssign(doGroups,vehicles,origin,wh,svol,swt){
   const loads=vehicles.map(v=>({vehicle:v,groups:[],vol:0,wt:0,scs:new Set(),avgBrg:0}));
   const unassigned=[];
   for(const dg of sorted){
-    // KOTA lock: extract primary KOTA kendaraan dari DO yang sudah ada
-    const dgKota = dg.items&&dg.items[0] ? (dg.items[0].kota||'') : (dg.kota||'');
+    // KOTA lock v4.38: pakai dg.kota (sudah set saat build doGroup)
+    // Fallback ke zonaToKota jika masih kosong
+    const dgKota = dg.kota || zonaToKota(dg.zona) || '';
     const cands=loads.filter(vl=>{
       if(!isEligible(vl,dg)) return false;
       if(vl.vol+dg.total_vol>vl.vehicle.vol_m3*svol) return false;
       if(vl.wt+dg.total_wt>vl.vehicle.max_kg*swt) return false;
       // KOTA compatibility check — cegah zigzag lintas kota
-      if(dgKota && vl.groups.length > 0) {
-        // Hitung primary KOTA kendaraan ini (KOTA paling banyak)
+      if(dgKota && KOTA_JABO.has(dgKota) && vl.groups.length > 0) {
+        // Hitung primary KOTA kendaraan: pakai dg.kota langsung
         const kotaCounts = {};
         vl.groups.forEach(g => {
-          const k = g.items&&g.items[0] ? (g.items[0].kota||'') : (g.kota||'');
-          if(k) kotaCounts[k] = (kotaCounts[k]||0) + (g.total_vol||1);
+          const k = g.kota || zonaToKota(g.zona) || '';
+          if(k && KOTA_JABO.has(k)) kotaCounts[k] = (kotaCounts[k]||0) + (g.total_vol||1);
         });
-        const primaryKota = Object.entries(kotaCounts).sort((a,b)=>b[1]-a[1])[0];
-        if(primaryKota) {
-          const vehKota = primaryKota[0];
+        const sorted = Object.entries(kotaCounts).sort((a,b)=>b[1]-a[1]);
+        if(sorted.length > 0) {
+          const vehKota = sorted[0][0];
           if(!isKotaCompatible(vehKota, dgKota)) return false;
         }
       }
@@ -2638,6 +2682,15 @@ function buildRoutes(active){
         window_tutup:items[0].window_tutup,
         window_ketat:items[0].window_ketat,
         _addrKey:cleanAddr(items[0].kirim.split(';')[0]).toUpperCase().replace(/\s+/g,''),
+        // KOTA lock v4.38: set kota di doGroup level — pakai kirim dulu, fallback zona
+        kota: (()=>{
+          const k1 = normalizeKota(items[0].kirim);
+          if (k1) return k1;
+          const k2 = zonaToKota(items[0].zona);
+          if (k2) return k2;
+          // Last resort: scan alamat kirim tanpa semicolon
+          return normalizeKota(items[0].kirim);
+        })(),
       };
     });
 
