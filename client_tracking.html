@@ -1,2639 +1,729 @@
-/**
- * ROUTING OPTIMIZER — Google Apps Script
- * Versi: 4.0 | April 2026
- * Cocok untuk: routing_optimizer_v4.24+ / driver_app_v3
- *
- * ── CARA PASANG ──────────────────────────────────────────────────────────────
- * 1. Google Sheets → Extensions → Apps Script
- * 2. Hapus semua kode lama → Paste kode ini → Save (Ctrl+S)
- * 3. Deploy → New Deployment
- *    · Type       : Web App
- *    · Execute as : Me
- *    · Who access : Anyone   ← WAJIB
- * 4. Copy URL → Paste ke app → Connect
- *
- * ── CHANGELOG v3.0 ───────────────────────────────────────────────────────────
- * + BBM berbasis km/liter (pisah dari UJ driver)
- * + Field: bbm_liter_est, bbm_km_per_l, bbm_harga_per_l di Settlement
- * + updateHargaSolar() — update harga solar di Konfigurasi + notif
- * + getKonfigurasi() — endpoint baca config saja (lebih cepat)
- * + Settlement sheet v2: kolom liter & harga solar terpisah
- * + testPing() & testUpdateHargaSolar() untuk verifikasi
- *
- * ── CHANGELOG v3.1 ───────────────────────────────────────────────────────────
- * + doPost: submitSelesai, submitGagal, submitStruk, populateDoStatus
- *
- * ── CHANGELOG v3.2 ───────────────────────────────────────────────────────────
- * + getDriverTasks: date matching lebih toleran
- *   → handle dd.MM.yy (titik, 2-digit year) dari WA Blast lama
- *   → expand 6-digit → 8-digit otomatis
- *   → fallback: jika tidak match, coba tanggal hari ini
- *   → Fix: driver_app_v3 kirim foto via POST (no-cors) bukan GET params
- *   → GET params terbatas ~2KB, foto base64 bisa 50-200KB → POST wajib
- *
- * ── CARA UPDATE HARGA SOLAR ──────────────────────────────────────────────────
- * Opsi A: Edit langsung Sheet "Konfigurasi" → baris "Harga solar per liter"
- * Opsi B: Jalankan testUpdateHargaSolar() dari Apps Script editor
- * Opsi C: POST { action:'updateHargaSolar', harga:7500 } dari app
- * → Setelah update, reconnect di app → BBM otomatis recalculate
- */
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tracking Pengiriman — GST</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// MULTI-SPREADSHEET CONFIG
-// ═══════════════════════════════════════════════════════════════════════════════
-//
-// Saat ini semua pakai 1 spreadsheet (active). Untuk pisah nanti:
-// 1. Buat spreadsheet baru di Google Drive
-// 2. Copy Spreadsheet ID dari URL: docs.google.com/spreadsheets/d/[ID]/edit
-// 3. Isi ID di bawah sesuai kategori
-// 4. Deploy ulang Apps Script
-//
-// Roadmap pemisahan:
-//   Sekarang : SS_MASTER saja (semua sheet di 1 spreadsheet)
-//   3 bln    : SS_OPERASIONAL dipisah (DO Status, Stop Log, GPS Log)
-//   6 bln    : SS_ANALITIK dipisah (Routing Log, Settlement, Trip Summary)
-//   Opsional : SS_GEO_CACHE dipisah (Geo Cache)
-
-const SS_IDS = {
-  MASTER      : '',   // ← kosong = pakai active spreadsheet (default sekarang)
-  OPERASIONAL : '',   // ← isi ID spreadsheet operasional kalau sudah dipisah
-  ANALITIK    : '',   // ← isi ID spreadsheet analitik kalau sudah dipisah
-  GEO_CACHE   : '',   // ← isi ID spreadsheet geo cache kalau sudah dipisah
-};
-
-// ── HELPER: Ambil spreadsheet sesuai kategori ─────────────────────────────────
-// Kalau ID kosong → pakai active spreadsheet (backward compatible)
-function getSS(category) {
-  const id = SS_IDS[category] || '';
-  if (id) {
-    return SpreadsheetApp.openById(id);
+  :root {
+    --bg:       #F0F4F8;
+    --card:     #FFFFFF;
+    --border:   #E2E8F0;
+    --text:     #1A202C;
+    --muted:    #718096;
+    --accent:   #2563EB;
+    --accent2:  #1D4ED8;
+    --green:    #16A34A;
+    --amber:    #D97706;
+    --red:      #DC2626;
+    --gray:     #94A3B8;
+    --shadow:   0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.06);
+    --radius:   14px;
   }
-  return SpreadsheetApp.getActiveSpreadsheet();
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0 0 60px;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    background: var(--accent);
+    padding: 18px 20px 22px;
+    text-align: center;
+    position: relative;
+  }
+  .header-logo {
+    display: flex; align-items: center; justify-content: center;
+    gap: 10px; margin-bottom: 4px;
+  }
+  .header-logo svg { width: 28px; height: 28px; }
+  .header-brand {
+    font-size: 15px; font-weight: 800;
+    color: #fff; letter-spacing: -.3px;
+  }
+  .header-sub {
+    font-size: 12px; color: rgba(255,255,255,.75);
+    font-weight: 400;
+  }
+
+  /* ── SEARCH BOX ── */
+  .search-wrap {
+    padding: 20px 20px 0;
+    max-width: 520px; margin: 0 auto;
+  }
+  .search-label {
+    font-size: 12px; font-weight: 600; color: var(--muted);
+    letter-spacing: .06em; text-transform: uppercase;
+    margin-bottom: 8px; display: block;
+  }
+  .search-row {
+    display: flex; gap: 8px;
+  }
+  .search-input {
+    flex: 1;
+    padding: 13px 16px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px; font-weight: 500;
+    background: var(--card);
+    color: var(--text);
+    outline: none;
+    transition: border-color .15s;
+  }
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--gray); }
+  .search-btn {
+    padding: 13px 22px;
+    background: var(--accent);
+    color: #fff;
+    border: none; border-radius: var(--radius);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 14px; font-weight: 700;
+    cursor: pointer;
+    transition: background .15s, transform .1s;
+    white-space: nowrap;
+  }
+  .search-btn:hover { background: var(--accent2); }
+  .search-btn:active { transform: scale(.97); }
+  .search-btn:disabled { background: var(--gray); cursor: not-allowed; }
+
+  /* ── LOADING ── */
+  .loading {
+    display: none; text-align: center;
+    padding: 48px 20px;
+  }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading p { font-size: 13px; color: var(--muted); }
+
+  /* ── RESULT CARD ── */
+  .result-wrap {
+    max-width: 520px; margin: 20px auto 0;
+    padding: 0 20px;
+    display: none;
+  }
+
+  .card {
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    animation: fadeUp .25s ease;
+  }
+  @keyframes fadeUp {
+    from { opacity:0; transform: translateY(8px); }
+    to   { opacity:1; transform: translateY(0); }
+  }
+
+  /* Status banner */
+  .status-banner {
+    padding: 18px 20px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .status-icon {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0;
+  }
+  .status-text-wrap { flex: 1; }
+  .status-label {
+    font-size: 11px; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .status-main {
+    font-size: 17px; font-weight: 800; line-height: 1.2;
+  }
+  .status-time {
+    font-size: 12px; color: var(--muted); margin-top: 3px;
+  }
+
+  /* Status colors */
+  .s-waiting  { background: #EFF6FF; }
+  .s-waiting .status-icon  { background: #DBEAFE; }
+  .s-waiting .status-label { color: var(--accent); }
+  .s-waiting .status-main  { color: var(--accent2); }
+
+  .s-onroad { background: #ECFDF5; }
+  .s-onroad .status-icon  { background: #D1FAE5; }
+  .s-onroad .status-label { color: var(--green); }
+  .s-onroad .status-main  { color: #15803D; }
+
+  .s-done { background: #F0FDF4; }
+  .s-done .status-icon  { background: #BBF7D0; }
+  .s-done .status-label { color: var(--green); }
+  .s-done .status-main  { color: #166534; }
+
+  .s-failed { background: #FEF2F2; }
+  .s-failed .status-icon  { background: #FEE2E2; }
+  .s-failed .status-label { color: var(--red); }
+  .s-failed .status-main  { color: #991B1B; }
+
+  .s-loading { background: #F8FAFC; }
+
+  /* Timeline steps */
+  .timeline {
+    padding: 0 20px 4px;
+    border-top: 1px solid var(--border);
+  }
+  .timeline-title {
+    font-size: 11px; font-weight: 700;
+    color: var(--muted); letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: 14px 0 10px;
+  }
+  .tl-steps { position: relative; }
+  .tl-step {
+    display: flex; gap: 14px;
+    padding-bottom: 16px; position: relative;
+  }
+  .tl-step:last-child { padding-bottom: 4px; }
+  .tl-left {
+    display: flex; flex-direction: column;
+    align-items: center; flex-shrink: 0;
+    width: 22px;
+  }
+  .tl-dot {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+    flex-shrink: 0; z-index: 1;
+  }
+  .tl-line {
+    width: 2px; flex: 1; margin-top: 4px;
+    background: var(--border);
+    min-height: 12px;
+  }
+  .tl-dot.done  { background: var(--green); color: #fff; }
+  .tl-dot.active{ background: var(--accent); color: #fff;
+                  box-shadow: 0 0 0 4px rgba(37,99,235,.15); }
+  .tl-dot.idle  { background: var(--border); color: var(--muted); }
+  .tl-dot.fail  { background: var(--red); color: #fff; }
+
+  .tl-right { flex: 1; padding-top: 1px; }
+  .tl-step-name {
+    font-size: 13px; font-weight: 600; line-height: 1.3;
+  }
+  .tl-step-time {
+    font-size: 11px; color: var(--muted); margin-top: 1px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .tl-step.idle .tl-step-name { color: var(--muted); font-weight: 500; }
+
+  /* Info rows */
+  .info-section {
+    border-top: 1px solid var(--border);
+    padding: 14px 20px;
+  }
+  .info-title {
+    font-size: 11px; font-weight: 700;
+    color: var(--muted); letter-spacing: .06em;
+    text-transform: uppercase; margin-bottom: 10px;
+  }
+  .info-row {
+    display: flex; justify-content: space-between;
+    align-items: flex-start; gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-key { color: var(--muted); flex-shrink: 0; }
+  .info-val { font-weight: 600; text-align: right; max-width: 60%; word-break: break-word; }
+  .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+  /* CTA buttons */
+  .cta-section {
+    padding: 14px 20px 18px;
+    display: flex; gap: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .cta-btn {
+    flex: 1; padding: 12px 10px;
+    border-radius: 10px; border: none;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 13px; font-weight: 700;
+    cursor: pointer; text-align: center;
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px; text-decoration: none;
+    transition: opacity .15s, transform .1s;
+  }
+  .cta-btn:hover { opacity: .85; }
+  .cta-btn:active { transform: scale(.97); }
+  .cta-wa-driver   { background: #16A34A; color: #fff; }
+  .cta-wa-dispatch { background: #1D4ED8; color: #fff; }
+  .cta-photo       { background: #F8FAFC; color: var(--text);
+                     border: 1.5px solid var(--border); }
+
+  /* Foto bukti */
+  .foto-section {
+    padding: 14px 20px 18px;
+    border-top: 1px solid var(--border);
+  }
+  .foto-thumb {
+    width: 100%; border-radius: 10px;
+    object-fit: cover; max-height: 240px;
+    cursor: pointer;
+  }
+  .foto-caption {
+    font-size: 11px; color: var(--muted);
+    text-align: center; margin-top: 6px;
+  }
+
+  /* Not found */
+  .not-found {
+    text-align: center; padding: 40px 20px;
+  }
+  .not-found-icon { font-size: 40px; margin-bottom: 12px; }
+  .not-found h3 {
+    font-size: 16px; font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .not-found p { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+  /* Error */
+  .error-msg {
+    background: #FEF2F2;
+    border: 1px solid #FECACA;
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 13px; color: var(--red);
+    margin-top: 12px; text-align: center;
+    display: none;
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 24px 20px 0;
+    font-size: 11px; color: var(--muted);
+  }
+
+  /* Qty badges */
+  .qty-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11px; font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .qty-ok   { background: #D1FAE5; color: #166534; }
+  .qty-warn { background: #FEF3C7; color: #92400E; }
+  .qty-fail { background: #FEE2E2; color: #991B1B; }
+
+  /* Config modal */
+  .config-overlay {
+    display: none; position: fixed;
+    inset: 0; background: rgba(0,0,0,.5);
+    z-index: 100; align-items: flex-end;
+  }
+  .config-overlay.open { display: flex; }
+  .config-sheet {
+    background: var(--card);
+    border-radius: 20px 20px 0 0;
+    padding: 20px;
+    width: 100%; max-width: 520px;
+    margin: 0 auto;
+    animation: slideUp .2s ease;
+  }
+  @keyframes slideUp {
+    from { transform: translateY(40px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+  .config-title {
+    font-size: 14px; font-weight: 700;
+    margin-bottom: 14px;
+  }
+  .config-label {
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .06em;
+    margin-bottom: 6px; display: block;
+  }
+  .config-input {
+    width: 100%; padding: 11px 14px;
+    border: 1.5px solid var(--border); border-radius: 10px;
+    font-size: 12px; font-family: 'JetBrains Mono', monospace;
+    outline: none; color: var(--text);
+    transition: border-color .15s;
+  }
+  .config-input:focus { border-color: var(--accent); }
+  .config-save {
+    width: 100%; margin-top: 12px;
+    padding: 12px; background: var(--accent); color: #fff;
+    border: none; border-radius: 10px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 14px; font-weight: 700;
+    cursor: pointer;
+  }
+  .config-hint {
+    font-size: 11px; color: var(--muted);
+    margin-top: 6px; line-height: 1.5;
+  }
+  .gear-btn {
+    position: absolute; top: 16px; right: 16px;
+    background: rgba(255,255,255,.2);
+    border: none; border-radius: 8px;
+    padding: 6px 8px; cursor: pointer;
+    font-size: 16px; color: #fff;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <!-- Tombol pengaturan: hanya muncul untuk dispatcher via ?admin=1 -->
+  <button class="gear-btn" id="gear-btn" onclick="openConfig()" title="Pengaturan" style="display:none">⚙️</button>
+  <div class="header-logo">
+    <svg viewBox="0 0 28 28" fill="none">
+      <rect width="28" height="28" rx="7" fill="rgba(255,255,255,.2)"/>
+      <path d="M6 20L10 8h3l2 7 2-7h3l4 12h-3l-2.5-8-2.5 8H14l-2.5-8L9 20H6z" fill="#fff"/>
+    </svg>
+    <span class="header-brand">Global Sentral Transport</span>
+  </div>
+  <div class="header-sub">Lacak status pengiriman Anda</div>
+</div>
+
+<div class="search-wrap">
+  <label class="search-label" for="do-input">Nomor DO / Surat Jalan</label>
+  <div class="search-row">
+    <input class="search-input" id="do-input" type="text"
+           placeholder="contoh: 261026669"
+           autocomplete="off" autocapitalize="off"
+           onkeydown="if(event.key==='Enter')doTrack()">
+    <button class="search-btn" id="track-btn" onclick="doTrack()">Lacak</button>
+  </div>
+  <div class="error-msg" id="err-msg"></div>
+</div>
+
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  <p>Mencari data pengiriman…</p>
+</div>
+
+<div class="result-wrap" id="result-wrap">
+  <div class="card" id="result-card"></div>
+</div>
+
+<div class="footer" id="footer-text">
+  Masukkan nomor DO yang tertera di surat jalan Anda
+</div>
+
+<!-- Config Modal -->
+<div class="config-overlay" id="config-overlay" onclick="closeConfigIfOutside(event)">
+  <div class="config-sheet">
+    <div class="config-title">⚙️ Pengaturan Dispatcher</div>
+    <div style="font-size:11px;color:#6b7280;margin-bottom:8px;">
+      Halaman ini hanya untuk dispatcher. Jangan bagikan URL ini ke customer.
+    </div>
+    <label class="config-label">GAS URL (Apps Script)</label>
+    <input class="config-input" id="config-gas" type="text"
+           placeholder="https://script.google.com/macros/s/.../exec">
+    <p class="config-hint">
+      URL ini didapat dari deployment Google Apps Script sistem GST.<br>
+      Hubungi dispatcher jika belum tersedia.
+    </p>
+    <button class="config-save" onclick="saveConfig()">Simpan</button>
+  </div>
+</div>
+
+<script>
+const GAS_KEY = 'gst_track_gas_url';
+const DEFAULT_GAS = 'https://script.google.com/macros/s/AKfycbzWW4NJXYEZxcG5jiygObB6sitBmuQFi0m22C9vH2Wp2vnchw3lGv99I9E1mJ5uPXChNA/exec';
+
+function getGasUrl() {
+  return localStorage.getItem(GAS_KEY) || DEFAULT_GAS;
 }
 
-// ── HELPER: Ambil sheet dari spreadsheet yang tepat ───────────────────────────
-function getSheet(sheetName, category) {
-  const ss = getSS(category || sheetCategoryMap[sheetName] || 'MASTER');
-  const sh = ss.getSheetByName(sheetName);
-  return sh;
-}
+// ── Auto-read from URL param (?do=261026669)
+window.addEventListener('DOMContentLoaded', () => {
+  const p = new URLSearchParams(location.search);
+  const doNo = p.get('do') || p.get('doc_no') || p.get('no');
+  if (doNo) {
+    document.getElementById('do-input').value = doNo.trim();
+    doTrack();
+  }
+  // Tampilkan gear hanya untuk dispatcher (?admin=1)
+  if (p.get('admin') === '1') {
+    const g = document.getElementById('gear-btn');
+    if (g) g.style.display = '';
+  }
+  // Restore saved GAS URL
+  const saved = localStorage.getItem(GAS_KEY);
+  if (saved) document.getElementById('config-gas').value = saved;
+});
 
-// ── MAPPING: Sheet name → kategori spreadsheet ────────────────────────────────
-// Ini yang perlu diupdate saat nanti dipisah
-const sheetCategoryMap = {
-  // SS1 — DATA MASTER (statis)
-  'Kendaraan'           : 'MASTER',
-  'Gudang'              : 'MASTER',
-  'Kecamatan'           : 'MASTER',
-  'Window Penerimaan'   : 'MASTER',
-  'Konfigurasi'         : 'MASTER',
-  'Vendor'              : 'MASTER',
-  'Spesifikasi Produk'  : 'MASTER',
-  'Users'               : 'MASTER',
-  'Audit Log'           : 'MASTER',
-  'Panduan'             : 'MASTER',
+async function doTrack() {
+  const raw = document.getElementById('do-input').value.trim();
+  if (!raw) { showErr('Masukkan nomor DO terlebih dahulu.'); return; }
 
-  // SS2 — OPERASIONAL HARIAN (load tinggi, real-time)
-  'DO Status'           : 'OPERASIONAL',
-  'Stop Log'            : 'OPERASIONAL',
-  'Photo Log'           : 'OPERASIONAL',
-  'Dispatch Log'        : 'OPERASIONAL',
-  'GPS Log'             : 'OPERASIONAL',
-  'Trip Summary'        : 'OPERASIONAL',
+  const doNo = raw.replace(/\D/g,'').replace(/^0+/,'') || raw;
 
-  // SS3 — ANALITIK & HISTORY (tumbuh perlahan)
-  'Routing Log'         : 'ANALITIK',
-  'Settlement Harian'   : 'ANALITIK',
+  setLoading(true);
+  hideErr();
+  document.getElementById('result-wrap').style.display = 'none';
+  document.getElementById('footer-text').style.display = 'none';
 
-  // SS4 — GEO CACHE (opsional)
-  'Geo Cache'           : 'GEO_CACHE',
-
-  // Cargo Tracking — bisa di SS2 atau SS1 (default SS2)
-  'Cargo Tracking'      : 'OPERASIONAL',
-};
-
-// ── SHEET NAMES ────────────────────────────────────────────────────────────────
-const SHEETS = {
-  kendaraan    : 'Kendaraan',
-  gudang       : 'Gudang',
-  kecamatan    : 'Kecamatan',
-  window       : 'Window Penerimaan',
-  konfigurasi  : 'Konfigurasi',
-  vendor       : 'Vendor',
-  spesifikasi  : 'Spesifikasi Produk',
-  settlement   : 'Settlement Harian',
-  geo_cache    : 'Geo Cache',
-  routing_log  : 'Routing Log',
-  users        : 'Users',
-  audit_log    : 'Audit Log',
-  do_status     : 'DO Status',
-  cargo_tracking: 'Cargo Tracking',   // ← sistem tracking ekspedisi luar        // ← status per DO (untuk driver app + client tracking)
-  stop_log     : 'Stop Log',         // ← laporan per DO dari driver
-  photo_log    : 'Photo Log',        // ← link foto dari Google Drive
-};
-
-const SETTLE_COLS = 27;
-
-// ── GET (doGet) ────────────────────────────────────────────────────────────────
-function doGet(e) {
-  const action = (e && e.parameter && e.parameter.action) || 'getMasterData';
-  const date   =  e && e.parameter && e.parameter.date;
-  const plat   =  e && e.parameter && e.parameter.plat;
   try {
-    let r;
-    switch (action) {
-      case 'getMasterData':  r = getMasterData();        break;
-      case 'getGeoCache':    r = getGeoCache();          break;
-      case 'getSettlement':  r = getSettlement(date);    break;
-      case 'getKonfigurasi': r = getKonfigurasi();       break;
-      case 'getUsers':       r = getUsers();             break;
-      // Login via GET (untuk file:// protocol compatibility)
-      case 'login':
-        r = doLogin({
-          username: e.parameter.username,
-          password: e.parameter.password,
-        }); break;
-      // Audit Log via GET
-      case 'saveAuditLog':
-        _writeAudit(
-          getSS('MASTER'),
-          e.parameter.username||'',
-          e.parameter.nama||'',
-          e.parameter.role||'',
-          e.parameter.gudang||'',
-          e.parameter.auditAction||e.parameter.action||'',
-          e.parameter.detail||''
-        );
-        r = { status:'ok' }; break;
-      // GPS via GET (dari GitHub Pages — tidak bisa POST karena CORS)
-      case 'startTrip':
-        r = startTrip({
-          plat   : e.parameter.plat,
-          driver : e.parameter.driver,
-          gudang : e.parameter.gudang,
-          date   : e.parameter.date,
-          lat    : e.parameter.lat,
-          lng    : e.parameter.lng,
-          stops  : e.parameter.stops,
-          km_est : e.parameter.km_est,
-        }); break;
-      case 'updateGPS':
-        r = updateGPS({
-          plat      : e.parameter.plat,
-          date      : e.parameter.date,
-          lat       : e.parameter.lat,
-          lng       : e.parameter.lng,
-          km_total  : e.parameter.km_total,
-          speed_kmh : e.parameter.speed_kmh,
-          timestamp : e.parameter.timestamp,
-        }); break;
-      case 'endTrip':
-        r = endTrip({
-          plat     : e.parameter.plat,
-          date     : e.parameter.date,
-          lat      : e.parameter.lat,
-          lng      : e.parameter.lng,
-          km_total : e.parameter.km_total,
-          notes    : e.parameter.notes,
-        }); break;
-      // GPS Tracking
-      case 'getTrip':        r = getTrip(plat, date);   break;
-      case 'getTripList':    r = getTripList(date);      break;
-      case 'getKMActual':    r = getKMActual(plat,date); break;
-      // Driver App v2 endpoints
-      case 'getDriverTasks': r = getDriverTasks(e.parameter.plat, e.parameter.date); break;
-      case 'getFailedDOs':   r = getFailedDOs(e.parameter.date);   break;
-      // Cargo Tracking
-      case 'getCargoDOs':    r = getCargoDOs();                    break;
-      case 'getSalesView':   r = getSalesView(e.parameter.dateFrom, e.parameter.dateTo); break;
-      case 'getCargoByDO':   r = getCargoByDO(e.parameter.do_no); break;  // carry-over
-      case 'getRoutingLog':  r = getRoutingLog(e.parameter.date);  break;  // history
-      // Sesi 5 — Realtime monitoring
-      case 'getBatchDoStatus': r = getBatchDoStatus(e.parameter.doc_nos, e.parameter.date); break;
-      case 'getGPSPositions' : r = getGPSPositions(e.parameter.plats, e.parameter.date);   break;
-      case 'getDispatcherView': r = getDispatcherView(e.parameter.date); break;
-      // Sync DO dari routing optimizer ke sheet DO Status (via GET)
-      case 'populateDoStatus':
-        try {
-          const rows = JSON.parse(e.parameter.rows || '[]');
-          r = populateDoStatus({ doDate: e.parameter.doDate, rows });
-        } catch(ex) { r = { error: 'Invalid rows JSON: ' + ex.message }; }
-        break;
-      case 'startJob':       r = startJob(e.parameter);  break;
-      case 'cancelJob':      r = cancelJob(e.parameter); break;
-      case 'submitSelesai':  r = submitSelesai(e.parameter); break;
-      case 'submitGagal':    r = submitGagal(e.parameter);   break;
-      case 'submitStruk':    r = submitStruk(e.parameter);   break;
-      case 'getDoStatus':    r = getDoStatus(e.parameter.doc_no); break;
-      // Manual trigger alert (untuk test)
-      case 'runAlertBelumBerangkat': alertBelumBerangkat(); r = {status:'ok',msg:'alert sent'}; break;
-      case 'runAlertETA':            alertETATerlewat();    r = {status:'ok',msg:'alert sent'}; break;
-      case 'runAlertGagal':          alertGagalBerulang();  r = {status:'ok',msg:'alert sent'}; break;
-      case 'runAutoSettlement':      autoSettlement();       r = {status:'ok',msg:'settlement done'}; break;
-      case 'ping':           r = {
-        status:'ok', version:'4.2',
-        timestamp: new Date().toISOString(),
-        sheets: Object.values(SHEETS),
-        gps_sheets: Object.values(SHEETS_GPS),
-      }; break;
-      default: r = { error: 'Unknown action: ' + action };
+    const url = `${getGasUrl()}?action=getDoStatus&doc_no=${encodeURIComponent(raw)}`;
+    const res  = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+
+    if (json.error) throw new Error(json.error);
+    if (!json.data) {
+      renderNotFound(raw);
+    } else {
+      renderResult(json.data);
     }
-    return jsonResponse(r);
-  } catch(err) { return jsonResponse({ error: err.message }); }
-}
-
-// ── POST (doPost) ──────────────────────────────────────────────────────────────
-function doPost(e) {
-  try {
-    const body   = JSON.parse(e.postData.contents);
-    const action = body.action || '';
-    let r;
-    switch (action) {
-      case 'syncGeoCache':     r = syncGeoCache(body.data);      break;
-      case 'saveRoutingLog':   r = saveRoutingLog(body.data);    break;
-      case 'saveSettlement':   r = saveSettlement(body.data);    break;
-      case 'updateHargaSolar': r = updateHargaSolar(body.harga); break;
-      case 'login':            r = doLogin(body);                break;  // ← NEW
-      case 'saveAuditLog':     r = saveAuditLog(body);           break;  // ← NEW
-      case 'resetPassword':    r = resetPassword(body);          break;  // ← NEW
-      // GPS Tracking
-      case 'startTrip':        r = startTrip(body);              break;
-      case 'updateGPS':        r = updateGPS(body);              break;
-      case 'endTrip':          r = endTrip(body);                break;
-      case 'saveDispatch':     r = saveDispatch(body);           break;
-      // Driver App v3 — foto upload via POST (no-cors, bypass URL length limit)
-      case 'submitSelesai':    r = submitSelesai(body);           break;
-      case 'submitGagal':      r = submitGagal(body);             break;
-      case 'submitStruk':      r = submitStruk(body);             break;
-      case 'populateDoStatus': r = populateDoStatus(body);        break;
-      // Cargo Tracking
-      case 'saveCargoDO':    r = saveCargoDO(body);              break;
-      case 'updateCargoDO':  r = updateCargoDO(body);            break;
-      default: r = { error: 'Unknown action: ' + action };
-    }
-    return jsonResponse(r);
-  } catch(err) { return jsonResponse({ error: err.message }); }
-}
-
-// ── GET MASTER DATA ────────────────────────────────────────────────────────────
-function getMasterData() {
-  const ss = getSS('MASTER'); // SS1: Data Master
-  const result = {};
-  [SHEETS.kendaraan, SHEETS.gudang, SHEETS.kecamatan,
-   SHEETS.window, SHEETS.konfigurasi, SHEETS.vendor,
-   SHEETS.spesifikasi, SHEETS.geo_cache, SHEETS.settlement]
-  .forEach(name => {
-    const sheet = ss.getSheetByName(name);
-    if (!sheet) { result[name] = []; return; }
-    const lr = sheet.getLastRow(), lc = sheet.getLastColumn();
-    if (lr < 1 || lc < 1) { result[name] = []; return; }
-    result[name] = sheet.getRange(1, 1, lr, lc).getValues().map(row =>
-      row.map(cell => {
-        if (cell instanceof Date)
-          return Utilities.formatDate(cell, 'Asia/Jakarta', 'dd/MM/yyyy HH:mm');
-        return cell === null || cell === undefined ? '' : cell;
-      })
-    );
-  });
-  return { status:'ok', data:result, timestamp:new Date().toISOString() };
-}
-
-// ── GET KONFIGURASI (hanya baca 1 sheet — lebih cepat) ────────────────────────
-function getKonfigurasi() {
-  const ss    = getSS('MASTER'); // SS1: Data Master
-  const sheet = ss.getSheetByName(SHEETS.konfigurasi);
-  if (!sheet) return { status:'ok', data:[] };
-  const lr = sheet.getLastRow(), lc = Math.max(sheet.getLastColumn(), 4);
-  if (lr < 1) return { status:'ok', data:[] };
-  const data = sheet.getRange(1, 1, lr, lc).getValues().map(row =>
-    row.map(cell => {
-      if (cell instanceof Date)
-        return Utilities.formatDate(cell, 'Asia/Jakarta', 'dd/MM/yyyy HH:mm');
-      return cell === null || cell === undefined ? '' : cell;
-    })
-  );
-  return { status:'ok', data };
-}
-
-// ── UPDATE HARGA SOLAR ─────────────────────────────────────────────────────────
-// Cari baris "Harga solar per liter" di Konfigurasi → update nilainya
-// Bisa dipanggil:
-//   A) Manual dari editor: jalankan testUpdateHargaSolar()
-//   B) Via app: POST { action:'updateHargaSolar', harga:7500 }
-function updateHargaSolar(hargaBaru) {
-  const h = parseFloat(hargaBaru);
-  if (!h || isNaN(h) || h < 1000 || h > 99999)
-    return { error: 'Harga tidak valid (harus antara 1000–99999)' };
-
-  const ss    = getSS('MASTER'); // SS1
-  const sheet = ss.getSheetByName(SHEETS.konfigurasi);
-  if (!sheet) return { error: 'Sheet Konfigurasi tidak ditemukan' };
-
-  const vals   = sheet.getRange(1, 1, sheet.getLastRow(), 2).getValues();
-  let   rowIdx = -1;
-
-  for (let i = 0; i < vals.length; i++) {
-    const param = String(vals[i][0] || '').toLowerCase();
-    if (param.includes('harga solar') || param.includes('harga bbm') ||
-        param.includes('bbm harga')) {
-      rowIdx = i + 1;
-      break;
-    }
-  }
-
-  if (rowIdx > 0) {
-    sheet.getRange(rowIdx, 2).setValue(h);
-  } else {
-    // Belum ada → tambah baris baru
-    sheet.appendRow([
-      'Harga solar per liter', h, 'Rp/liter',
-      'UPDATE INI KALAU HARGA SOLAR BERUBAH → otomatis recalc semua BBM',
-    ]);
-  }
-
-  const now = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm');
-  return {
-    status  : 'ok',
-    message : 'Harga solar diupdate ke Rp ' + h.toLocaleString() + ' pada ' + now,
-    harga   : h,
-    row     : rowIdx > 0 ? rowIdx : 'baru ditambahkan',
-  };
-}
-
-// ── GEO CACHE ──────────────────────────────────────────────────────────────────
-function getGeoCache() {
-  const ss    = getSS('GEO_CACHE'); // SS4: Geo Cache
-  const sheet = ss.getSheetByName(SHEETS.geo_cache);
-  if (!sheet) return { status:'ok', data:{} };
-  const lr = sheet.getLastRow();
-  if (lr < 2) return { status:'ok', data:{} };
-  const cache = {};
-  sheet.getRange(2, 1, lr - 1, 7).getValues().forEach(row => {
-    const addr = String(row[0] || '').trim();
-    if (!addr) return;
-    cache[addr] = { lat:parseFloat(row[1])||null, lng:parseFloat(row[2])||null,
-      kecamatan:String(row[3]||''), zona:String(row[4]||''),
-      source:String(row[5]||'manual'), updated:String(row[6]||'') };
-  });
-  return { status:'ok', data:cache };
-}
-
-function syncGeoCache(data) {
-  if (!data || typeof data !== 'object') return { error:'No data' };
-  const ss = getSS('GEO_CACHE'); // SS4: Geo Cache
-  let sheet = ss.getSheetByName(SHEETS.geo_cache);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEETS.geo_cache);
-    const hdr = sheet.getRange(1, 1, 1, 7);
-    hdr.setValues([['Alamat (KIRIM)','Lat','Lng','Kecamatan','Zona','Source','Updated']]);
-    hdr.setFontWeight('bold').setBackground('#1F4E79').setFontColor('#FFFFFF');
-    sheet.setColumnWidth(1, 300);
-  }
-  const existing = {};
-  const lr = sheet.getLastRow();
-  if (lr >= 2)
-    sheet.getRange(2,1,lr-1,1).getValues()
-      .forEach((r,i) => { if (r[0]) existing[String(r[0]).trim()] = i+2; });
-
-  const now = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm');
-  let added = 0, updated = 0;
-  Object.entries(data).forEach(([addr, info]) => {
-    const row = [addr, info.lat||'', info.lng||'', info.kecamatan||'',
-                 info.zona||'', info.source||'app', now];
-    if (existing[addr]) { sheet.getRange(existing[addr],1,1,7).setValues([row]); updated++; }
-    else                { sheet.appendRow(row); added++; }
-  });
-  return { status:'ok', added, updated };
-}
-
-// ── ROUTING LOG ────────────────────────────────────────────────────────────────
-function saveRoutingLog(data) {
-  if (!data) return { error:'No data' };
-  const ss = getSS('ANALITIK'); // SS3: Analitik
-  let sheet = ss.getSheetByName(SHEETS.routing_log);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEETS.routing_log);
-    const h = [['Tanggal Routing','Tanggal DO','Gudang','Plat','Driver','Tipe',
-      'Route No','Trip No','Total DO','Total DUS','Volume (m³)',
-      'KM Estimasi','Util Berat (%)','Util Vol (%)','ETA Selesai','ETA Ok','Flag']];
-    const hdr = sheet.getRange(1,1,1,h[0].length);
-    hdr.setValues(h).setFontWeight('bold').setBackground('#1F4E79').setFontColor('#FFFFFF');
-  }
-  const now  = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm');
-  const rows = (data.routes||[]).map(r => [
-    now, data.doDate||'', (r.wh||'').replace('GUDANG ',''),
-    r.plat||'', r.driver||'', r.tipe||'',
-    r.route_no||1, r.trip_no||'-',
-    r.total_do||0, r.total_qty||0, r.total_vol||0,
-    r.total_km||0, r.util_berat||0, r.util_vol||0,
-    r.eta_selesai||'', r.eta_ok?'Y':'N', r.flag||'',
-  ]);
-  if (rows.length > 0)
-    sheet.getRange(sheet.getLastRow()+1, 1, rows.length, rows[0].length).setValues(rows);
-  return { status:'ok', saved:rows.length };
-}
-
-// ── SETTLEMENT UANG JALAN ──────────────────────────────────────────────────────
-function getSettlement(date) {
-  const ss    = getSS('ANALITIK'); // SS3: Analitik
-  const sheet = ss.getSheetByName(SHEETS.settlement);
-  if (!sheet) return { status:'ok', data:[] };
-  const lr = sheet.getLastRow();
-  if (lr < 6) return { status:'ok', data:[] };
-
-  // Data mulai baris 6 (1=title, 2=sub, 3=group, 4=subhdr, 5=note)
-  let data = sheet.getRange(6, 1, lr-5, SETTLE_COLS).getValues()
-    .filter(r => r[1])
-    .map(r => ({
-      no:r[0], plat:r[1], driver:r[2], tipe:r[3], gudang:r[4],
-      tanggal: r[5] instanceof Date
-        ? Utilities.formatDate(r[5],'Asia/Jakarta','dd/MM/yyyy') : String(r[5]||''),
-      km_est:r[6], km_aktual:r[7],
-      uj_est:r[8], uj_aktual:r[9],
-      bbm_est:r[10], bbm_aktual:r[11],
-      bbm_liter_est:r[12], bbm_liter_aktual:r[13],
-      bbm_km_per_l:r[14], bbm_harga:r[15],
-      tol_est:r[16], tol_aktual:r[17],
-      parkir_est:r[18], parkir_aktual:r[19],
-      makan:r[20], mel:r[21], mel_ket:r[22],
-      dp_total:r[23], total_aktual:r[24],
-      selisih:r[25], status:r[26],
-    }));
-
-  if (date) data = data.filter(d => d.tanggal === date);
-  return { status:'ok', data, count:data.length };
-}
-
-function saveSettlement(data) {
-  if (!data || !Array.isArray(data.rows)) return { error:'No data' };
-
-  const ss = getSS('ANALITIK'); // SS3: Analitik
-  let sheet = ss.getSheetByName(SHEETS.settlement);
-  if (!sheet) { sheet = ss.insertSheet(SHEETS.settlement); _setupSettlementSheet(sheet); }
-
-  const now  = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy');
-  const rows = data.rows.map((r,i) => [
-    i+1,
-    r.plat||'', r.driver||'', r.tipe||'', r.gudang||'',
-    data.doDate||now,
-    r.km_est||0,   r.km_aktual||'',
-    r.uj_est||0,   r.uj_aktual||'',
-    r.bbm_est||0,  r.bbm_aktual||'',
-    r.bbm_liter_est||'', r.bbm_liter_aktual||'',
-    r.bbm_km_per_l||'',  r.bbm_harga||'',
-    r.tol_est||0,  r.tol_aktual||'',
-    r.parkir_est||0, r.parkir_aktual||'',
-    r.makan||0, r.mel||0, r.mel_ket||'',
-    r.dp_total||0, r.total_aktual||'',
-    r.selisih||'', r.status||'pending',
-  ]);
-
-  // Replace data tanggal yang sama
-  const lr = sheet.getLastRow();
-  if (lr >= 6 && data.doDate) {
-    const dates = sheet.getRange(6, 6, lr-5, 1).getValues();
-    const del   = [];
-    dates.forEach((d,i) => { if (String(d[0]).includes(data.doDate)) del.push(i+6); });
-    del.reverse().forEach(r => sheet.deleteRow(r));
-  }
-
-  const insertRow = sheet.getLastRow() + 1;
-  if (rows.length > 0) {
-    sheet.getRange(insertRow, 1, rows.length, SETTLE_COLS).setValues(rows);
-    // Format Rp
-    [9,10,11,12,17,18,19,20,21,22,24,25,26].forEach(c =>
-      sheet.getRange(insertRow,c,rows.length,1).setNumberFormat('#,##0'));
-    // Format liter
-    [13,14].forEach(c =>
-      sheet.getRange(insertRow,c,rows.length,1).setNumberFormat('0.00'));
-    // Format km & harga
-    [7,8].forEach(c =>
-      sheet.getRange(insertRow,c,rows.length,1).setNumberFormat('0'));
-    sheet.getRange(insertRow,16,rows.length,1).setNumberFormat('#,##0');
-
-    // Warna merah jika selisih negatif (kolom 26)
-    const selRange = sheet.getRange(insertRow, 26, rows.length, 1);
-    const rules = sheet.getConditionalFormatRules();
-    rules.push(SpreadsheetApp.newConditionalFormatRule()
-      .whenNumberLessThan(0).setFontColor('#C0392B')
-      .setRanges([selRange]).build());
-    sheet.setConditionalFormatRules(rules);
-  }
-
-  return { status:'ok', saved:rows.length, date:data.doDate };
-}
-
-function _setupSettlementSheet(sheet) {
-  const N='#1F4E79', B='#2E75B6', G='#1D9E75', A='#E67E22';
-
-  // Row 1: Title
-  sheet.getRange(1,1,1,SETTLE_COLS).merge()
-    .setValue('SETTLEMENT UANG JALAN HARIAN — BASIS KM + BBM km/Liter')
-    .setFontWeight('bold').setFontSize(13).setFontColor('#fff')
-    .setBackground(N).setHorizontalAlignment('left').setVerticalAlignment('middle');
-  sheet.setRowHeight(1, 30);
-
-  // Row 2: Subtitle
-  sheet.getRange(2,1,1,SETTLE_COLS).merge()
-    .setValue('BBM Aktual otomatis dari KM Aktual × km/L × Harga Solar jika input dikosongkan. ' +
-              'Update harga solar di sheet Konfigurasi → reconnect app → semua recalc.')
-    .setFontStyle('italic').setFontSize(9).setFontColor('#555')
-    .setBackground('#EBF5FB').setVerticalAlignment('middle');
-  sheet.setRowHeight(2, 18);
-
-  // Row 3: Group headers
-  [[1,1,'No',N],[2,6,'IDENTITAS KENDARAAN',N],[7,8,'KM',B],
-   [9,10,'UANG JALAN (Rp)',B],[11,16,'BBM — Solar (ikut harga solar)',A],
-   [17,18,'TOL (Rp)',B],[19,20,'PARKIR (Rp)',B],[21,21,'MAKAN (Rp)',B],
-   [22,23,'MEL / MISC',B],[24,24,'DP TOTAL (Rp)',G],
-   [25,25,'TOTAL AKTUAL (Rp)',G],[26,26,'SELISIH (Rp)',G],[27,27,'STATUS',N]]
-  .forEach(([c1,c2,lbl,bg]) => {
-    const r = sheet.getRange(3,c1,1,c2-c1+1);
-    if (c1 < c2) r.merge();
-    r.setValue(lbl).setFontWeight('bold').setFontSize(9).setFontColor('#fff')
-      .setBackground(bg).setHorizontalAlignment('center').setVerticalAlignment('middle')
-      .setBorder(true,true,true,true,null,null,'#fff','SOLID');
-  });
-  sheet.setRowHeight(3, 24);
-
-  // Row 4: Sub-headers
-  sheet.getRange(4,1,1,SETTLE_COLS).setValues([[
-    'No','Plat','Driver','Tipe','Gudang','Tanggal',
-    'KM Est','KM Aktual',
-    'UJ Est','UJ Aktual',
-    'BBM Est(Rp)','BBM Aktual(Rp)','Liter Est','Liter Aktual','km/L','Harga/L(Rp)',
-    'Tol Est','Tol Aktual',
-    'Parkir Est','Parkir Aktual',
-    'Makan','Mel','Ket Mel',
-    'DP Total','Total Aktual','Selisih','Status',
-  ]]).setFontWeight('bold').setFontSize(8)
-    .setBackground('#D6E4F0').setHorizontalAlignment('center')
-    .setBorder(true,true,true,true,null,null,'#BFC9CA','SOLID');
-  sheet.setRowHeight(4, 20);
-
-  // Row 5: Note
-  sheet.getRange(5,1,1,SETTLE_COLS).merge()
-    .setValue('💡 BBM kolom 11-16. Update "Harga solar per liter" di sheet Konfigurasi → reconnect app. ' +
-              'Kolom 13-14 dalam Liter. Kolom 15 = efisiensi km/liter. Kolom 16 = harga solar saat routing.')
-    .setFontStyle('italic').setFontSize(8).setFontColor('#7B1FA2')
-    .setBackground('#F5EEF8').setHorizontalAlignment('left');
-  sheet.setRowHeight(5, 16);
-
-  // Column widths (px)
-  const w = [22,72,100,64,74,62, 50,55, 68,68, 72,72,55,60,40,64, 68,68, 68,68, 60,58,110, 76,76,70,64];
-  w.forEach((px,i) => sheet.setColumnWidth(i+1, px));
-
-  sheet.setFrozenRows(5);
-  sheet.setFrozenColumns(2);
-}
-
-// ── TEST FUNCTIONS ──────────────────────────────────────────────────────────────
-function testPing() {
-  const r = getMasterData();
-  Logger.log('Sheets loaded: ' + Object.keys(r.data||{}).join(', '));
-}
-
-function testUpdateHargaSolar() {
-  // Jalankan ini dari editor untuk test update harga solar
-  Logger.log(JSON.stringify(updateHargaSolar(7200)));
-}
-
-function testGetSettlement() {
-  Logger.log(JSON.stringify(getSettlement(null)));
-}
-
-// ── HELPER ─────────────────────────────────────────────────────────────────────
-// Apps Script tidak support custom CORS headers, tapi fetch dari localhost/file://
-// akan gagal karena browser CORS policy.
-// SOLUSI: pastikan script di-deploy dengan akses "Anyone" dan gunakan no-cors mode
-// atau buka app via HTTP server bukan file://
-function jsonResponse(data) {
-  return ContentService
-    .createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// GPS TRACKING — v4.0 | April 2026
-// Endpoint untuk PWA driver tracking di Hostinger
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const SHEETS_GPS = {
-  gps_log    : 'GPS Log',        // raw GPS points per kendaraan
-  trip_summary: 'Trip Summary',  // ringkasan per trip: KM, durasi, start/end
-};
-
-// ── START TRIP ─────────────────────────────────────────────────────────────────
-// Dipanggil saat driver tap "Mulai" di PWA
-function startTrip(data) {
-  const { plat, driver, gudang, date, lat, lng, stops, do_date } = data;
-  if (!plat) return { error: 'Plat wajib diisi' };
-
-  const ss    = getSS('OPERASIONAL'); // SS2
-  let sheet   = ss.getSheetByName(SHEETS_GPS.trip_summary);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEETS_GPS.trip_summary);
-    _setupTripSummarySheet(sheet);
-  }
-
-  const now   = new Date();
-  const nowStr = Utilities.formatDate(now, 'Asia/Jakarta', 'dd/MM/yyyy HH:mm:ss');
-  const tripId = `${plat}_${Utilities.formatDate(now, 'Asia/Jakarta', 'yyyyMMdd_HHmm')}`;
-
-  // Cek apakah sudah ada trip hari ini untuk plat ini — jika ada, update
-  const lr    = sheet.getLastRow();
-  let existRow = -1;
-  if (lr >= 2) {
-    const platCol = sheet.getRange(2, 2, lr-1, 1).getValues();
-    const dateCol = sheet.getRange(2, 4, lr-1, 1).getValues();
-    platCol.forEach((r, i) => {
-      if (String(r[0]).trim() === plat && String(dateCol[i][0]).includes(date||'')) {
-        existRow = i + 2;
-      }
-    });
-  }
-
-  const rowData = [
-    tripId, plat, driver||'', date||nowStr.slice(0,10),
-    nowStr, '', // start_time, end_time
-    lat||'', lng||'', '', '', // start_lat, start_lng, end_lat, end_lng
-    0, 0,  // km_actual, duration_min
-    stops||0, gudang||'', do_date||date||'',
-    'active', '', // status, catatan
-  ];
-
-  if (existRow > 0) {
-    sheet.getRange(existRow, 1, 1, rowData.length).setValues([rowData]);
-  } else {
-    sheet.appendRow(rowData);
-  }
-
-  // Buat/reset sheet GPS Log untuk trip ini
-  _initGPSLogEntry(plat, date, lat, lng, nowStr);
-
-  // ── Hitung durasi muat ─────────────────────────────────────────────────────
-  _saveJalanTimestamp(plat, date, nowStr);
-  return { status: 'ok', trip_id: tripId, message: 'Trip dimulai — GPS tracking aktif' };
-}
-
-// ── UPDATE GPS (dipanggil tiap 2-5 menit dari PWA) ────────────────────────────
-function updateGPS(data) {
-  const { plat, date, lat, lng, km_total, speed_kmh, timestamp } = data;
-  if (!plat || !lat || !lng) return { error: 'Data tidak lengkap' };
-
-  const ss    = getSS('OPERASIONAL'); // SS2
-  let sheet   = ss.getSheetByName(SHEETS_GPS.gps_log);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEETS_GPS.gps_log);
-    _setupGPSLogSheet(sheet);
-  }
-
-  const now = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm:ss');
-  sheet.appendRow([
-    plat, date||now.slice(0,10), timestamp||now,
-    parseFloat(lat)||0, parseFloat(lng)||0,
-    parseFloat(km_total)||0, parseFloat(speed_kmh)||0,
-  ]);
-
-  // Update km_actual di Trip Summary
-  _updateTripKM(plat, date, parseFloat(km_total)||0);
-
-  return { status: 'ok' };
-}
-
-// ── END TRIP (driver tap "Selesai") ───────────────────────────────────────────
-function endTrip(data) {
-  const { plat, date, lat, lng, km_total, notes } = data;
-  if (!plat) return { error: 'Plat wajib diisi' };
-
-  const ss    = getSS('OPERASIONAL'); // SS2
-  const sheet = ss.getSheetByName(SHEETS_GPS.trip_summary);
-  if (!sheet) return { error: 'Trip belum dimulai' };
-
-  const now   = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm:ss');
-  const lr    = sheet.getLastRow();
-  if (lr < 2) return { error: 'Trip tidak ditemukan' };
-
-  const platCol = sheet.getRange(2, 2, lr-1, 1).getValues();
-  const dateCol = sheet.getRange(2, 4, lr-1, 1).getValues();
-  let found = -1;
-  platCol.forEach((r, i) => {
-    if (String(r[0]).trim() === plat) found = i + 2;
-  });
-
-  if (found < 0) return { error: 'Trip tidak ditemukan untuk ' + plat };
-
-  // Update: end_time, end_lat, end_lng, km_actual, status, catatan
-  const startTime = sheet.getRange(found, 5).getValue();
-  let durasiMin   = 0;
-  try {
-    const start = new Date(startTime);
-    const end   = new Date();
-    durasiMin   = Math.round((end - start) / 60000);
-  } catch(e) {}
-
-  sheet.getRange(found, 6).setValue(now);                        // end_time
-  sheet.getRange(found, 9).setValue(parseFloat(lat)||'');        // end_lat
-  sheet.getRange(found, 10).setValue(parseFloat(lng)||'');       // end_lng
-  sheet.getRange(found, 12).setValue(parseFloat(km_total)||0);   // km_actual
-  sheet.getRange(found, 13).setValue(durasiMin);                 // duration_min
-  sheet.getRange(found, 17).setValue('completed');               // status
-  sheet.getRange(found, 18).setValue(notes||'');                 // catatan
-
-  return {
-    status: 'ok',
-    km_actual: parseFloat(km_total)||0,
-    durasi_min: durasiMin,
-    message: `Trip selesai. KM: ${km_total} km, Durasi: ${durasiMin} menit`,
-  };
-}
-
-// ── GET TRIP — ambil data 1 kendaraan ─────────────────────────────────────────
-function getTrip(plat, date) {
-  const ss    = getSS('OPERASIONAL'); // SS2
-  const sheet = ss.getSheetByName(SHEETS_GPS.trip_summary);
-  if (!sheet) return { status: 'ok', data: null };
-
-  const lr = sheet.getLastRow();
-  if (lr < 2) return { status: 'ok', data: null };
-
-  const rows = sheet.getRange(2, 1, lr-1, 18).getValues();
-  const row  = rows.find(r =>
-    String(r[1]||'').trim() === plat &&
-    (!date || String(r[3]||'').includes(date))
-  );
-
-  if (!row) return { status: 'ok', data: null };
-
-  return {
-    status: 'ok',
-    data: {
-      trip_id     : row[0],  plat      : row[1],
-      driver      : row[2],  date      : row[3],
-      start_time  : row[4],  end_time  : row[5],
-      start_lat   : row[6],  start_lng : row[7],
-      end_lat     : row[8],  end_lng   : row[9],
-      km_est      : row[10], km_actual : row[11],
-      durasi_min  : row[12], stops     : row[13],
-      gudang      : row[14], do_date   : row[15],
-      status      : row[16], catatan   : row[17],
-    }
-  };
-}
-
-// ── GET KM ACTUAL — shortcut untuk settlement ──────────────────────────────────
-function getKMActual(plat, date) {
-  const r = getTrip(plat, date);
-  if (!r.data) return { status: 'ok', km_actual: null, status_trip: 'not_found' };
-  return {
-    status    : 'ok',
-    km_actual : r.data.km_actual,
-    km_est    : r.data.km_est,
-    status_trip: r.data.status,
-    start_time: r.data.start_time,
-    end_time  : r.data.end_time,
-  };
-}
-
-// ── GET TRIP LIST — semua kendaraan tanggal tertentu ──────────────────────────
-function getTripList(date) {
-  const ss    = getSS('OPERASIONAL'); // SS2
-  const sheet = ss.getSheetByName(SHEETS_GPS.trip_summary);
-  if (!sheet) return { status: 'ok', data: [] };
-
-  const lr = sheet.getLastRow();
-  if (lr < 2) return { status: 'ok', data: [] };
-
-  const rows = sheet.getRange(2, 1, lr-1, 18).getValues();
-  const data = rows
-    .filter(r => r[1] && (!date || String(r[3]||'').includes(date)))
-    .map(r => ({
-      plat      : r[1],  driver    : r[2],
-      date      : r[3],  km_actual : r[11],
-      status    : r[16], end_time  : r[5],
-    }));
-
-  return { status: 'ok', data, count: data.length };
-}
-
-// ── SAVE DISPATCH LOG ─────────────────────────────────────────────────────────
-function saveDispatch(data) {
-  if (!data || !Array.isArray(data.log)) return { error: 'No data' };
-  const ss = getSS('OPERASIONAL'); // SS2
-  let sheet = ss.getSheetByName('Dispatch Log');
-  if (!sheet) {
-    sheet = ss.insertSheet('Dispatch Log');
-    const h = sheet.getRange(1,1,1,10);
-    h.setValues([['Tanggal DO','Waktu','Plat','Driver','DO No','Aksi','Alasan','QTY Kirim','QTY Sisa','Sales']]);
-    h.setFontWeight('bold').setBackground('#064e3b').setFontColor('#fff');
-  }
-  const now = Utilities.formatDate(new Date(),'Asia/Jakarta','dd/MM/yyyy');
-  const rows = data.log.map(l => [
-    data.doDate||now, l.waktu||'', l.plat||'', l.driver||'',
-    l.doc_no||'', l.action||'', l.alasan||'',
-    l.qty_kirim||'', l.qty_sisa||'', l.sales||'',
-  ]);
-  if (rows.length > 0)
-    sheet.getRange(sheet.getLastRow()+1, 1, rows.length, 10).setValues(rows);
-  return { status:'ok', saved: rows.length };
-}
-
-// ── HELPER FUNCTIONS ──────────────────────────────────────────────────────────
-function _initGPSLogEntry(plat, date, lat, lng, timeStr) {
-  const ss    = getSS('OPERASIONAL'); // SS2
-  let sheet   = ss.getSheetByName(SHEETS_GPS.gps_log);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEETS_GPS.gps_log);
-    _setupGPSLogSheet(sheet);
-  }
-  sheet.appendRow([plat, date, timeStr, lat||'', lng||'', 0, 0]);
-}
-
-function _updateTripKM(plat, date, kmTotal) {
-  const ss    = getSS('OPERASIONAL'); // SS2
-  const sheet = ss.getSheetByName(SHEETS_GPS.trip_summary);
-  if (!sheet) return;
-  const lr    = sheet.getLastRow();
-  if (lr < 2) return;
-  const platCol = sheet.getRange(2, 2, lr-1, 1).getValues();
-  platCol.forEach((r, i) => {
-    if (String(r[0]).trim() === plat) {
-      sheet.getRange(i+2, 12).setValue(kmTotal); // km_actual column
-    }
-  });
-}
-
-function _setupGPSLogSheet(sheet) {
-  const h = sheet.getRange(1,1,1,7);
-  h.setValues([['Plat','Tanggal','Timestamp','Lat','Lng','KM Total','Speed (km/h)']]);
-  h.setFontWeight('bold').setBackground('#1F4E79').setFontColor('#fff');
-  [1,2].forEach(c => sheet.setColumnWidth(c, 90));
-  sheet.setColumnWidth(3, 140); sheet.setFrozenRows(1);
-}
-
-function _setupTripSummarySheet(sheet) {
-  const headers = [
-    'Trip ID','Plat','Driver','Tanggal',
-    'Start Time','End Time',
-    'Start Lat','Start Lng','End Lat','End Lng',
-    'KM Est','KM Actual','Durasi (menit)',
-    'Jumlah Stop','Gudang','DO Date',
-    'Status','Catatan'
-  ];
-  const h = sheet.getRange(1,1,1,headers.length);
-  h.setValues([headers]);
-  h.setFontWeight('bold').setBackground('#064e3b').setFontColor('#fff');
-  sheet.setColumnWidth(1, 160); sheet.setColumnWidth(2, 80);
-  sheet.setColumnWidth(3, 110); sheet.setFrozenRows(1);
-}
-
-// ── TEST FUNCTIONS ─────────────────────────────────────────────────────────────
-function testStartTrip() {
-  const result = startTrip({
-    plat: 'B9117ZI', driver: 'EKO PRIBADI',
-    gudang: 'GUDANG DOYONG', date: '10/04/2026',
-    lat: -6.2167, lng: 106.6333, stops: 8,
-  });
-  Logger.log(JSON.stringify(result));
-}
-
-function testGetTripList() {
-  Logger.log(JSON.stringify(getTripList('10/04/2026')));
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// USER MANAGEMENT & ACCESS CONTROL — v4.1
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// Kolom sheet Users:
-// A: username | B: password_hash | C: nama_lengkap | D: role
-// E: gudang   | F: aktif         | G: last_login   | H: created_at
-
-// Role yang tersedia:
-//   dispatcher   → full akses 1 gudang (routing, dispatch, WA blast)
-//   settlement   → tab settlement saja (1 gudang)
-//   kepala       → view + approve (1 gudang)
-//   pusat        → view ALL gudang, no edit
-//   superadmin   → semua akses semua gudang
-
-// Gudang value: DAAN_MOGOT | DOYONG | CIKUDA | ALL
-
-// ── SETUP SHEET USERS (jalankan 1x) ──────────────────────────────────────────
-function setupUsersSheet() {
-  const ss = getSS('MASTER'); // SS1: Data Master
-  let sheet = ss.getSheetByName(SHEETS.users);
-
-  // Hapus sheet lama dan buat baru — paling bersih
-  if (sheet) ss.deleteSheet(sheet);
-  sheet = ss.insertSheet(SHEETS.users);
-
-  // Setup kolom
-  [1,2,3,4,5,6,7,8].forEach((c,i) =>
-    sheet.setColumnWidth(c, [120,160,160,110,120,100,140,120][i]));
-
-  // Header di baris 1
-  const headers = ['Username','Password Hash','Nama Lengkap','Role','Gudang','Aktif','Last Login','Dibuat'];
-  const hRange = sheet.getRange(1, 1, 1, headers.length);
-  hRange.setValues([headers]);
-  hRange.setFontWeight('bold').setBackground('#1F4E79').setFontColor('#fff');
-  sheet.setFrozenRows(1);
-
-  // Data 11 user mulai baris 2
-  const defaultUsers = [
-    ['dm_dispatcher', _hash('dm2026!'),           'Dispatcher DM',       'dispatcher', 'DAAN_MOGOT', 'TRUE', '', _now()],
-    ['dm_settlement', _hash('dm_fin26'),           'Keuangan DM',         'settlement', 'DAAN_MOGOT', 'TRUE', '', _now()],
-    ['dm_kepala',     _hash('dm_kpl26'),           'Kepala Gudang DM',    'kepala',     'DAAN_MOGOT', 'TRUE', '', _now()],
-    ['dy_dispatcher', _hash('dy2026!'),            'Dispatcher Doyong',   'dispatcher', 'DOYONG',     'TRUE', '', _now()],
-    ['dy_settlement', _hash('dy_fin26'),           'Keuangan Doyong',     'settlement', 'DOYONG',     'TRUE', '', _now()],
-    ['dy_kepala',     _hash('dy_kpl26'),           'Kepala Gudang Doyong','kepala',     'DOYONG',     'TRUE', '', _now()],
-    ['ck_dispatcher', _hash('ck2026!'),            'Dispatcher Cikuda',   'dispatcher', 'CIKUDA',     'TRUE', '', _now()],
-    ['ck_settlement', _hash('ck_fin26'),           'Keuangan Cikuda',     'settlement', 'CIKUDA',     'TRUE', '', _now()],
-    ['ck_kepala',     _hash('ck_kpl26'),           'Kepala Gudang Cikuda','kepala',     'CIKUDA',     'TRUE', '', _now()],
-    ['pusat_view',    _hash('pusat26!'),            'Staff Pusat',         'pusat',      'ALL',        'TRUE', '', _now()],
-    ['superadmin',    _hash('Sa@GlobalS3ntral!'),  'Super Admin',         'superadmin', 'ALL',        'TRUE', '', _now()],
-  ];
-
-  // Bersihkan semua baris lama (termasuk sisa run sebelumnya)
-  const lastRow = sheet.getLastRow();
-  if (lastRow >= 2) {
-    sheet.getRange(2, 1, Math.max(lastRow - 1, 15), 8).clearContent();
-  }
-
-  // Tulis 11 user dengan hash SHA-256 asli
-  sheet.getRange(2, 1, defaultUsers.length, 8).setValues(defaultUsers);
-
-  // Warnai baris per gudang
-  const colors = { 'DAAN_MOGOT':'#E3F2FD', 'DOYONG':'#E8F5E9', 'CIKUDA':'#FFF3E0', 'ALL':'#F3E5F5' };
-  defaultUsers.forEach((u, i) => {
-    sheet.getRange(i+2, 1, 1, 8).setBackground(colors[u[4]] || '#fff');
-  });
-
-  // Setup Audit Log
-  setupAuditLogSheet(ss);
-
-  return { status:'ok', message:'Users sheet siap (11 user). Ganti password segera!', count: defaultUsers.length };
-}
-
-function setupAuditLogSheet(ss) {
-  let sheet = ss.getSheetByName(SHEETS.audit_log);
-  if (!sheet) sheet = ss.insertSheet(SHEETS.audit_log);
-  const h = sheet.getRange(1,1,1,7);
-  h.setValues([['Timestamp','Username','Nama','Role','Gudang','Action','Detail']]);
-  h.setFontWeight('bold').setBackground('#374151').setFontColor('#fff');
-  sheet.setFrozenRows(1);
-  sheet.setColumnWidth(1,140); sheet.setColumnWidth(2,110);
-  sheet.setColumnWidth(3,140); sheet.setColumnWidth(6,120);
-  sheet.setColumnWidth(7,300);
-}
-
-// ── LOGIN ─────────────────────────────────────────────────────────────────────
-function doLogin(body) {
-  const { username, password } = body;
-  if (!username || !password) return { error: 'Username dan password wajib diisi' };
-
-  const ss    = getSS('MASTER'); // SS1
-  const sheet = ss.getSheetByName(SHEETS.users);
-  if (!sheet) return { error: 'Users sheet belum setup. Hubungi admin.' };
-
-  const lr   = sheet.getLastRow();
-  if (lr < 2) return { error: 'Tidak ada user terdaftar' };
-
-  const rows = sheet.getRange(2, 1, lr-1, 8).getValues();
-  const user = rows.find(r => String(r[0]).trim().toLowerCase() === username.trim().toLowerCase());
-
-  if (!user) return { error: 'Username tidak ditemukan' };
-
-  // Cek aktif
-  if (String(user[5]).toLowerCase() === 'false' || user[5] === false)
-    return { error: 'Akun dinonaktifkan. Hubungi admin.' };
-
-  // Verifikasi password
-  const inputHash = _hash(password);
-  if (inputHash !== user[1])
-    return { error: 'Password salah' };
-
-  // Update last login
-  const rowIdx = rows.indexOf(user) + 2;
-  sheet.getRange(rowIdx, 7).setValue(_now());
-
-  // Catat audit log
-  _writeAudit(ss, user[0], user[2], user[3], user[4], 'LOGIN', 'Login berhasil');
-
-  return {
-    status   : 'ok',
-    username : user[0],
-    nama     : user[2],
-    role     : user[3],
-    gudang   : user[4],
-    message  : `Selamat datang, ${user[2]}!`,
-  };
-}
-
-// ── GET USERS (untuk superadmin saja) ─────────────────────────────────────────
-function getUsers() {
-  const ss    = getSS('MASTER'); // SS1
-  const sheet = ss.getSheetByName(SHEETS.users);
-  if (!sheet) return { status:'ok', data:[] };
-  const lr = sheet.getLastRow();
-  if (lr < 2) return { status:'ok', data:[] };
-  const rows = sheet.getRange(2, 1, lr-1, 8).getValues();
-  return {
-    status: 'ok',
-    data: rows.filter(r=>r[0]).map(r => ({
-      username   : r[0],
-      nama       : r[2],
-      role       : r[3],
-      gudang     : r[4],
-      aktif      : r[5],
-      last_login : r[6],
-    }))
-  };
-}
-
-// ── RESET PASSWORD (hanya superadmin) ─────────────────────────────────────────
-function resetPassword(body) {
-  const { admin_username, admin_password, target_username, new_password } = body;
-  if (!admin_username || !admin_password || !target_username || !new_password)
-    return { error: 'Data tidak lengkap' };
-
-  // Verifikasi admin
-  const adminLogin = doLogin({ username: admin_username, password: admin_password });
-  if (adminLogin.error) return { error: 'Admin auth gagal: ' + adminLogin.error };
-  if (!['superadmin'].includes(adminLogin.role))
-    return { error: 'Hanya superadmin yang bisa reset password' };
-
-  const ss    = getSS('MASTER'); // SS1
-  const sheet = ss.getSheetByName(SHEETS.users);
-  const lr    = sheet.getLastRow();
-  const rows  = sheet.getRange(2, 1, lr-1, 8).getValues();
-  const idx   = rows.findIndex(r => String(r[0]).trim() === target_username.trim());
-  if (idx < 0) return { error: 'User tidak ditemukan: ' + target_username };
-
-  sheet.getRange(idx+2, 2).setValue(_hash(new_password));
-  _writeAudit(ss, admin_username, adminLogin.nama, adminLogin.role, adminLogin.gudang,
-    'RESET_PWD', `Reset password untuk ${target_username}`);
-
-  return { status:'ok', message:`Password ${target_username} berhasil direset` };
-}
-
-// ── SAVE AUDIT LOG ─────────────────────────────────────────────────────────────
-function saveAuditLog(body) {
-  const ss = getSS('MASTER');
-  _writeAudit(ss, body.username||'', body.nama||'', body.role||'',
-    body.gudang||'', body.action||'', body.detail||'');
-  return { status:'ok' };
-}
-
-function _writeAudit(ss, username, nama, role, gudang, action, detail) {
-  let sheet = ss.getSheetByName(SHEETS.audit_log);
-  if (!sheet) { setupAuditLogSheet(ss); sheet = ss.getSheetByName(SHEETS.audit_log); }
-  sheet.appendRow([_now(), username, nama, role, gudang, action, detail]);
-}
-
-// ── HELPERS ───────────────────────────────────────────────────────────────────
-function _hash(str) {
-  // SHA-256 via Apps Script Utilities
-  const bytes = Utilities.computeDigest(
-    Utilities.DigestAlgorithm.SHA_256,
-    String(str),
-    Utilities.Charset.UTF_8
-  );
-  return bytes.map(b => ('0' + (b & 0xff).toString(16)).slice(-2)).join('');
-}
-
-function _now() {
-  return Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm:ss');
-}
-
-// ── TEST FUNCTIONS ─────────────────────────────────────────────────────────────
-function testSetupUsers() {
-  Logger.log(JSON.stringify(setupUsersSheet()));
-}
-
-function testLogin() {
-  Logger.log(JSON.stringify(doLogin({ username:'dm_dispatcher', password:'dm2026!' })));
-}
-
-function testLoginWrong() {
-  Logger.log(JSON.stringify(doLogin({ username:'dm_dispatcher', password:'salah' })));
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// DRIVER APP v2 — Endpoints
-// v4.2 | April 2026
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// ── SETUP SHEETS (jalankan 1x) ────────────────────────────────────────────────
-function setupDriverSheets() {
-  const ss = getSS('OPERASIONAL'); // SS2: Operasional
-
-  // DO Status sheet
-  let ds = ss.getSheetByName(SHEETS.do_status);
-  if (!ds) {
-    ds = ss.insertSheet(SHEETS.do_status);
-    const h = ['Tanggal DO','Plat','Driver','Gudang','DO No','Customer',
-      'Alamat','Produk','QTY Kirim','Status','Jam Update','GPS Coords',
-      'QTY Terima','QTY Rusak','Alasan Gagal','Keterangan',
-      'Titip SJ','Nama SPG','Jabatan SPG','Catatan'];
-    const hr = ds.getRange(1,1,1,h.length);
-    hr.setValues([h]).setFontWeight('bold').setBackground('#0b1f3a').setFontColor('#fff');
-    ds.setFrozenRows(1);
-    [1,2,3,4,5,6].forEach((c,i)=>ds.setColumnWidth(c,[100,90,120,90,100,160][i]));
-    Logger.log('✅ DO Status sheet dibuat');
-  }
-
-  // Stop Log sheet
-  let sl = ss.getSheetByName(SHEETS.stop_log);
-  if (!sl) {
-    sl = ss.insertSheet(SHEETS.stop_log);
-    const h = ['Timestamp','Plat','Driver','Tanggal DO','DO No','Customer',
-      'Status','QTY Kirim','QTY Terima','QTY Rusak',
-      'Alasan Gagal','Keterangan','Titip SJ','Nama SPG','Jabatan SPG',
-      'Catatan','GPS Coords','Foto DO (Drive)','Foto Rusak (Drive)',
-      'Foto SJ (Drive)','Foto Gagal (Drive)'];
-    const hr = sl.getRange(1,1,1,h.length);
-    hr.setValues([h]).setFontWeight('bold').setBackground('#1e3a5f').setFontColor('#fff');
-    sl.setFrozenRows(1);
-    Logger.log('✅ Stop Log sheet dibuat');
-  }
-
-  // Photo Log sheet
-  let pl = ss.getSheetByName(SHEETS.photo_log);
-  if (!pl) {
-    pl = ss.insertSheet(SHEETS.photo_log);
-    const h = ['Timestamp','Plat','Driver','Tanggal DO','DO No',
-      'Jenis Foto','Drive File ID','Drive URL','GPS Coords'];
-    const hr = pl.getRange(1,1,1,h.length);
-    hr.setValues([h]).setFontWeight('bold').setBackground('#064e3b').setFontColor('#fff');
-    pl.setFrozenRows(1);
-    Logger.log('✅ Photo Log sheet dibuat');
-  }
-
-  return { status:'ok', message:'Driver sheets siap (DO Status, Stop Log, Photo Log)' };
-}
-
-// ── GET DRIVER TASKS ──────────────────────────────────────────────────────────
-// Ambil semua DO untuk plat tertentu pada tanggal tertentu dari DO Status
-function getDriverTasks(plat, date) {
-  if (!plat) return { error: 'Plat wajib' };
-  const ss  = getSS('OPERASIONAL'); // SS2
-  const sh  = ss.getSheetByName(SHEETS.do_status);
-  if (!sh) return { tasks:[], message:'Sheet DO Status belum ada. Jalankan setupDriverSheets() di Apps Script editor.' };
-
-  const lr = sh.getLastRow();
-  if (lr < 2) return { tasks:[], message:'Sheet DO Status kosong. Lakukan routing dulu di Routing Optimizer.' };
-
-  const rows = sh.getRange(2,1,lr-1,20).getValues();
-
-  // Normalize tanggal untuk perbandingan — ambil angka saja
-  // Normalisasi tanggal: hapus semua non-digit → ddMMyyyyatau ddMMyy
-  const normDate = d => String(d||'').replace(/\D/g,'');
-  // Expand 6-digit (ddMMyy) → 8-digit (ddMMyyyy) dengan prefix "20"
-  const expandDate = norm => norm.length === 6
-    ? norm.slice(0,4) + '20' + norm.slice(4,6)
-    : norm;
-  const todayNorm    = expandDate(normDate(_now()));
-  const reqDateNorm  = date ? expandDate(normDate(date)) : '';
-
-  const tasks = rows
-    .filter(r => {
-      const rowPlat = String(r[1]||'').trim().toUpperCase();
-      const rowDate = expandDate(normDate(r[0]));
-      const matchPlat = rowPlat === String(plat||'').trim().toUpperCase();
-      // Match: exact, atau sama dengan hari ini (fallback jika tanggal SAP ≠ tanggal jalan)
-      const matchDate = !reqDateNorm ||
-        rowDate === reqDateNorm ||
-        rowDate === todayNorm;
-      return matchPlat && matchDate;
-    })
-    .map(r => ({
-      do_date   : r[0],  plat      : r[1],
-      driver    : r[2],  gudang    : r[3],
-      doc_no    : r[4],  customer  : r[5],
-      alamat    : r[6],  produk    : r[7],
-      qty       : r[8],  status    : r[9],
-      jam_update: r[10], remark    : r[15]||'',
-    }));
-
-  return { status:'ok', tasks, count:tasks.length,
-    debug: { plat, date, reqDateNorm, todayNorm, total_rows: rows.length } };
-}
-
-// ── START JOB ─────────────────────────────────────────────────────────────────
-function startJob(params) {
-  const { plat, driver, doc_no, date, lat, lng } = params;
-  if (!doc_no) return { error: 'doc_no wajib' };
-  _updateDoStatus(doc_no, 'On Process', lat+','+lng, null, null, null, null);
-  return { status:'ok', message:'Status updated: On Process' };
-}
-
-// ── CANCEL JOB ────────────────────────────────────────────────────────────────
-function cancelJob(params) {
-  const { plat, doc_no, date } = params;
-  if (!doc_no) return { error: 'doc_no wajib' };
-  _updateDoStatus(doc_no, 'Batal', '', null, null, null, null);
-  return { status:'ok' };
-}
-
-
-// ── SUBMIT MUAT KARGO ─────────────────────────────────────────────────────────
-function submitMuatKargo(body) {
-  if (!body.doc_no || !body.plat) return { error:'doc_no dan plat wajib' };
-  const ss  = getSS('OPERASIONAL');
-  const sh  = ss.getSheetByName(SHEETS.do_status);
-  if (!sh) return { error:'Sheet DO Status tidak ditemukan' };
-  const lr  = sh.getLastRow();
-  if (lr < 2) return { error:'Tidak ada data' };
-
-  const now    = _now();
-  const nowISO = new Date().toISOString();
-  const rows   = sh.getRange(2,1,lr-1,11).getValues();
-  let updated  = 0;
-
-  const docNos = String(body.doc_no).split(',').map(s=>s.trim());
-
-  rows.forEach((r, i) => {
-    const rowDocNo = String(r[4]||'').trim();
-    const rowPlat  = String(r[1]||'').trim();
-    if (!docNos.includes(rowDocNo)) return;
-    if (rowPlat !== body.plat) return;
-    const rowNum = i + 2;
-    sh.getRange(rowNum, 10).setValue('Muat Kargo');
-    sh.getRange(rowNum, 11).setValue(now);       // jam_update (general)
-    sh.getRange(rowNum, 21).setValue(now);       // jam_muat  (col 21)
-    if (body.gps_coords) sh.getRange(rowNum, 12).setValue(body.gps_coords);
-    updated++;
-  });
-
-  // Stop Log entry
-  if (updated > 0) {
-    const slSheet = ss.getSheetByName(SHEETS.stop_log);
-    if (slSheet) {
-      docNos.forEach(dn => {
-        slSheet.appendRow([
-          now, body.plat||'', body.driver||'',
-          body.do_date||now.slice(0,10), dn,
-          body.customer||'', 'Muat Kargo',
-          0,0,0,'','','','','','','',
-          body.gps_coords||'','','','',''
-        ]);
-      });
-    }
-
-    // ── Simpan jam_mulai_muat ke Trip Summary ─────────────────────────────────
-    _saveMuatTimestamp(body.plat, body.do_date||now.slice(0,8), now, nowISO);
-  }
-  return { status:'ok', updated, message: updated+' DO → Muat Kargo, jam muat dicatat' };
-}
-
-// ── SIMPAN TIMESTAMP MUAT KE TRIP SUMMARY ────────────────────────────────────
-function _saveMuatTimestamp(plat, doDate, jamMuat, isoMuat) {
-  const ss = getSS('OPERASIONAL');
-  const sh = ss.getSheetByName(SHEETS.trip_summary);
-  if (!sh) return;
-
-  const lr = sh.getLastRow();
-  if (lr < 2) return;
-
-  const normDate = d => String(d||'').replace(/\D/g,'').slice(0,6);
-  const targetDate = normDate(doDate);
-
-  const rows = sh.getRange(2,1,lr-1,sh.getLastColumn()).getValues();
-  const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
-
-  // Cari/buat kolom jam_mulai_muat, jam_start_jalan, durasi_muat_mnt
-  let colMuat = header.findIndex(h=>String(h).toLowerCase()==='jam_mulai_muat');
-  let colJalan= header.findIndex(h=>String(h).toLowerCase()==='jam_start_jalan');
-  let colDur  = header.findIndex(h=>String(h).toLowerCase()==='durasi_muat_mnt');
-  const lastCol = header.length;
-
-  if (colMuat < 0) {
-    sh.getRange(1, lastCol+1).setValue('jam_mulai_muat');
-    sh.getRange(1, lastCol+2).setValue('jam_start_jalan');
-    sh.getRange(1, lastCol+3).setValue('durasi_muat_mnt');
-    colMuat  = lastCol;
-    colJalan = lastCol + 1;
-    colDur   = lastCol + 2;
-  }
-
-  // Cari baris dengan plat + tanggal yang cocok
-  rows.forEach((r, i) => {
-    const rowPlat = String(r[1]||'').trim();
-    const rowDate = normDate(String(r[0]||''));
-    if (rowPlat !== plat) return;
-    if (rowDate !== targetDate) return;
-    const rowNum = i + 2;
-    sh.getRange(rowNum, colMuat+1).setValue(jamMuat);
-    sh.getRange(rowNum, colMuat+1).setNote('ISO: '+isoMuat);
-  });
-}
-
-
-// ── SIMPAN JAM START JALAN + HITUNG DURASI MUAT ──────────────────────────────
-function _saveJalanTimestamp(plat, doDate, jamJalan) {
-  const ss = getSS('OPERASIONAL');
-  const sh = ss.getSheetByName(SHEETS.trip_summary);
-  if (!sh) return;
-
-  const lr = sh.getLastRow();
-  if (lr < 2) return;
-
-  const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
-  const colMuat  = header.findIndex(h=>String(h).toLowerCase()==='jam_mulai_muat');
-  const colJalan = header.findIndex(h=>String(h).toLowerCase()==='jam_start_jalan');
-  const colDur   = header.findIndex(h=>String(h).toLowerCase()==='durasi_muat_mnt');
-  if (colMuat < 0) return; // kolom belum ada = belum pernah ada data muat
-
-  const normDate = d => String(d||'').replace(/\D/g,'').slice(0,6);
-  const targetDate = normDate(doDate);
-  const rows = sh.getRange(2,1,lr-1,sh.getLastColumn()).getValues();
-
-  rows.forEach((r, i) => {
-    const rowPlat = String(r[1]||'').trim();
-    const rowDate = normDate(String(r[0]||''));
-    if (rowPlat !== plat || rowDate !== targetDate) return;
-
-    const rowNum  = i + 2;
-    const jamMuat = String(r[colMuat]||'').trim();
-
-    // Simpan jam start jalan
-    sh.getRange(rowNum, colJalan+1).setValue(jamJalan);
-
-    // Hitung durasi kalau ada jam muat
-    if (jamMuat) {
-      try {
-        const parseTime = t => {
-          // Format: HH:MM:SS atau dd/MM/yyyy HH:MM:SS
-          const parts = t.split(' ');
-          const timePart = parts[parts.length-1];
-          const [h,m,s] = timePart.split(':').map(Number);
-          return h*60 + m + (s||0)/60;
-        };
-        const mnitMuat  = parseTime(jamMuat);
-        const mnitJalan = parseTime(jamJalan);
-        let durasi = mnitJalan - mnitMuat;
-        if (durasi < 0) durasi += 1440; // cross midnight
-        durasi = Math.round(durasi);
-        sh.getRange(rowNum, colDur+1).setValue(durasi);
-        Logger.log('Durasi muat '+plat+': '+durasi+' menit');
-      } catch(e) { Logger.log('Durasi hitung error: '+e); }
-    }
-  });
-}
-
-// ── SUBMIT SELESAI ────────────────────────────────────────────────────────────
-function submitSelesai(params) {
-  const {
-    plat, driver, doc_no, date,
-    qty_kirim, qty_terima, qty_rusak,
-    catatan, titip_sj, nama_spg, jabatan_spg,
-    gps_coords, foto_do, foto_rusak, foto_sj, timestamp,
-  } = params;
-
-  if (!doc_no) return { error: 'doc_no wajib' };
-  if (!foto_do) return { error: 'Foto DO wajib' };
-
-  const ss = getSS('OPERASIONAL');
-  const now = _now();
-
-  // Upload foto ke Google Drive
-  const fotoDoUrl   = _uploadPhoto(foto_do,   plat, date, doc_no, 'DO');
-  const fotoRusakUrl= qty_rusak>0 && foto_rusak
-                    ? _uploadPhoto(foto_rusak, plat, date, doc_no, 'RUSAK') : '';
-  const fotoSJUrl   = titip_sj==='Ya' && foto_sj
-                    ? _uploadPhoto(foto_sj,   plat, date, doc_no, 'SJ') : '';
-
-  // Update DO Status
-  _updateDoStatus(doc_no, 'Selesai', gps_coords,
-    parseInt(qty_terima)||0, parseInt(qty_rusak)||0, null,
-    catatan, titip_sj, nama_spg, jabatan_spg);
-
-  // Tulis ke Stop Log
-  const sl = _getOrCreateSheet(ss, SHEETS.stop_log, setupDriverSheets);
-  sl.appendRow([
-    now, plat, driver, date, doc_no,
-    _getDoField(ss, doc_no, 'customer'),
-    'Selesai', parseInt(qty_kirim)||0,
-    parseInt(qty_terima)||0, parseInt(qty_rusak)||0,
-    '', '', titip_sj||'Tidak', nama_spg||'', jabatan_spg||'',
-    catatan||'', gps_coords||'',
-    fotoDoUrl, fotoRusakUrl, fotoSJUrl, '',
-  ]);
-
-  // Log foto
-  if (fotoDoUrl)    _logPhoto(ss, plat, driver, date, doc_no, 'DO',    fotoDoUrl, gps_coords);
-  if (fotoRusakUrl) _logPhoto(ss, plat, driver, date, doc_no, 'RUSAK', fotoRusakUrl, gps_coords);
-  if (fotoSJUrl)    _logPhoto(ss, plat, driver, date, doc_no, 'SJ',    fotoSJUrl, gps_coords);
-
-  return { status:'ok', foto_do:fotoDoUrl, message:'Laporan selesai tersimpan' };
-}
-
-// ── SUBMIT GAGAL ──────────────────────────────────────────────────────────────
-function submitGagal(params) {
-  const {
-    plat, driver, doc_no, date,
-    alasan, keterangan, gps_coords, foto_gagal,
-    timestamp, is_urgent,
-  } = params;
-
-  if (!doc_no) return { error: 'doc_no wajib' };
-  if (!alasan) return { error: 'Alasan wajib' };
-  if (!foto_gagal) return { error: 'Foto bukti wajib' };
-
-  const ss  = getSS('OPERASIONAL');
-  const now = _now();
-
-  // Upload foto
-  const fotoUrl = _uploadPhoto(foto_gagal, plat, date, doc_no, 'GAGAL');
-
-  // Update DO Status
-  _updateDoStatus(doc_no, 'Gagal Kirim', gps_coords, 0, 0, alasan, keterangan||'');
-
-  // Stop Log
-  const sl = _getOrCreateSheet(ss, SHEETS.stop_log, setupDriverSheets);
-  sl.appendRow([
-    now, plat, driver, date, doc_no,
-    _getDoField(ss, doc_no, 'customer'),
-    'Gagal Kirim', _getDoField(ss, doc_no, 'qty'), 0, 0,
-    alasan, keterangan||'', 'Tidak','','','',
-    gps_coords||'', '', '', '', fotoUrl,
-  ]);
-
-  _logPhoto(ss, plat, driver, date, doc_no, 'GAGAL', fotoUrl, gps_coords);
-
-  // Alert jika urgent (musibah)
-  if (is_urgent === '1') {
-    _writeAudit(ss, driver, driver, 'driver', '', 'URGENT_MUSIBAH',
-      'Kendaraan '+plat+' lapor musibah: '+alasan+' | DO: '+doc_no);
-  }
-
-  return { status:'ok', foto_gagal:fotoUrl, message:'Laporan gagal tersimpan' };
-}
-
-// ── SUBMIT STRUK (Selesai Perjalanan) ─────────────────────────────────────────
-function submitStruk(params) {
-  const { plat, driver, date, km_total, foto_tol, foto_parkir, foto_bensin, timestamp } = params;
-  if (!plat) return { error:'Plat wajib' };
-
-  const ss  = getSS('OPERASIONAL');
-  const now = _now();
-
-  // Upload struk foto
-  const tolUrl   = foto_tol    ? _uploadPhoto(foto_tol,    plat, date, 'STRUK', 'TOL')    : '';
-  const parkirUrl= foto_parkir ? _uploadPhoto(foto_parkir, plat, date, 'STRUK', 'PARKIR') : '';
-  const bensinUrl= foto_bensin ? _uploadPhoto(foto_bensin, plat, date, 'STRUK', 'BENSIN') : '';
-
-  // Update Trip Summary
-  const ts = ss.getSheetByName(SHEETS_GPS.trip_summary);
-  if (ts) {
-    const lr = ts.getLastRow();
-    if (lr >= 2) {
-      const platCol = ts.getRange(2,2,lr-1,1).getValues();
-      platCol.forEach((r,i) => {
-        if (String(r[0]).trim() === String(plat).trim()) {
-          ts.getRange(i+2,12).setValue(parseFloat(km_total)||0); // KM actual
-          // Simpan link struk di kolom tersedia
-          if (tolUrl)    ts.getRange(i+2,19).setValue(tolUrl);
-          if (parkirUrl) ts.getRange(i+2,20).setValue(parkirUrl);
-          if (bensinUrl) ts.getRange(i+2,21).setValue(bensinUrl);
-        }
-      });
-    }
-  }
-
-  // Log foto struk
-  ['tol','parkir','bensin'].forEach((t,i) => {
-    const url=[tolUrl,parkirUrl,bensinUrl][i];
-    if (url) _logPhoto(ss, plat, driver, date, 'STRUK', t.toUpperCase(), url, '');
-  });
-
-  return {
-    status:'ok',
-    km_total, foto_tol:tolUrl, foto_parkir:parkirUrl, foto_bensin:bensinUrl,
-    message:'Perjalanan selesai. Data dan foto struk tersimpan.'
-  };
-}
-
-// ── GET DO STATUS (untuk client tracking) ─────────────────────────────────────
-function getDoStatus(docNo) {
-  if (!docNo) return { error: 'doc_no wajib' };
-  const ss  = getSS('OPERASIONAL');
-  const sh  = ss.getSheetByName(SHEETS.do_status);
-  if (!sh) return { status:'ok', data:null };
-
-  const lr = sh.getLastRow();
-  if (lr < 2) return { status:'ok', data:null };
-
-  const rows = sh.getRange(2,1,lr-1,23).getValues();
-  const row  = rows.find(r => String(r[4]||'').trim() === String(docNo).trim());
-  if (!row) return { status:'ok', data:null };
-
-  // Get driver phone from Kendaraan sheet
-  const plat     = String(row[1]||'');
-  const drvPhone = _getDriverPhone(ss, plat);
-  const dispPhone= _getDispatcherPhone(ss, row[3]||'');
-
-  // Ambil foto DO dari Stop Log (foto bukti kirim dengan watermark)
-  const fotoDoUrl = _getFotoDoUrl(ss, String(row[4]||''));
-
-  return {
-    status: 'ok',
-    data: {
-      do_date          : row[0],  plat         : row[1],
-      driver           : row[2],  gudang       : row[3],
-      doc_no           : row[4],  customer     : row[5],
-      alamat           : row[6],  produk       : row[7],
-      qty_kirim        : row[8],  status       : row[9],
-      jam_update       : row[10], gps_coords   : row[11],
-      qty_terima       : row[12], qty_rusak    : row[13],
-      alasan_gagal     : row[14], keterangan   : row[15],
-      titip_sj         : row[16], nama_spg     : row[17],
-      jam_muat         : row[20] || '',  // col 21 — jam mulai muat kargo
-      jam_jalan        : row[21] || '',  // col 22 — jam kendaraan berangkat
-      jam_selesai      : row[22] || '',  // col 23 — jam barang diterima
-      driver_phone     : drvPhone,
-      dispatcher_phone : dispPhone,
-      foto_do_url      : fotoDoUrl,  // ← link foto bukti kirim dari Drive
-    }
-  };
-}
-
-// ── HELPER: AMBIL URL FOTO DO DARI PHOTO LOG ──────────────────────────────
-function _getFotoDoUrl(ss, docNo) {
-  try {
-    const sh = ss.getSheetByName(SHEETS.photo_log);
-    if (!sh) return '';
-    const lr = sh.getLastRow();
-    if (lr < 2) return '';
-    const rows = sh.getRange(2,1,lr-1,9).getValues();
-    // Kolom: Timestamp, Plat, Driver, Tanggal, DO No, Jenis, FileID, URL, GPS
-    const row = rows.find(r =>
-      String(r[4]||'').trim() === String(docNo).trim() &&
-      String(r[5]||'').toUpperCase() === 'DO'
-    );
-    return row ? String(row[7]||'') : ''; // kolom URL (index 7)
-  } catch(e) { return ''; }
-}
-
-// ── HELPER: UPDATE DO STATUS ──────────────────────────────────────────────────
-function _updateDoStatus(docNo, status, gps, qtyT, qtyR, alasan, ket, titipSJ, namaSPG, jabatan) {
-  const ss = getSS('OPERASIONAL');
-  const sh = ss.getSheetByName(SHEETS.do_status);
-  if (!sh) return;
-
-  const lr = sh.getLastRow();
-  if (lr < 2) return;
-
-  const rows    = sh.getRange(2,1,lr-1,20).getValues();
-  const rowIdx  = rows.findIndex(r => String(r[4]||'').trim() === String(docNo).trim());
-
-  const now = _now();
-  if (rowIdx >= 0) {
-    const r = rowIdx + 2;
-    sh.getRange(r,10).setValue(status);
-    sh.getRange(r,11).setValue(now); // jam_update (general)
-    // Simpan timestamp per stage — col 21=jam_muat, 22=jam_jalan, 23=jam_selesai
-    const stUp = String(status).toLowerCase();
-    if (stUp.includes('jalan')||stUp.includes('onroad')||stUp.includes('start')||stUp.includes('process'))
-      sh.getRange(r,22).setValue(now); // jam_jalan col 22
-    if (stUp.includes('selesai')||stUp.includes('done')||stUp.includes('terkirim')||stUp.includes('completed'))
-      sh.getRange(r,23).setValue(now); // jam_selesai col 23
-    if (gps)     sh.getRange(r,12).setValue(gps);
-    if (qtyT!=null) sh.getRange(r,13).setValue(qtyT);
-    if (qtyR!=null) sh.getRange(r,14).setValue(qtyR);
-    if (alasan)  sh.getRange(r,15).setValue(alasan);
-    if (ket)     sh.getRange(r,16).setValue(ket);
-    if (titipSJ) sh.getRange(r,17).setValue(titipSJ);
-    if (namaSPG) sh.getRange(r,18).setValue(namaSPG);
-    if (jabatan) sh.getRange(r,19).setValue(jabatan);
-    // Color row berdasarkan status
-    const colors = {
-      'Selesai':'#f0fdf4','Gagal Kirim':'#fef2f2',
-      'On Process':'#eff6ff','Batal':'#f8fafc'
-    };
-    if (colors[status]) sh.getRange(r,1,1,20).setBackground(colors[status]);
-  }
-}
-
-// ── HELPER: UPLOAD FOTO KE GOOGLE DRIVE ───────────────────────────────────────
-function _uploadPhoto(base64Data, plat, date, docNo, type) {
-  if (!base64Data) return '';
-  try {
-    // Strip header base64
-    const b64 = base64Data.replace(/^data:image\/(jpeg|png|jpg);base64,/, '');
-    const blob = Utilities.newBlob(Utilities.base64Decode(b64), 'image/jpeg',
-      `${type}_${docNo}_${plat}_${_formatDateForFile(date)}.jpg`);
-
-    // Cari/buat folder struktur: GlobalSentral-POD/YYYY-MM-DD/PLAT_DRIVER/
-    const rootFolderName = 'GlobalSentral-POD';
-    let root;
-    const rootQ = DriveApp.getFoldersByName(rootFolderName);
-    root = rootQ.hasNext() ? rootQ.next() : DriveApp.createFolder(rootFolderName);
-
-    // Subfolder per tanggal
-    const dateStr  = _formatDateForFile(date);
-    let dateFolder;
-    const dateQ    = root.getFoldersByName(dateStr);
-    dateFolder     = dateQ.hasNext() ? dateQ.next() : root.createFolder(dateStr);
-
-    // Subfolder per plat
-    let platFolder;
-    const platQ    = dateFolder.getFoldersByName(plat);
-    platFolder     = platQ.hasNext() ? platQ.next() : dateFolder.createFolder(plat);
-
-    // Upload
-    const file = platFolder.createFile(blob);
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    return 'https://drive.google.com/file/d/' + file.getId() + '/view';
   } catch(e) {
-    Logger.log('Upload foto error: ' + e.message);
-    return 'UPLOAD_FAILED: ' + e.message;
+    showErr('Gagal memuat data. Periksa koneksi internet atau hubungi dispatcher. (' + e.message + ')');
+  } finally {
+    setLoading(false);
   }
 }
 
-function _formatDateForFile(date) {
-  if (!date) return Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd');
-  // Handle format dd/MM/yyyy atau yyyy-MM-dd
-  const parts = String(date).split(/[\/\-\.]/);
-  if (parts.length === 3) {
-    if (parts[0].length === 4) return `${parts[0]}-${parts[1]}-${parts[2]}`;
-    return `${parts[2]}-${parts[1]}-${parts[0]}`;
-  }
-  return String(date).replace(/\//g,'-');
-}
+function renderResult(d) {
+  const wrap = document.getElementById('result-wrap');
+  const card = document.getElementById('result-card');
 
-// ── HELPER: LOG FOTO ──────────────────────────────────────────────────────────
-function _logPhoto(ss, plat, driver, date, docNo, type, url, gps) {
-  const sh = _getOrCreateSheet(ss, SHEETS.photo_log, setupDriverSheets);
-  sh.appendRow([_now(), plat, driver, date, docNo, type, '', url, gps||'']);
-}
-
-// ── HELPER: GET OR CREATE SHEET ───────────────────────────────────────────────
-function _getOrCreateSheet(ss, name, setupFn) {
-  let sh = ss.getSheetByName(name);
-  if (!sh) { setupFn(); sh = ss.getSheetByName(name); }
-  return sh;
-}
-
-// ── HELPER: GET DO FIELD ──────────────────────────────────────────────────────
-function _getDoField(ss, docNo, field) {
-  const sh = ss.getSheetByName(SHEETS.do_status);
-  if (!sh) return '';
-  const lr = sh.getLastRow();
-  if (lr < 2) return '';
-  const rows = sh.getRange(2,1,lr-1,20).getValues();
-  const row  = rows.find(r => String(r[4]||'').trim() === String(docNo||'').trim());
-  if (!row) return '';
-  const fieldMap = { customer:5, alamat:6, produk:7, qty:8 };
-  return row[fieldMap[field]||0] || '';
-}
-
-// ── HELPER: GET DRIVER PHONE ──────────────────────────────────────────────────
-function _getDriverPhone(ss, plat) {
-  const sh = ss.getSheetByName(SHEETS.kendaraan);
-  if (!sh) return '';
-  const lr = sh.getLastRow();
-  if (lr < 2) return '';
-  const rows = sh.getRange(1,1,lr,sh.getLastColumn()).getValues();
-  const header = rows[0].map(h=>String(h||'').toLowerCase());
-  const platIdx  = header.findIndex(h=>h.includes('plat'));
-  const phoneIdx = header.findIndex(h=>h.includes('hp') || h.includes('phone') || h.includes('telp'));
-  if (platIdx<0 || phoneIdx<0) return '';
-  const row = rows.slice(1).find(r=>String(r[platIdx]||'').toUpperCase()===String(plat||'').toUpperCase());
-  return row ? String(row[phoneIdx]||'') : '';
-}
-
-// ── HELPER: GET DISPATCHER PHONE ──────────────────────────────────────────────
-function _getDispatcherPhone(ss, gudang) {
-  const sh = ss.getSheetByName(SHEETS.konfigurasi);
-  if (!sh) return '';
-  const lr = sh.getLastRow();
-  if (lr < 2) return '';
-  const rows = sh.getRange(2,1,lr-1,4).getValues();
-  const gudangKey = String(gudang||'').toUpperCase().replace('GUDANG ','');
-  const row = rows.find(r => {
-    const param = String(r[0]||'').toLowerCase();
-    return param.includes('dispatcher') && param.includes(gudangKey.toLowerCase());
-  });
-  return row ? String(row[1]||'') : '';
-}
-
-// ── POPULATE DO STATUS (dipanggil dari routing optimizer setelah routing) ──────
-// Digunakan untuk mengisi sheet DO Status dari hasil routing
-function populateDoStatus(data) {
-  if (!data || !Array.isArray(data.rows)) return { error: 'No data' };
-  const ss = getSS('OPERASIONAL');
-  setupDriverSheets();
-  const sh = ss.getSheetByName(SHEETS.do_status);
-
-  // Hapus data lama untuk tanggal ini
-  const doDate = data.doDate || _now().slice(0,10);
-  const lr = sh.getLastRow();
-  if (lr >= 2) {
-    const dateCol = sh.getRange(2,1,lr-1,1).getValues();
-    const toDelete = [];
-    dateCol.forEach((r,i) => {
-      if (String(r[0]||'').includes(doDate) || String(r[0]||'').includes(doDate.replace(/-/g,'/')))
-        toDelete.push(i+2);
-    });
-    // Delete dari bawah ke atas
-    toDelete.reverse().forEach(r => sh.deleteRow(r));
+  // ── Determine status class & icon
+  const st = String(d.status || '').toLowerCase();
+  let sClass, sIcon, sLabel, sMain;
+  if (st.includes('selesai') || st.includes('terkirim') || st.includes('done') || st.includes('completed')) {
+    sClass='s-done'; sIcon='✅'; sLabel='TERKIRIM'; sMain='Barang sudah diterima';
+  } else if (st.includes('jalan') || st.includes('onroad') || st.includes('start') || st.includes('otw') || st.includes('muat')) {
+    sClass='s-onroad'; sIcon='🚛'; sLabel='DALAM PERJALANAN'; sMain='Kendaraan sedang menuju lokasi Anda';
+  } else if (st.includes('gagal') || st.includes('failed') || st.includes('cancel')) {
+    sClass='s-failed'; sIcon='❌'; sLabel='GAGAL KIRIM'; sMain='Pengiriman tidak berhasil';
+  } else if (st.includes('siap') || st.includes('menunggu') || st.includes('pending') || st.includes('waiting') || st.includes('muat')) {
+    sClass='s-waiting'; sIcon='⏳'; sLabel='MENUNGGU KEBERANGKATAN'; sMain='Barang sedang disiapkan';
+  } else {
+    sClass='s-waiting'; sIcon='📦'; sLabel='DIPROSES'; sMain=d.status || 'Sedang diproses';
   }
 
-  // Insert rows baru
-  if (data.rows.length > 0) {
-    const newRows = data.rows.map(r => [
-      r.do_date||doDate, r.plat||'', r.driver||'', r.gudang||'',
-      r.doc_no||'', r.customer||'', r.alamat||'', r.produk||'',
-      r.qty||0, r.status||'Baru', _now(), '',
-      '', '', '', '', '', '', '', r.catatan||'',
-    ]);
-    sh.getRange(sh.getLastRow()+1, 1, newRows.length, 20).setValues(newRows);
+  // ── Timeline steps
+  const steps = buildTimeline(st, d);
+
+  // ── Qty info
+  let qtyHtml = '';
+  if (d.qty_kirim) {
+    const qKirim   = parseInt(d.qty_kirim)||0;
+    const qTerima  = parseInt(d.qty_terima)||0;
+    const qRusak   = parseInt(d.qty_rusak)||0;
+    const ok = qTerima > 0;
+    const hasRusak = qRusak > 0;
+    qtyHtml = `
+      <span class="qty-badge ${ok?'qty-ok':'qty-warn'}">${qKirim} DUS dikirim</span>
+      ${ok ? `<span class="qty-badge qty-ok">✓ ${qTerima} diterima</span>` : ''}
+      ${hasRusak ? `<span class="qty-badge qty-warn">⚠ ${qRusak} rusak</span>` : ''}
+    `;
   }
 
-  return { status:'ok', inserted: data.rows.length };
-}
-
-// ── TEST FUNCTIONS ─────────────────────────────────────────────────────────────
-
-// ── GET FAILED DOs (carry-over) ───────────────────────────────────────────────
-function getFailedDOs(date) {
-  const ss = getSS('OPERASIONAL');
-  const sh = ss.getSheetByName(SHEETS.do_status);
-  if (!sh) return { status:'ok', tasks:[] };
-  const lr = sh.getLastRow();
-  if (lr < 2) return { status:'ok', tasks:[] };
-  const rows = sh.getRange(2,1,lr-1,20).getValues();
-  let targetDate = date;
-  if (!targetDate) {
-    const yday = new Date(); yday.setDate(yday.getDate()-1);
-    targetDate = Utilities.formatDate(yday, 'Asia/Jakarta', 'dd/MM/yyyy');
-  }
-  const normDate = d => String(d||'').replace(/\D/g,'');
-  const tNorm = normDate(targetDate);
-  const tasks = rows
-    .filter(r => normDate(r[0]).slice(0,6) === tNorm.slice(0,6) && String(r[9]||'').trim() === 'Gagal Kirim')
-    .map(r => ({ do_date:r[0],plat:r[1],driver:r[2],gudang:r[3],doc_no:r[4],customer:r[5],alamat:r[6],produk:r[7],qty:r[8],status:r[9],alasan_gagal:r[14]||'' }));
-  return { status:'ok', tasks, count:tasks.length };
-}
-
-// ── GET ROUTING LOG (history) ─────────────────────────────────────────────────
-function getRoutingLog(date) {
-  const ss = getSS('ANALITIK');
-  const sh = ss.getSheetByName(SHEETS.routing_log);
-  if (!sh) return { status:'ok', data:[] };
-  const lr = sh.getLastRow();
-  if (lr < 2) return { status:'ok', data:[] };
-  const rows = sh.getRange(2,1,lr-1,17).getValues();
-  const normDate = d => String(d||'').replace(/\D/g,'');
-  const tNorm = date ? normDate(date) : '';
-  const data = rows
-    .filter(r => !tNorm || normDate(r[1]).slice(0,6) === tNorm.slice(0,6))
-    .map(r => ({ tanggal_routing:r[0],tanggal_do:r[1],gudang:r[2],plat:r[3],driver:r[4],tipe:r[5],route_no:r[6],trip_no:r[7],total_do:r[8],total_qty:r[9],total_vol:r[10],km_est:r[11],util_berat:r[12],util_vol:r[13],eta_selesai:r[14],eta_ok:r[15],flag:r[16]||'' }));
-  return { status:'ok', data, count:data.length };
-}
-
-
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SALES VIEW — Baca DO Status + Stop Log, group by DO No + retry tracking
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function getSalesView(dateFrom, dateTo) {
-  const ss  = getSS('OPERASIONAL');
-  const sh  = ss.getSheetByName(SHEETS.do_status);
-  const sl  = ss.getSheetByName(SHEETS.stop_log);
-  if (!sh) return { status:'ok', data:[] };
-
-  const lr = sh.getLastRow();
-  if (lr < 2) return { status:'ok', data:[] };
-
-  // ── Baca DO Status ──────────────────────────────────────────────────────────
-  const rows = sh.getRange(2,1,lr-1,20).getValues();
-  const normDate = d => String(d||'').replace(/\D/g,'');
-
-  // Filter tanggal jika ada
-  let filtered = rows.filter(r => {
-    if (!r[4]) return false; // must have doc_no
-    if (!dateFrom && !dateTo) return true;
-    const rd = normDate(r[0]);
-    if (dateFrom && rd < normDate(dateFrom)) return false;
-    if (dateTo   && rd > normDate(dateTo))   return false;
-    return true;
-  });
-
-  // ── Baca Stop Log untuk foto per DO ────────────────────────────────────────
-  const photoMap = {}; // doc_no → [{tgl, url, status}]
-  if (sl && sl.getLastRow() >= 2) {
-    const slRows = sl.getRange(2,1,sl.getLastRow()-1,21).getValues();
-    slRows.forEach(r => {
-      const docNo = String(r[4]||'').trim();
-      const foto  = String(r[17]||'').trim(); // Foto DO (Drive)
-      const status= String(r[6]||'').trim();
-      const tgl   = String(r[3]||'').trim();
-      if (!docNo) return;
-      if (!photoMap[docNo]) photoMap[docNo] = [];
-      photoMap[docNo].push({ tgl, status, foto, alasan: String(r[10]||'') });
-    });
+  // ── Alasan gagal
+  let alasanHtml = '';
+  if (d.alasan_gagal) {
+    alasanHtml = `
+      <div class="info-row">
+        <span class="info-key">Alasan gagal</span>
+        <span class="info-val" style="color:var(--red)">${d.alasan_gagal}</span>
+      </div>`;
   }
 
-  // ── Group by DO No ──────────────────────────────────────────────────────────
-  const doMap = {};
-  filtered.forEach(r => {
-    const docNo  = String(r[4]||'').trim();
-    const tglDO  = String(r[0]||'').trim();
-    if (!docNo) return;
-    if (!doMap[docNo]) doMap[docNo] = {
-      doc_no  : docNo,
-      customer: String(r[5]||''),
-      alamat  : String(r[6]||''),
-      produk  : String(r[7]||''),
-      attempts: [],
-    };
-    doMap[docNo].attempts.push({
-      tgl_do   : tglDO,
-      plat     : String(r[1]||''),
-      driver   : String(r[2]||''),
-      gudang   : String(r[3]||''),
-      qty_kirim: r[8]||0,
-      status   : String(r[9]||'Baru'),
-      jam_update:String(r[10]||''),
-      qty_terima:r[12]||0,
-      qty_rusak : r[13]||0,
-      alasan_gagal:String(r[14]||''),
-      keterangan  :String(r[15]||''),
-    });
-  });
+  // ── CTA buttons
+  let ctaHtml = '';
+  const driverWA  = cleanPhone(d.driver_phone);
+  const dispatchWA= cleanPhone(d.dispatcher_phone);
+  const fotoUrl   = d.foto_do_url;
+  const ctaBtns   = [];
 
-  // ── Assign attempt number + foto ────────────────────────────────────────────
-  const data = Object.values(doMap).map(d => {
-    // Sort attempts by tanggal
-    d.attempts.sort((a,b) => {
-      const na = String(a.tgl_do||'').replace(/\D/g,'');
-      const nb = String(b.tgl_do||'').replace(/\D/g,'');
-      return na.localeCompare(nb);
-    });
-
-    // Assign try label
-    d.attempts = d.attempts.map((a, i) => ({
-      ...a,
-      try_no   : i + 1,
-      try_label: i === 0 ? '1st' : `${i+1}${['th','st','nd','rd','th','th','th','th','th','th'][Math.min(i+1,9)]} try`,
-    }));
-
-    // Foto dari Stop Log per attempt
-    const fotos = photoMap[d.doc_no] || [];
-    d.attempts = d.attempts.map(a => {
-      const f = fotos.find(f => {
-        const fd = String(f.tgl||'').replace(/\D/g,'').slice(0,6);
-        const ad = String(a.tgl_do||'').replace(/\D/g,'').slice(0,6);
-        return fd === ad;
-      });
-      return { ...a, foto_do: f?.foto||'', alasan_log: f?.alasan||'' };
-    });
-
-    // Status & summary
-    const latest  = d.attempts[d.attempts.length-1];
-    const sukses  = d.attempts.find(a => a.status === 'Selesai');
-    const totalTry= d.attempts.length;
-
-    return {
-      doc_no    : d.doc_no,
-      customer  : d.customer,
-      alamat    : d.alamat,
-      produk    : d.produk,
-      status    : latest.status,
-      is_sukses : !!sukses,
-      total_try : totalTry,
-      plat      : latest.plat,
-      driver    : latest.driver,
-      gudang    : latest.gudang,
-      tgl_terakhir: latest.tgl_do,
-      jam_update  : latest.jam_update,
-      qty_kirim   : latest.qty_kirim,
-      qty_terima  : sukses ? sukses.qty_terima : 0,
-      attempts    : d.attempts,
-    };
-  });
-
-  // Sort: Selesai dulu, lalu On Process, lalu Gagal, lalu Baru
-  const order = {'Selesai':0,'On Process':1,'Gagal Kirim':2,'Baru':3};
-  data.sort((a,b) => (order[a.status]||9) - (order[b.status]||9));
-
-  return { status:'ok', data, count:data.length };
-}
-
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// DISPATCHER VIEW — Gabungan GPS + DO Status per kendaraan
-// ═══════════════════════════════════════════════════════════════════════════════
-function getDispatcherView(date) {
-  const ss  = getSS('OPERASIONAL');
-  const today = date || _today();
-  const normDate = d => String(d||'').replace(/\D/g,'').slice(0,6);
-  const todayNorm = normDate(today);
-
-  // ── 1. DO Status → summary per plat ─────────────────────────────────────────
-  const doSheet = ss.getSheetByName(SHEETS.do_status);
-  const platMap  = {}; // plat → { driver, gudang, counts, dos, lastUpdate, gps }
-
-  if (doSheet && doSheet.getLastRow() >= 2) {
-    const doRows = doSheet.getRange(2,1,doSheet.getLastRow()-1,12).getValues();
-    doRows.forEach(r => {
-      if (normDate(r[0]) !== todayNorm) return;
-      const plat   = String(r[1]||'').trim();
-      const driver = String(r[2]||'').trim();
-      const gudang = String(r[3]||'').trim();
-      const docNo  = String(r[4]||'').trim();
-      const customer = String(r[5]||'').trim();
-      const status = String(r[9]||'Baru').trim();
-      const jam    = String(r[10]||'').trim();
-      const gps    = String(r[11]||'').trim();
-      if (!plat) return;
-
-      if (!platMap[plat]) {
-        platMap[plat] = {
-          plat, driver, gudang,
-          counts: { Baru:0, 'Muat Kargo':0, 'On Process':0, Selesai:0, 'Gagal Kirim':0 },
-          dos:[], lastUpdate:'', lastGps:'', lat:0, lng:0,
-        };
-      }
-      platMap[plat].counts[status] = (platMap[plat].counts[status]||0) + 1;
-      platMap[plat].dos.push({ docNo, customer, status });
-      if (jam > platMap[plat].lastUpdate) {
-        platMap[plat].lastUpdate = jam;
-        if (gps) platMap[plat].lastGps = gps;
-      }
-    });
+  if (driverWA && (sClass==='s-onroad')) {
+    const msg = encodeURIComponent(`Halo ${d.driver||'Driver'}, saya ingin konfirmasi pengiriman DO ${d.doc_no} ke ${d.alamat||'lokasi saya'}.`);
+    ctaBtns.push(`<a class="cta-btn cta-wa-driver" href="https://wa.me/${driverWA}?text=${msg}" target="_blank">📱 WA Driver</a>`);
+  }
+  if (dispatchWA) {
+    const msg2 = encodeURIComponent(`Halo Dispatcher GST, saya ingin tanya status pengiriman DO ${d.doc_no}.`);
+    ctaBtns.push(`<a class="cta-btn cta-wa-dispatch" href="https://wa.me/${dispatchWA}?text=${msg2}" target="_blank">☎️ Hubungi Dispatcher</a>`);
   }
 
-  // ── 2. GPS Log → posisi terbaru per plat ────────────────────────────────────
-  const gpsSheet = ss.getSheetByName(SHEETS_GPS.gps_log);
-  if (gpsSheet && gpsSheet.getLastRow() >= 2) {
-    const gpsRows = gpsSheet.getRange(2,1,gpsSheet.getLastRow()-1,7).getValues();
-    // Ambil posisi terakhir per plat (data terbaru = row terakhir)
-    const latestGPS = {};
-    gpsRows.forEach(r => {
-      if (normDate(r[1]) !== todayNorm) return;
-      const plat = String(r[0]||'').trim();
-      const ts   = String(r[2]||'').trim();
-      const lat  = parseFloat(r[3])||0;
-      const lng  = parseFloat(r[4])||0;
-      const km   = parseFloat(r[5])||0;
-      const spd  = parseFloat(r[6])||0;
-      if (!plat || !lat || !lng) return;
-      if (!latestGPS[plat] || ts > latestGPS[plat].ts) {
-        latestGPS[plat] = { lat, lng, km, spd, ts };
-      }
-    });
-
-    // Merge ke platMap
-    Object.entries(latestGPS).forEach(([plat, pos]) => {
-      if (platMap[plat]) {
-        platMap[plat].lat   = pos.lat;
-        platMap[plat].lng   = pos.lng;
-        platMap[plat].km    = pos.km;
-        platMap[plat].speed = pos.spd;
-        platMap[plat].gpsTs = pos.ts;
-      } else {
-        // Plat ada di GPS tapi belum ada di DO Status hari ini (misal baru start)
-        platMap[plat] = {
-          plat, driver:'—', gudang:'—',
-          counts:{}, dos:[], lastUpdate:'',
-          lat:pos.lat, lng:pos.lng, km:pos.km, speed:pos.spd, gpsTs:pos.ts,
-        };
-      }
-    });
+  let ctaSection = '';
+  if (ctaBtns.length > 0) {
+    ctaSection = `<div class="cta-section">${ctaBtns.join('')}</div>`;
   }
 
-  // ── 3. GPS dari DO Status coords (fallback jika GPS Log kosong) ───────────
-  Object.values(platMap).forEach(p => {
-    if (!p.lat && p.lastGps) {
-      const parts = String(p.lastGps).split(',');
-      if (parts.length === 2) {
-        p.lat = parseFloat(parts[0])||0;
-        p.lng = parseFloat(parts[1])||0;
-      }
-    }
-  });
-
-  // ── 4. Tentukan status keseluruhan per kendaraan ──────────────────────────
-  Object.values(platMap).forEach(p => {
-    const c = p.counts || {};
-    const totalDO = Object.values(c).reduce((a,b)=>a+b,0);
-    const selesai = c['Selesai']||0;
-    const gagal   = c['Gagal Kirim']||0;
-    const proc    = c['On Process']||0;
-    const muat    = c['Muat Kargo']||0;
-
-    p.totalDO  = totalDO;
-    p.progress = totalDO > 0 ? Math.round((selesai/totalDO)*100) : 0;
-
-    if (selesai === totalDO && totalDO > 0) p.overallStatus = 'selesai';
-    else if (gagal > 0 && proc === 0 && muat === 0) p.overallStatus = 'warning';
-    else if (proc > 0 || muat > 0) p.overallStatus = 'onprocess';
-    else p.overallStatus = 'baru';
-  });
-
-  const vehicles = Object.values(platMap).sort((a,b) => {
-    const order = {onprocess:0, baru:1, warning:2, selesai:3};
-    return (order[a.overallStatus]||9) - (order[b.overallStatus]||9);
-  });
-
-  return { status:'ok', date:today, vehicles, total: vehicles.length };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// CARGO TRACKING — Tracking DO via Ekspedisi Luar
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const CARGO_COLS = [
-  'Tgl Dibuat','DO No','Customer','Alamat','QTY','Produk','Gudang',
-  'Tgl Kirim','Ekspedisi','No Resi','ETA','Status',
-  'Tgl Update','Tgl Tiba','POD Foto','POD Diterima Fisik','Resi Kurir POD',
-  'Catatan','Updated By','History',
-];
-
-function _setupCargoSheet(ss) {
-  let sh = ss.getSheetByName(SHEETS.cargo_tracking);
-  if (!sh) {
-    sh = ss.insertSheet(SHEETS.cargo_tracking);
-    const h = sh.getRange(1,1,1,CARGO_COLS.length);
-    h.setValues([CARGO_COLS]);
-    h.setFontWeight('bold').setBackground('#0b1f3a').setFontColor('#fff');
-    sh.setFrozenRows(1);
+  // ── Foto bukti
+  let fotoSection = '';
+  if (fotoUrl && sClass==='s-done') {
+    fotoSection = `
+      <div class="foto-section">
+        <div class="info-title">Foto Bukti Terima</div>
+        <img class="foto-thumb" src="${fotoUrl}" alt="Bukti pengiriman"
+             onclick="window.open('${fotoUrl}','_blank')">
+        <div class="foto-caption">Tap untuk perbesar</div>
+      </div>`;
   }
-  return sh;
+
+  // ── Render
+  card.innerHTML = `
+    <div class="status-banner ${sClass}">
+      <div class="status-icon">${sIcon}</div>
+      <div class="status-text-wrap">
+        <div class="status-label">${sLabel}</div>
+        <div class="status-main">${sMain}</div>
+        ${(d.jam_selesai||d.jam_jalan||d.jam_muat||d.jam_update) ? `<div class="status-time">Update: ${d.jam_selesai||d.jam_jalan||d.jam_muat||d.jam_update}</div>` : ''}
+      </div>
+    </div>
+
+    ${qtyHtml ? `<div style="padding:10px 20px 0;display:flex;flex-wrap:wrap;gap:6px">${qtyHtml}</div>` : ''}
+
+    <div class="timeline">
+      <div class="timeline-title">Status Pengiriman</div>
+      <div class="tl-steps">
+        ${steps.map((s,i)=>`
+          <div class="tl-step ${s.state}">
+            <div class="tl-left">
+              <div class="tl-dot ${s.state}">${s.state==='done'?'✓':s.state==='active'?'●':s.state==='fail'?'✕':(i+1)}</div>
+              ${i<steps.length-1?'<div class="tl-line"></div>':''}
+            </div>
+            <div class="tl-right">
+              <div class="tl-step-name">${s.name}</div>
+              ${s.time?`<div class="tl-step-time">${s.time}</div>`:''}
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="info-section">
+      <div class="info-title">Detail Pengiriman</div>
+      ${row('No. DO', `<span class="mono">${d.doc_no||'-'}</span>`)}
+      ${row('Tgl Kirim', d.do_date||'-')}
+      ${row('Customer', d.customer||'-')}
+      ${row('Alamat', d.alamat||'-')}
+      ${d.produk ? row('Produk', d.produk) : ''}
+      ${row('Kendaraan', d.plat ? `${d.plat}${d.driver?' · '+d.driver:''}` : '-')}
+      ${row('Gudang', d.gudang||'-')}
+      ${alasanHtml}
+      ${d.keterangan ? row('Catatan', d.keterangan) : ''}
+    </div>
+
+    ${ctaSection}
+    ${fotoSection}
+  `;
+
+  wrap.style.display = 'block';
+  document.getElementById('footer-text').style.display = 'block';
+  document.getElementById('footer-text').textContent = 'PT. Global Sentral Transport — Jika ada pertanyaan hubungi dispatcher';
 }
 
-function getCargoDOs() {
-  const ss = getSS('OPERASIONAL');
-  const sh = _setupCargoSheet(ss);
-  const lr = sh.getLastRow();
-  if (lr < 2) return { status:'ok', data:[] };
-  const rows = sh.getRange(2,1,lr-1,CARGO_COLS.length).getValues();
-  const data = rows.filter(r => r[1]).map(r => ({
-    created_at:_fmtDate(r[0]), do_no:String(r[1]||''), customer:String(r[2]||''),
-    alamat:String(r[3]||''), qty:r[4]||0, produk:String(r[5]||''), gudang:String(r[6]||''),
-    tgl_kirim:_fmtDate(r[7]), ekspedisi:String(r[8]||''), resi:String(r[9]||''),
-    eta:_fmtDate(r[10]), status:String(r[11]||'Baru'),
-    updated_at:r[12] instanceof Date ? Utilities.formatDate(r[12],'Asia/Jakarta','dd/MM/yyyy HH:mm') : String(r[12]||''),
-    tgl_tiba:_fmtDate(r[13]), pod_foto:String(r[14]||''),
-    pod_diterima_fisik:String(r[15]||''), resi_kurir:String(r[16]||''),
-    catatan:String(r[17]||''), updated_by:String(r[18]||''),
-    history:(() => { try { return JSON.parse(String(r[19]||'[]')); } catch(e) { return []; } })(),
-  }));
-  return { status:'ok', data, count:data.length };
+function row(key, val) {
+  return `<div class="info-row">
+    <span class="info-key">${key}</span>
+    <span class="info-val">${val||'-'}</span>
+  </div>`;
 }
 
-function _fmtDate(v) {
-  if (v instanceof Date) return Utilities.formatDate(v,'Asia/Jakarta','dd/MM/yyyy');
-  return String(v||'');
-}
+function buildTimeline(st, d) {
+  const isMuat    = st.includes('muat');
+  const isOnroad  = st.includes('jalan')||st.includes('onroad')||st.includes('start')||st.includes('otw');
+  const isDone    = st.includes('selesai')||st.includes('terkirim')||st.includes('done')||st.includes('completed');
+  const isFailed  = st.includes('gagal')||st.includes('failed')||st.includes('cancel');
+  const isPending = !isMuat&&!isOnroad&&!isDone&&!isFailed;
 
-function getCargoByDO(doNo) {
-  const all = getCargoDOs();
-  const d   = (all.data||[]).find(x => x.do_no === String(doNo||'').trim());
-  return { status:'ok', data: d || null };
-}
+  // Timestamp per stage — pakai field spesifik, fallback ke jam_update
+  const tMuat    = d.jam_muat    || (isMuat&&!isOnroad&&!isDone ? d.jam_update : '');
+  const tJalan   = d.jam_jalan   || (isOnroad&&!isDone          ? d.jam_update : isDone ? d.jam_jalan||'' : '');
+  const tSelesai = d.jam_selesai || (isDone                     ? d.jam_update : '');
 
-function saveCargoDO(body) {
-  if (!body.do_no) return { error:'DO No wajib' };
-  const ss = getSS('OPERASIONAL');
-  const sh = _setupCargoSheet(ss);
-  const now = _now();
-  const row = [
-    now, body.do_no||'', body.customer||'', body.alamat||'',
-    parseFloat(body.qty)||0, body.produk||'', body.gudang||'',
-    body.tgl_kirim||'', body.ekspedisi||'', body.resi||'', body.eta||'',
-    body.status||'Baru', now, '', '', '', '',
-    body.catatan||'', 'Admin',
-    JSON.stringify([{tgl:now, status:body.status||'Baru', catatan:'DO dibuat'}]),
+  return [
+    {
+      name : 'Pesanan diterima sistem',
+      time : d.do_date || '',
+      state: 'done',
+    },
+    {
+      name : 'Barang disiapkan di gudang',
+      time : isMuat||isOnroad||isDone ? (tMuat||d.jam_update) : '',
+      state: isPending ? 'active' : 'done',
+    },
+    {
+      name : 'Kendaraan berangkat',
+      time : isOnroad||isDone ? (tJalan||d.jam_update) : '',
+      state: isPending ? 'idle' : isMuat ? 'active' : 'done',
+    },
+    {
+      name : isFailed ? 'Pengiriman gagal' : isDone ? 'Barang diterima' : 'Estimasi tiba',
+      time : isDone ? tSelesai : isFailed ? d.jam_update : '',
+      state: isPending||isMuat ? 'idle' : isOnroad ? 'active' : isDone ? 'done' : 'fail',
+    },
   ];
-  sh.appendRow(row);
-  return { status:'ok', message:'DO '+body.do_no+' disimpan' };
 }
 
-function updateCargoDO(body) {
-  if (!body.do_no || !body.status) return { error:'do_no dan status wajib' };
-  const ss = getSS('OPERASIONAL');
-  const sh = _setupCargoSheet(ss);
-  const lr = sh.getLastRow();
-  if (lr < 2) return { error:'Tidak ada data' };
-  const doCol = sh.getRange(2,2,lr-1,1).getValues();
-  const rowIdx = doCol.findIndex(r => String(r[0]).trim() === String(body.do_no).trim());
-  if (rowIdx < 0) return { error:'DO tidak ditemukan: '+body.do_no };
-  const r = rowIdx + 2;
-  const now = _now();
-  let podFotoUrl = sh.getRange(r,15).getValue()||'';
-  if (body.pod_foto && body.status==='POD Diterima') {
-    try { podFotoUrl = _uploadPhoto(body.pod_foto,'CARGO',body.tgl_update||now.slice(0,10),body.do_no,'POD'); } catch(e) {}
-  }
-  sh.getRange(r,12).setValue(body.status);
-  sh.getRange(r,13).setValue(now);
-  if (body.status==='Tiba Tujuan') sh.getRange(r,14).setValue(body.tgl_update||now.slice(0,10));
-  if (podFotoUrl) sh.getRange(r,15).setValue(podFotoUrl);
-  if (body.status==='POD Diterima') sh.getRange(r,16).setValue('Y');
-  if (body.resi_kurir) sh.getRange(r,17).setValue(body.resi_kurir);
-  if (body.catatan) sh.getRange(r,18).setValue(body.catatan);
-  sh.getRange(r,19).setValue(body.updated_by||'Admin');
-  let hist=[]; try { hist=JSON.parse(sh.getRange(r,20).getValue()||'[]'); } catch(e) {}
-  hist.push({tgl:now, status:body.status, catatan:body.catatan||''});
-  sh.getRange(r,20).setValue(JSON.stringify(hist));
-  return { status:'ok', message:'Status DO '+body.do_no+' → '+body.status };
+function renderNotFound(doNo) {
+  const wrap = document.getElementById('result-wrap');
+  const card = document.getElementById('result-card');
+  card.innerHTML = `
+    <div class="not-found">
+      <div class="not-found-icon">🔍</div>
+      <h3>Data Tidak Ditemukan</h3>
+      <p>Nomor DO <strong>${doNo}</strong> tidak ditemukan dalam sistem.<br>
+      Pastikan nomor DO sudah benar atau hubungi dispatcher.</p>
+    </div>`;
+  wrap.style.display = 'block';
 }
 
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SMART ALERT ENGINE v1.0
-// Setup trigger: jalankan setupAlertTriggers() SEKALI dari Apps Script editor
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// ── SETUP TRIGGERS (jalankan sekali dari editor) ──────────────────────────────
-function setupAlertTriggers() {
-  // Hapus trigger lama dulu
-  ScriptApp.getProjectTriggers().forEach(t => {
-    const fn = t.getHandlerFunction();
-    if (['alertBelumBerangkat','alertETATerlewat','alertGagalBerulang',
-         'autoSettlement','runDailyAlert'].includes(fn)) {
-      ScriptApp.deleteTrigger(t);
-    }
-  });
-
-  // 08:30 — cek driver belum berangkat
-  ScriptApp.newTrigger('alertBelumBerangkat')
-    .timeBased().atHour(8).nearMinute(30).everyDays(1).create();
-
-  // 10:00 — cek ETA terlewat
-  ScriptApp.newTrigger('alertETATerlewat')
-    .timeBased().atHour(10).nearMinute(0).everyDays(1).create();
-
-  // 13:00 — cek DO gagal berulang
-  ScriptApp.newTrigger('alertGagalBerulang')
-    .timeBased().atHour(13).nearMinute(0).everyDays(1).create();
-
-  // 06:00 T+1 — auto settlement
-  ScriptApp.newTrigger('autoSettlement')
-    .timeBased().atHour(6).nearMinute(0).everyDays(1).create();
-
-  Logger.log('✅ Semua trigger sudah dipasang:');
-  Logger.log('  08:30 → alertBelumBerangkat');
-  Logger.log('  10:00 → alertETATerlewat');
-  Logger.log('  13:00 → alertGagalBerulang');
-  Logger.log('  06:00 → autoSettlement (T+1)');
+function cleanPhone(raw) {
+  if (!raw) return '';
+  let p = String(raw).replace(/\D/g,'');
+  if (p.startsWith('0')) p = '62' + p.slice(1);
+  if (!p.startsWith('62')) p = '62' + p;
+  return p.length >= 10 ? p : '';
 }
 
-// ── HELPER: Ambil email dispatcher dari Konfigurasi ───────────────────────────
-function _getDispatcherEmail() {
-  const ss = getSS('MASTER');
-  const sh = ss.getSheetByName(SHEETS.konfigurasi);
-  if (!sh) return Session.getActiveUser().getEmail();
-  const rows = sh.getRange(1,1,sh.getLastRow(),2).getValues();
-  const row  = rows.find(r => String(r[0]).toLowerCase().includes('email dispatcher'));
-  return (row && row[1]) ? String(row[1]) : Session.getActiveUser().getEmail();
+function setLoading(v) {
+  document.getElementById('loading').style.display = v ? 'block' : 'none';
+  document.getElementById('track-btn').disabled = v;
+  document.getElementById('track-btn').textContent = v ? '…' : 'Lacak';
 }
 
-// ── HELPER: Format tanggal hari ini ──────────────────────────────────────────
-function _today() {
-  return Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy');
+function showErr(msg) {
+  const el = document.getElementById('err-msg');
+  el.textContent = msg; el.style.display = 'block';
+}
+function hideErr() {
+  document.getElementById('err-msg').style.display = 'none';
 }
 
-// ── HELPER: Simpan ke Alert Log ───────────────────────────────────────────────
-function _logAlert(type, msg, detail) {
-  const ss = getSS('MASTER');
-  let sh   = ss.getSheetByName('Alert Log');
-  if (!sh) {
-    sh = ss.insertSheet('Alert Log');
-    sh.getRange(1,1,1,5).setValues([['Timestamp','Tipe','Pesan','Detail','Status']]);
-    sh.getRange(1,1,1,5).setFontWeight('bold').setBackground('#0b1f3a').setFontColor('#fff');
-    sh.setFrozenRows(1);
-  }
-  sh.appendRow([_now(), type, msg, detail||'', 'Terkirim']);
+function openConfig() {
+  const saved = localStorage.getItem(GAS_KEY);
+  if (saved) document.getElementById('config-gas').value = saved;
+  document.getElementById('config-overlay').classList.add('open');
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// ALERT 1 — Driver belum berangkat jam 08:30
-// ═══════════════════════════════════════════════════════════════════════════════
-function alertBelumBerangkat() {
-  const today = _today();
-  const ss    = getSS('OPERASIONAL');
-  const sh    = ss.getSheetByName(SHEETS.do_status);
-  if (!sh || sh.getLastRow() < 2) return;
-
-  const rows = sh.getRange(2,1,sh.getLastRow()-1,12).getValues();
-  const normDate = d => String(d||'').replace(/\D/g,'').slice(0,6);
-  const todayNorm = normDate(today);
-
-  // Group by plat — cek apakah masih semua status Baru atau Muat Kargo
-  const platStatus = {};
-  rows.forEach(r => {
-    if (normDate(r[0]) !== todayNorm) return;
-    const plat   = String(r[1]||'').trim();
-    const driver = String(r[2]||'').trim();
-    const gudang = String(r[3]||'').trim();
-    const status = String(r[9]||'Baru').trim();
-    if (!plat) return;
-    if (!platStatus[plat]) platStatus[plat] = { driver, gudang, statuses: [], doCount: 0 };
-    platStatus[plat].statuses.push(status);
-    platStatus[plat].doCount++;
-  });
-
-  // Filter: plat yang SEMUA DO-nya masih Baru (belum ada On Process / Selesai)
-  const belumBerangkat = Object.entries(platStatus).filter(([plat, d]) =>
-    d.statuses.every(s => s === 'Baru' || s === 'Muat Kargo')
-  );
-
-  if (!belumBerangkat.length) {
-    Logger.log('[Alert 08:30] Semua kendaraan sudah berangkat');
-    return;
-  }
-
-  const lines = belumBerangkat.map(([plat, d]) =>
-    `  • ${plat} — ${d.driver} (${d.gudang}) · ${d.doCount} DO · Status: ${[...new Set(d.statuses)].join('/')}`
-  ).join('\n');
-
-  const subject = `⚠ Alert 08:30 — ${belumBerangkat.length} kendaraan belum berangkat (${today})`;
-  const body    = `Laporan otomatis Smart Alert Engine — ${today}\n\n` +
-    `${belumBerangkat.length} kendaraan berikut belum startJob hingga jam 08:30:\n\n${lines}\n\n` +
-    `Harap segera hubungi driver atau cek kondisi kendaraan.\n\n` +
-    `— Smart Alert Engine, GlobalSentral Transport`;
-
-  const email = _getDispatcherEmail();
-  MailApp.sendEmail(email, subject, body);
-  _logAlert('BELUM BERANGKAT', `${belumBerangkat.length} kendaraan`, lines);
-  Logger.log('[Alert 08:30] Email terkirim ke '+email+': '+belumBerangkat.length+' kendaraan');
+function closeConfigIfOutside(e) {
+  if (e.target === document.getElementById('config-overlay'))
+    document.getElementById('config-overlay').classList.remove('open');
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// ALERT 2 — ETA terlewat > 1 jam (jam 10:00)
-// ═══════════════════════════════════════════════════════════════════════════════
-function alertETATerlewat() {
-  const today = _today();
-  const ss    = getSS('OPERASIONAL');
-  const sh    = ss.getSheetByName(SHEETS.trip_summary);
-  if (!sh || sh.getLastRow() < 2) return;
-
-  const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
-  const rows   = sh.getRange(2,1,sh.getLastRow()-1,sh.getLastColumn()).getValues();
-
-  const colETA    = header.findIndex(h => String(h).toLowerCase().includes('eta_selesai'));
-  const colPlat   = header.findIndex(h => String(h).toLowerCase() === 'plat');
-  const colDriver = header.findIndex(h => String(h).toLowerCase() === 'driver');
-  const colStatus = header.findIndex(h => String(h).toLowerCase() === 'status');
-  const colDate   = header.findIndex(h => String(h).toLowerCase().includes('tanggal'));
-
-  if (colETA < 0) { Logger.log('[Alert ETA] Kolom eta_selesai tidak ditemukan'); return; }
-
-  const normDate = d => String(d||'').replace(/\D/g,'').slice(0,6);
-  const todayNorm = normDate(today);
-  const now = new Date();
-  const nowMnt = now.getHours()*60 + now.getMinutes();
-
-  const terlewat = rows.filter(r => {
-    if (normDate(r[colDate < 0 ? 3 : colDate]) !== todayNorm) return false;
-    const status = colStatus >= 0 ? String(r[colStatus]||'') : 'active';
-    if (status === 'completed' || status === 'done') return false;
-    const eta = String(r[colETA]||'').trim(); // Format HH:MM
-    if (!eta || !eta.includes(':')) return false;
-    const [h,m] = eta.split(':').map(Number);
-    const etaMnt = h*60 + m;
-    return (nowMnt - etaMnt) > 60; // lebih dari 1 jam dari ETA
-  }).map(r => ({
-    plat  : String(r[colPlat  >= 0 ? colPlat   : 1]||'').trim(),
-    driver: String(r[colDriver >= 0 ? colDriver : 2]||'').trim(),
-    eta   : String(r[colETA]||'').trim(),
-  }));
-
-  if (!terlewat.length) { Logger.log('[Alert ETA] Semua kendaraan on schedule'); return; }
-
-  const lines = terlewat.map(t =>
-    `  • ${t.plat} — ${t.driver} · ETA ${t.eta} (terlewat ${Math.round(nowMnt - (parseInt(t.eta)*60 + parseInt(t.eta.split(':')[1]||0)))} mnt)`
-  ).join('\n');
-
-  const subject = `⏰ Alert ETA — ${terlewat.length} kendaraan terlambat (${today})`;
-  const body    = `Laporan otomatis Smart Alert Engine — ${today}\n\n` +
-    `${terlewat.length} kendaraan berikut melebihi ETA lebih dari 1 jam:\n\n${lines}\n\n` +
-    `Harap hubungi driver untuk update kondisi di lapangan.\n\n` +
-    `— Smart Alert Engine, GlobalSentral Transport`;
-
-  const email = _getDispatcherEmail();
-  MailApp.sendEmail(email, subject, body);
-  _logAlert('ETA TERLEWAT', `${terlewat.length} kendaraan`, lines);
-  Logger.log('[Alert ETA] Email terkirim: '+terlewat.length+' kendaraan');
+function saveConfig() {
+  const url = document.getElementById('config-gas').value.trim();
+  if (url) { localStorage.setItem(GAS_KEY, url); }
+  document.getElementById('config-overlay').classList.remove('open');
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// ALERT 3 — DO gagal 2x berturut-turut (jam 13:00)
-// ═══════════════════════════════════════════════════════════════════════════════
-function alertGagalBerulang() {
-  const ss  = getSS('OPERASIONAL');
-  const sh  = ss.getSheetByName(SHEETS.do_status);
-  if (!sh || sh.getLastRow() < 2) return;
-
-  const rows = sh.getRange(2,1,sh.getLastRow()-1,16).getValues();
-
-  // Group by doc_no — hitung berapa kali gagal
-  const doMap = {};
-  rows.forEach(r => {
-    const docNo  = String(r[4]||'').trim();
-    const status = String(r[9]||'').trim();
-    const tgl    = String(r[0]||'').trim();
-    const alasan = String(r[14]||'').trim();
-    const customer = String(r[5]||'').trim();
-    if (!docNo) return;
-    if (!doMap[docNo]) doMap[docNo] = { customer, attempts: [] };
-    doMap[docNo].attempts.push({ tgl, status, alasan });
-  });
-
-  // Filter: DO yang gagal >= 2x dan belum ada yang Selesai
-  const gaganBerulang = Object.entries(doMap).filter(([dn, d]) => {
-    const gagalCount = d.attempts.filter(a => a.status === 'Gagal Kirim').length;
-    const sudahSelesai = d.attempts.some(a => a.status === 'Selesai');
-    return gagalCount >= 2 && !sudahSelesai;
-  }).map(([docNo, d]) => {
-    const gagals = d.attempts.filter(a => a.status === 'Gagal Kirim');
-    return { docNo, customer: d.customer, gagalCount: gagals.length, alasan: gagals.map(g=>g.alasan).join(', ') };
-  });
-
-  if (!gaganBerulang.length) { Logger.log('[Alert Gagal] Tidak ada DO gagal berulang'); return; }
-
-  const lines = gaganBerulang.map(d =>
-    `  • DO ${d.docNo} — ${d.customer} · Gagal ${d.gagalCount}x · Alasan: ${d.alasan||'—'}`
-  ).join('\n');
-
-  const subject = `🔄 Alert Gagal Berulang — ${gaganBerulang.length} DO perlu perhatian (${_today()})`;
-  const body    = `Laporan otomatis Smart Alert Engine — ${_today()}\n\n` +
-    `${gaganBerulang.length} DO berikut sudah gagal 2x atau lebih dan belum berhasil dikirim:\n\n${lines}\n\n` +
-    `Rekomendasi: hubungi customer untuk reschedule atau konfirmasi kondisi toko.\n\n` +
-    `— Smart Alert Engine, GlobalSentral Transport`;
-
-  const email = _getDispatcherEmail();
-  MailApp.sendEmail(email, subject, body);
-  _logAlert('GAGAL BERULANG', `${gaganBerulang.length} DO`, lines);
-  Logger.log('[Alert Gagal Berulang] Email terkirim: '+gaganBerulang.length+' DO');
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// AUTO SETTLEMENT v1.0 — Jalan jam 06:00 T+1
-// ═══════════════════════════════════════════════════════════════════════════════
-function autoSettlement() {
-  const ss  = getSS('OPERASIONAL');
-  const tsh = ss.getSheetByName(SHEETS.trip_summary);
-  if (!tsh || tsh.getLastRow() < 2) {
-    Logger.log('[AutoSettlement] Trip Summary kosong');
-    return;
-  }
-
-  // Ambil konfigurasi tarif
-  const cfg     = getKonfigurasi();
-  const hargaSolar = parseFloat(cfg.data && cfg.data.harga_solar) || 6800;
-
-  // Tarif UJ per km per tipe kendaraan (dari master)
-  const masterData = getMasterData();
-  const kendaraanList = (masterData.data && masterData.data.kendaraan) || [];
-
-  const tarifPerTipe = {
-    'Pick Up':700, 'Pick Up Box':700,
-    'CDE Standar':700,'CDE Long':700,
-    'CDD Standar':800,'CDD Long':800,
-    'Fuso':1000,'Tronton':1200,
-  };
-
-  // KPL (km per liter) per tipe
-  const kplPerTipe = {
-    'Pick Up':8,'Pick Up Box':8,
-    'CDE Standar':6,'CDE Long':6,
-    'CDD Standar':5,'CDD Long':5,
-    'Fuso':4,'Tronton':3.5,
-  };
-
-  // Ambil data trip kemarin
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yDate = Utilities.formatDate(yesterday, 'Asia/Jakarta', 'dd/MM/yyyy');
-  const yNorm = yDate.replace(/\D/g,'').slice(0,6);
-
-  const header = tsh.getRange(1,1,1,tsh.getLastColumn()).getValues()[0];
-  const rows   = tsh.getRange(2,1,tsh.getLastRow()-1,tsh.getLastColumn()).getValues();
-
-  const normDate = d => String(d||'').replace(/\D/g,'').slice(0,6);
-
-  const tripRows = rows.filter(r => normDate(r[3] || r[0]) === yNorm);
-
-  if (!tripRows.length) {
-    Logger.log('[AutoSettlement] Tidak ada trip data untuk '+yDate);
-    return;
-  }
-
-  // Setup Settlement Harian sheet
-  const settleSheet = _setupSettlementSheet(ss, yDate);
-
-  const results = [];
-  let totalUJ = 0, totalBBM = 0, totalDP = 0;
-
-  tripRows.forEach(r => {
-    const plat    = String(r[1]||'').trim();
-    const driver  = String(r[2]||'').trim();
-    const gudang  = String(r[14]||r[13]||'').trim().replace('GUDANG ','');
-    const kmActual= parseFloat(r[11]) || 0; // km_actual dari GPS
-    const kmEst   = parseFloat(r[10]) || 0;
-    const kmFinal = kmActual > 0 ? kmActual : kmEst; // GPS priority, fallback est
-
-    // Cari tipe kendaraan dari master
-    const kend = kendaraanList.find(k => String(k.plat||'').trim() === plat);
-    const tipe = kend ? String(kend.tipe||'CDD Standar') : 'CDD Standar';
-
-    // Hitung biaya
-    const tarif   = tarifPerTipe[tipe] || 800;
-    const kpl     = kplPerTipe[tipe]   || 5;
-    const ujAkt   = Math.round(kmFinal * tarif);
-    const liter   = Math.round((kmFinal / kpl) * 10) / 10;
-    const bbmAkt  = Math.round(liter * hargaSolar / 500) * 500;
-    const makan   = 25000; // flat
-    const total   = ujAkt + bbmAkt + makan;
-
-    totalUJ  += ujAkt;
-    totalBBM += bbmAkt;
-    totalDP  += total;
-
-    const row = [
-      yDate, plat, driver, tipe, gudang,
-      kmEst, kmActual > 0 ? kmActual : '', kmActual > 0 ? 'GPS' : 'Estimasi',
-      ujAkt, '', // uj_est, uj_aktual (uj_est = uj_aktual kalau GPS)
-      bbmAkt, liter, hargaSolar, kpl,
-      0, 0, // tol_est, tol_aktual (belum ada data)
-      0, 0, // parkir_est, parkir_aktual
-      makan, 0, '', // makan, mel, mel_ket
-      total, total, 0, // dp_total, total_aktual, selisih
-      'auto', // status: auto = belum diverifikasi
-    ];
-
-    settleSheet.appendRow(row);
-    results.push({ plat, driver, tipe, km: kmFinal, uj: ujAkt, bbm: bbmAkt, total });
-  });
-
-  // Warnai baris berdasarkan sumber KM
-  const lastRow = settleSheet.getLastRow();
-  const firstDataRow = lastRow - results.length + 1;
-  for (let i = 0; i < results.length; i++) {
-    const rowNum = firstDataRow + i;
-    const tripRow = tripRows[i];
-    const hasGPS = parseFloat(tripRow[11]) > 0;
-    const color  = hasGPS ? '#f0fdf4' : '#fffbeb'; // hijau = GPS, kuning = estimasi
-    settleSheet.getRange(rowNum, 1, 1, 25).setBackground(color);
-  }
-
-  // Email summary ke dispatcher
-  const lines = results.map(r =>
-    `  ${r.plat.padEnd(10)} ${r.driver.padEnd(18)} ${String(r.km.toFixed(0)+' km').padEnd(8)} ` +
-    `UJ: Rp ${r.uj.toLocaleString().padEnd(10)} BBM: Rp ${r.bbm.toLocaleString().padEnd(10)} Total: Rp ${r.total.toLocaleString()}`
-  ).join('\n');
-
-  const subject = `📋 Auto Settlement ${yDate} — ${results.length} kendaraan`;
-  const body    = `Settlement otomatis T+1 — ${yDate}\n\n` +
-    `Total ${results.length} kendaraan:\n` +
-    `${'='.repeat(80)}\n${lines}\n${'='.repeat(80)}\n\n` +
-    `TOTAL UJ   : Rp ${totalUJ.toLocaleString()}\n` +
-    `TOTAL BBM  : Rp ${totalBBM.toLocaleString()}\n` +
-    `TOTAL DP   : Rp ${totalDP.toLocaleString()}\n\n` +
-    `Catatan:\n` +
-    `- Baris HIJAU = KM dari GPS (akurat)\n` +
-    `- Baris KUNING = KM dari estimasi routing (belum ada GPS)\n` +
-    `- Status "auto" = belum diverifikasi dispatcher\n\n` +
-    `Buka Google Sheets → tab Settlement Harian untuk verifikasi dan approval.\n\n` +
-    `— Auto Settlement Engine, GlobalSentral Transport`;
-
-  const email = _getDispatcherEmail();
-  MailApp.sendEmail(email, subject, body);
-  _logAlert('AUTO SETTLEMENT', `${results.length} kendaraan, total Rp ${totalDP.toLocaleString()}`, yDate);
-  Logger.log('[AutoSettlement] ✅ Settlement '+yDate+' selesai. Email terkirim ke '+email);
-}
-
-// ── SETUP SETTLEMENT SHEET ────────────────────────────────────────────────────
-function _setupSettlementSheet(ss, date) {
-  let sh = ss.getSheetByName(SHEETS.settlement);
-  if (!sh) {
-    sh = ss.insertSheet(SHEETS.settlement);
-  }
-  // Tambah header jika sheet kosong
-  if (sh.getLastRow() === 0) {
-    const h = [
-      'Tanggal DO','Plat','Driver','Tipe','Gudang',
-      'KM Est','KM Aktual','Sumber KM',
-      'UJ Est (Rp)','UJ Aktual (Rp)',
-      'BBM Est (Rp)','Liter','Harga Solar','KPL',
-      'Tol Est (Rp)','Tol Aktual (Rp)',
-      'Parkir Est (Rp)','Parkir Aktual (Rp)',
-      'Makan (Rp)','Mel (Rp)','Ket Mel',
-      'DP Total (Rp)','Total Aktual (Rp)','Selisih (Rp)',
-      'Status',
-    ];
-    sh.getRange(1,1,1,h.length).setValues([h])
-      .setFontWeight('bold').setBackground('#0b1f3a').setFontColor('#fff');
-    sh.setFrozenRows(1);
-  }
-  return sh;
-}
-
-// ── TEST MANUAL (jalankan dari editor untuk test) ─────────────────────────────
-function testAlertBelumBerangkat() { alertBelumBerangkat(); }
-function testAlertETA()            { alertETATerlewat(); }
-function testAlertGagal()          { alertGagalBerulang(); }
-function testAutoSettlement()      { autoSettlement(); }
-
-function testSetupDriverSheets() {
-  Logger.log(JSON.stringify(setupDriverSheets()));
-}
-
-function testGetDriverTasks() {
-  Logger.log(JSON.stringify(getDriverTasks('B9648MJ', '12/04/2026')));
-}
-
-function testPopulateDoStatus() {
-  const result = populateDoStatus({
-    doDate: '12/04/2026',
-    rows: [
-      { plat:'B9648MJ', driver:'PRIHATMOKO', gudang:'DAAN MOGOT',
-        doc_no:'261024882', customer:'TATA MULIA NUSANTARA', alamat:'Jl. BSD CBD',
-        produk:'FT Sandimas 60x60', qty:10, status:'Baru' },
-    ]
-  });
-  Logger.log(JSON.stringify(result));
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// SESI 5 — REALTIME MONITORING ENDPOINTS
-// ═══════════════════════════════════════════════════════════════════════════
-
-// ── GET BATCH DO STATUS (dipanggil dari routing optimizer setiap 2 menit) ──
-function getBatchDoStatus(docNosStr, date) {
-  if (!docNosStr) return { status:'ok', data:[] };
-  const docNos = String(docNosStr).split(',').map(d=>d.trim()).filter(Boolean);
-  if (!docNos.length) return { status:'ok', data:[] };
-
-  const ss = getSS('OPERASIONAL');
-  const sh = ss.getSheetByName(SHEETS.do_status);
-  if (!sh) return { status:'ok', data:[] };
-
-  const lr = sh.getLastRow();
-  if (lr < 2) return { status:'ok', data:[] };
-
-  const rows = sh.getRange(2,1,lr-1,20).getValues();
-  const data = [];
-
-  docNos.forEach(docNo => {
-    const row = rows.find(r => String(r[4]||'').trim() === docNo);
-    if (!row) return;
-    data.push({
-      doc_no      : row[4],
-      plat        : row[1],
-      driver      : row[2],
-      status      : row[9],
-      jam_update  : row[10],
-      qty_terima  : row[12]||0,
-      qty_rusak   : row[13]||0,
-      alasan_gagal: row[14]||'',
-      is_urgent   : (row[14]==='Kendaraan Rusak'||row[14]==='Bencana Alam/Banjir')?'1':'0',
-    });
-  });
-
-  return { status:'ok', data };
-}
-
-// ── GET GPS POSITIONS (semua kendaraan aktif hari ini) ────────────────────
-function getGPSPositions(platsStr, date) {
-  const ss  = getSS('OPERASIONAL');
-  const sh  = ss.getSheetByName(SHEETS_GPS?.gps_log || 'GPS Log');
-  if (!sh) return { status:'ok', positions:[] };
-
-  const lr = sh.getLastRow();
-  if (lr < 2) return { status:'ok', positions:[] };
-
-  const plats = platsStr ? String(platsStr).split(',').map(p=>p.trim().toUpperCase()) : [];
-  const today = date || _now().slice(0,10);
-
-  // Ambil baris terakhir per plat (posisi terbaru)
-  const rows = sh.getRange(2,1,lr-1,7).getValues();
-  // Kolom: Plat, Tanggal, Timestamp, Lat, Lng, KM Total, Speed
-
-  const latestPerPlat = {};
-  rows.forEach(r => {
-    const plat    = String(r[0]||'').trim().toUpperCase();
-    const tanggal = String(r[1]||'');
-    if (!plat) return;
-    if (plats.length && !plats.includes(plat)) return;
-    if (today && !tanggal.includes(today.slice(5))) return; // match MM-DD minimal
-    // Simpan baris terbaru per plat
-    latestPerPlat[plat] = {
-      plat     : r[0],
-      tanggal  : r[1],
-      timestamp: r[2],
-      lat      : parseFloat(r[3])||0,
-      lng      : parseFloat(r[4])||0,
-      km_total : parseFloat(r[5])||0,
-      speed    : parseFloat(r[6])||0,
-    };
-  });
-
-  return { status:'ok', positions: Object.values(latestPerPlat) };
-}
+</script>
+</body>
+</html>
