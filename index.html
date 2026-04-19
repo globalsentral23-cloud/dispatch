@@ -1611,7 +1611,8 @@ function renderHistoryContent(tasks, dateStr) {
 
 // ── END TRIP: buka modal struk → submitStruk yang handle end trip ────────────
 async function doEndTrip() {
-  openStrukModal();
+  // v4.0: Fix — openStrukModal() tidak pernah didefinisikan, pakai openModal('m-struk')
+  openModal('m-struk');
 }
 
 // ── GLOBAL MUAT: satu tombol untuk semua DO ──────────────────────────────────
@@ -2238,13 +2239,59 @@ async function doLoginVendor(vendor_code, pin, plat, driver) {
 }
 
 function doLogout() {
-  if (!confirm('Logout dari driver app? Session akan dihapus.')) return;
-  AUTH.clear();
-  // Clear driver state juga — supaya benar-benar fresh
-  localStorage.removeItem('drv_plat');
-  localStorage.removeItem('drv_driver');
-  localStorage.removeItem('drv_gudang');
-  location.reload();
+  // JANGAN pakai confirm() — silent fail di Chrome Android
+  // Pakai custom modal untuk konfirmasi
+  const overlay = document.createElement('div');
+  overlay.id = 'logout-confirm-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:22px;max-width:320px;width:100%;box-shadow:0 10px 30px rgba(0,0,0,.3)">
+      <div style="font-size:32px;text-align:center;margin-bottom:8px">🚪</div>
+      <h3 style="font-size:16px;font-weight:700;text-align:center;margin-bottom:6px">Logout Driver App?</h3>
+      <p style="font-size:12px;color:#64748b;text-align:center;margin-bottom:18px;line-height:1.5">
+        Session akan dihapus dan kembali ke layar login.
+      </p>
+      <div style="display:flex;gap:8px">
+        <button id="btn-logout-cancel" style="flex:1;padding:11px;background:#e2e8f0;color:#334155;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">
+          Batal
+        </button>
+        <button id="btn-logout-confirm" style="flex:1;padding:11px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">
+          Ya, Logout
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  document.getElementById('btn-logout-cancel').onclick = () => overlay.remove();
+  document.getElementById('btn-logout-confirm').onclick = () => {
+    // Ganti button jadi loading state
+    const btn = document.getElementById('btn-logout-confirm');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Logging out...';
+
+    // Clear semua state
+    try {
+      AUTH.clear();
+      localStorage.removeItem('drv_plat');
+      localStorage.removeItem('drv_driver');
+      localStorage.removeItem('drv_gudang');
+      // Stop polling + GPS untuk mencegah request sesudah clear
+      if (typeof isNativeApp === 'function' && isNativeApp() && window.NativeGPS?.isGPSRunning?.()) {
+        window.NativeGPS.stopGPS();
+      }
+      if (typeof pollTimer !== 'undefined' && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      if (typeof tripState !== 'undefined') {
+        if (tripState.gps_watch) navigator.geolocation.clearWatch(tripState.gps_watch);
+        if (tripState.gps_timer) clearInterval(tripState.gps_timer);
+      }
+    } catch(e) { console.warn('[Logout] cleanup error:', e); }
+
+    // Short delay untuk user melihat feedback, lalu reload
+    setTimeout(() => { location.reload(); }, 300);
+  };
+
+  // Tap outside untuk cancel
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2705,14 +2752,9 @@ async function saveSettings() {
 }
 
 function confirmLogout() {
-  if (!confirm('Logout dari Driver App?')) return;
-  if (isNativeApp() && window.NativeGPS?.isGPSRunning?.()) window.NativeGPS.stopGPS();
-  if (pollTimer) clearInterval(pollTimer);
-  localStorage.removeItem('drv_plat');
-  localStorage.removeItem('drv_driver');
-  localStorage.removeItem('drv_gudang');
-  localStorage.removeItem('gps_gas_url');
-  location.reload();
+  // v4.0: redirect ke doLogout yang pakai custom modal
+  // (confirm() silent-fail di Chrome Android)
+  doLogout();
 }
 
 // ═══════════════════════════════════════════════════════
