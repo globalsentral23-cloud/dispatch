@@ -6,7 +6,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>GST Logistics — Driver App v3.9</title>
+<title>GST Logistics — Driver App v4.0</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <style>
 :root{
@@ -451,6 +451,12 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
     <button class="btn-save-settings" onclick="saveSettings()">
       <i class="fas fa-save"></i> Simpan Perubahan
     </button>
+
+    <!-- v4.0: Logout button -->
+    <button onclick="doLogout()" style="width:100%;margin-top:10px;padding:12px;background:#fee2e2;color:#b91c1c;border:1.5px solid #fecaca;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">
+      <i class="fas fa-sign-out-alt"></i> Logout
+    </button>
+    <p id="auth-info" style="font-size:10px;color:var(--text-muted);text-align:center;margin-top:8px;line-height:1.5"></p>
   </div>
 </div>
 
@@ -841,7 +847,13 @@ window.onload = async function() {
     historyDateInput.value = y && m && d ? `${y}-${m}-${d}` : new Date().toISOString().slice(0,10);
   }
 
-  if (!driverState.plat) { showSetupForm(); return; }
+  // v4.0: Cek AUTH dulu — kalau belum login atau token expired, tampilkan login screen
+  if (!AUTH.isLoggedIn()) {
+    showLoginScreen();
+    return;
+  }
+
+  if (!driverState.plat) { showLoginScreen(); return; }
 
   // Request notification permission
   requestNotifPermission();
@@ -1644,11 +1656,14 @@ async function submitMuatKargoAll() {
   try {
     const url = GAS_URL || localStorage.getItem('gps_gas_url');
     if (url) {
+      // v4.0: inject token
+      const tok = AUTH.getToken();
+      const body = tok && !payload.token ? { ...payload, token: tok } : payload;
       fetch(url, {
         method : 'POST',
         mode   : 'no-cors',
         headers: { 'Content-Type': 'text/plain' },
-        body   : JSON.stringify(payload),
+        body   : JSON.stringify(body),
       }).catch(e => console.warn('[MuatAll] POST error:', e));
     }
   } catch(e) { console.warn('[MuatAll] error:', e); }
@@ -1704,11 +1719,14 @@ async function submitMuatKargo(docNo, customer) {
   try {
     const url = GAS_URL || localStorage.getItem('gps_gas_url');
     if (url) {
+      // v4.0: inject token
+      const tok = AUTH.getToken();
+      const body = tok && !payload.token ? { ...payload, token: tok } : payload;
       fetch(url, {
         method : 'POST',
         mode   : 'no-cors',
         headers: { 'Content-Type': 'text/plain' },
-        body   : JSON.stringify(payload),
+        body   : JSON.stringify(body),
       }).catch(e => console.warn('[Muat] POST error:', e));
     }
   } catch(e) { console.warn('[Muat] error:', e); }
@@ -2147,6 +2165,250 @@ function checkAllDone() {
 }
 
 // ═══════════════════════════════════════════════════════
+// AUTH LAYER v4.0 (Sprint 3 Token + Vendor PIN)
+// ═══════════════════════════════════════════════════════
+const AUTH = {
+  TOKEN_KEY   : 'auth_token',
+  EXPIRES_KEY : 'auth_expires',
+  MODE_KEY    : 'auth_mode',       // 'internal' | 'vendor'
+  VC_KEY      : 'auth_vendor_code',
+  VN_KEY      : 'auth_vendor_name',
+
+  getToken() {
+    const tok = localStorage.getItem(this.TOKEN_KEY);
+    const exp = localStorage.getItem(this.EXPIRES_KEY);
+    if (!tok || !exp) return null;
+    // Expire format dari backend: "yyyy-MM-dd 23:59:59"
+    const expIso = exp.replace(' ', 'T');
+    const expDate = new Date(expIso);
+    if (isNaN(expDate.getTime()) || new Date() > expDate) {
+      this.clear();
+      return null;
+    }
+    return tok;
+  },
+
+  save(mode, response) {
+    localStorage.setItem(this.TOKEN_KEY, response.token);
+    localStorage.setItem(this.EXPIRES_KEY, response.expires_at);
+    localStorage.setItem(this.MODE_KEY, mode);
+    if (mode === 'vendor') {
+      localStorage.setItem(this.VC_KEY, response.vendor_code || '');
+      localStorage.setItem(this.VN_KEY, response.vendor_name || '');
+    }
+  },
+
+  clear() {
+    [this.TOKEN_KEY, this.EXPIRES_KEY, this.MODE_KEY, this.VC_KEY, this.VN_KEY]
+      .forEach(k => localStorage.removeItem(k));
+  },
+
+  isLoggedIn() { return !!this.getToken(); },
+  getMode()    { return localStorage.getItem(this.MODE_KEY) || ''; },
+};
+
+// Login Internal: POST plat → dapat token
+async function doLoginInternal(plat) {
+  const url = GAS_URL || localStorage.getItem('gps_gas_url');
+  if (!url) return { error:'URL GAS tidak ada' };
+
+  const qs = new URLSearchParams({ action:'loginInternal', plat });
+  try {
+    const r = await fetch(`${url}?${qs}`, {redirect:'follow'});
+    return await r.json();
+  } catch(e) {
+    return { error:'Gagal koneksi: '+e.message };
+  }
+}
+
+// Login Vendor
+async function doLoginVendor(vendor_code, pin, plat, driver) {
+  const url = GAS_URL || localStorage.getItem('gps_gas_url');
+  if (!url) return { error:'URL GAS tidak ada' };
+
+  const qs = new URLSearchParams({
+    action:'loginVendor', vendor_code, pin, plat, driver
+  });
+  try {
+    const r = await fetch(`${url}?${qs}`, {redirect:'follow'});
+    return await r.json();
+  } catch(e) {
+    return { error:'Gagal koneksi: '+e.message };
+  }
+}
+
+function doLogout() {
+  if (!confirm('Logout dari driver app? Session akan dihapus.')) return;
+  AUTH.clear();
+  // Clear driver state juga — supaya benar-benar fresh
+  localStorage.removeItem('drv_plat');
+  localStorage.removeItem('drv_driver');
+  localStorage.removeItem('drv_gudang');
+  location.reload();
+}
+
+// ═══════════════════════════════════════════════════════
+// LOGIN SCREEN UI v4.0
+// ═══════════════════════════════════════════════════════
+function showLoginScreen() {
+  const savedPlat = localStorage.getItem('drv_plat') || driverState.plat || '';
+  const savedDriver = localStorage.getItem('drv_driver') || driverState.driver || '';
+
+  document.getElementById('tab-tugas').innerHTML = `
+    <div style="padding:8px">
+      <div style="background:#fff;border-radius:12px;border:1px solid var(--border);padding:20px;box-shadow:0 2px 8px rgba(37,99,235,.06)">
+        <div style="text-align:center;margin-bottom:20px">
+          <div style="font-size:32px;margin-bottom:4px">🚚</div>
+          <h3 style="font-size:16px;font-weight:700;margin-bottom:2px">GST Driver App v4.0</h3>
+          <p style="font-size:11px;color:var(--text-muted)">Login untuk mulai bekerja</p>
+        </div>
+
+        <div id="login-tabs" style="display:flex;gap:6px;margin-bottom:16px;padding:3px;background:#f1f5f9;border-radius:10px">
+          <button onclick="switchLoginTab('internal')" id="ltab-internal"
+            style="flex:1;padding:10px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;background:#2563eb;color:#fff">
+            <i class="fas fa-truck"></i> Internal
+          </button>
+          <button onclick="switchLoginTab('vendor')" id="ltab-vendor"
+            style="flex:1;padding:10px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;background:transparent;color:#64748b">
+            <i class="fas fa-handshake"></i> Vendor
+          </button>
+        </div>
+
+        <!-- INTERNAL FORM -->
+        <div id="login-form-internal">
+          <div style="margin-bottom:12px">
+            <label style="font-size:11px;font-weight:600;color:#334155;display:block;margin-bottom:4px">Nomor Plat Kendaraan</label>
+            <input id="li-plat" type="text" placeholder="Contoh: B9648MJ"
+              style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:monospace;text-transform:uppercase"
+              value="${savedPlat}">
+          </div>
+          <button onclick="handleLoginInternal()" id="btn-login-internal"
+            style="width:100%;padding:13px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px">
+            <i class="fas fa-sign-in-alt"></i> LOGIN
+          </button>
+        </div>
+
+        <!-- VENDOR FORM (hidden default) -->
+        <div id="login-form-vendor" style="display:none">
+          <div style="margin-bottom:10px">
+            <label style="font-size:11px;font-weight:600;color:#334155;display:block;margin-bottom:4px">Kode Vendor</label>
+            <input id="lv-code" type="text" placeholder="Contoh: V001"
+              style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:monospace;text-transform:uppercase">
+          </div>
+          <div style="margin-bottom:10px">
+            <label style="font-size:11px;font-weight:600;color:#334155;display:block;margin-bottom:4px">PIN (4 digit)</label>
+            <input id="lv-pin" type="text" inputmode="numeric" maxlength="4" placeholder="• • • •"
+              style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:16px;letter-spacing:6px;text-align:center;font-family:monospace">
+          </div>
+          <div style="margin-bottom:10px">
+            <label style="font-size:11px;font-weight:600;color:#334155;display:block;margin-bottom:4px">Plat Kendaraan Hari Ini</label>
+            <input id="lv-plat" type="text" placeholder="Contoh: B9999XY"
+              style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:monospace;text-transform:uppercase">
+          </div>
+          <div style="margin-bottom:16px">
+            <label style="font-size:11px;font-weight:600;color:#334155;display:block;margin-bottom:4px">Nama Driver</label>
+            <input id="lv-driver" type="text" placeholder="Nama lengkap driver"
+              style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px"
+              value="${savedDriver}">
+          </div>
+          <button onclick="handleLoginVendor()" id="btn-login-vendor"
+            style="width:100%;padding:13px;background:#16a34a;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">
+            <i class="fas fa-sign-in-alt"></i> LOGIN VENDOR
+          </button>
+        </div>
+
+        <p style="font-size:10px;color:var(--text-muted);text-align:center;margin-top:14px;line-height:1.5">
+          Login hari ini berlaku sampai jam 23:59.<br>
+          Besok login ulang dengan plat yang sama.
+        </p>
+
+        <div id="login-err" style="display:none;margin-top:10px;padding:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#b91c1c;font-size:12px;text-align:center"></div>
+      </div>
+    </div>`;
+}
+
+function switchLoginTab(mode) {
+  const tIn = document.getElementById('ltab-internal');
+  const tVn = document.getElementById('ltab-vendor');
+  const fIn = document.getElementById('login-form-internal');
+  const fVn = document.getElementById('login-form-vendor');
+  if (mode === 'internal') {
+    tIn.style.background='#2563eb'; tIn.style.color='#fff';
+    tVn.style.background='transparent'; tVn.style.color='#64748b';
+    fIn.style.display='block'; fVn.style.display='none';
+  } else {
+    tVn.style.background='#16a34a'; tVn.style.color='#fff';
+    tIn.style.background='transparent'; tIn.style.color='#64748b';
+    fVn.style.display='block'; fIn.style.display='none';
+  }
+  document.getElementById('login-err').style.display='none';
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('login-err');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+async function handleLoginInternal() {
+  const plat = document.getElementById('li-plat')?.value.trim().toUpperCase();
+  if (!plat) { showLoginError('Plat wajib diisi'); return; }
+
+  const btn = document.getElementById('btn-login-internal');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Login...';
+
+  const res = await doLoginInternal(plat);
+
+  if (res.error) {
+    showLoginError(res.error);
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> LOGIN';
+    return;
+  }
+
+  // Simpan auth + driver state
+  AUTH.save('internal', res);
+  localStorage.setItem('drv_plat',   res.plat   || plat);
+  localStorage.setItem('drv_driver', res.driver || '');
+  localStorage.setItem('drv_gudang', res.gudang || '');
+  driverState.plat   = res.plat   || plat;
+  driverState.driver = res.driver || '';
+  driverState.gudang = res.gudang || '';
+
+  location.reload(); // start fresh dengan state baru
+}
+
+async function handleLoginVendor() {
+  const code   = document.getElementById('lv-code')?.value.trim().toUpperCase();
+  const pin    = document.getElementById('lv-pin')?.value.trim();
+  const plat   = document.getElementById('lv-plat')?.value.trim().toUpperCase();
+  const driver = document.getElementById('lv-driver')?.value.trim();
+
+  if (!code)   { showLoginError('Kode vendor wajib'); return; }
+  if (!pin || pin.length !== 4) { showLoginError('PIN harus 4 digit'); return; }
+  if (!plat)   { showLoginError('Plat wajib'); return; }
+  if (!driver) { showLoginError('Nama driver wajib'); return; }
+
+  const btn = document.getElementById('btn-login-vendor');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Login...';
+
+  const res = await doLoginVendor(code, pin, plat, driver);
+
+  if (res.error) {
+    showLoginError(res.error);
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> LOGIN VENDOR';
+    return;
+  }
+
+  AUTH.save('vendor', res);
+  localStorage.setItem('drv_plat',   plat);
+  localStorage.setItem('drv_driver', driver);
+  driverState.plat   = plat;
+  driverState.driver = driver;
+
+  location.reload();
+}
+
+// ═══════════════════════════════════════════════════════
 // GAS COMMUNICATION
 // ═══════════════════════════════════════════════════════
 async function gasGet(action, params={}, timeoutMs=35000) {
@@ -2155,13 +2417,25 @@ async function gasGet(action, params={}, timeoutMs=35000) {
     if (action === 'getDriverTasks') return await gvizFallback(params);
     return null;
   }
+  // v4.0: auto-inject token dari AUTH kalau ada (skip kalau endpoint public/auth)
+  const tok = AUTH.getToken();
+  if (tok && !params.token) params = { ...params, token: tok };
+
   const qs   = new URLSearchParams({action, ...params});
   const ctrl = new AbortController();
   const tid  = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const r = await fetch(`${url}?${qs}`, {redirect:'follow', signal:ctrl.signal});
     clearTimeout(tid);
-    return await r.json();
+    const j = await r.json();
+    // v4.0: kalau server block karena token invalid/expired, force re-login
+    if (j && j.blocked && String(j.error||'').includes('TOKEN')) {
+      console.warn('[gasGet] Token blocked by server, forcing re-login');
+      AUTH.clear();
+      location.reload();
+      return null;
+    }
+    return j;
   } catch(e) {
     clearTimeout(tid);
     if (e.name === 'AbortError') {
@@ -2250,6 +2524,10 @@ async function gasPost(payload) {
   if (docNo) submittingDOs.add(docNo);
   const url = GAS_URL || localStorage.getItem('gps_gas_url');
 
+  // v4.0: auto-inject token
+  const tok = AUTH.getToken();
+  if (tok && !payload.token) payload = { ...payload, token: tok };
+
   if (!navigator.onLine || !url) {
     queueOffline(payload);
     alert('⚠ Offline — laporan disimpan lokal dan akan dikirim saat sinyal ada.');
@@ -2297,19 +2575,24 @@ async function flushOfflineQueue() {
   const q = [...offlineQueue]; offlineQueue = [];
   localStorage.setItem('offline_q', '[]');
 
+  // v4.0: inject token kalau ada
+  const tok = AUTH.getToken();
+
   for (const p of q) {
     try {
+      // Auto-inject token
+      const payload = tok && !p.token ? { ...p, token: tok } : p;
       // Item dengan foto → POST; item tanpa foto → GET
-      const hasFoto = p.foto_do || p.foto_rusak || p.foto_sj || p.foto_gagal ||
-                      p.foto_tol || p.foto_parkir || p.foto_bensin;
+      const hasFoto = payload.foto_do || payload.foto_rusak || payload.foto_sj || payload.foto_gagal ||
+                      payload.foto_tol || payload.foto_parkir || payload.foto_bensin;
       if (hasFoto) {
         await fetch(url, {
           method:'POST', mode:'no-cors',
           headers:{'Content-Type':'text/plain'},
-          body:JSON.stringify(p),
+          body:JSON.stringify(payload),
         });
       } else {
-        const qs = new URLSearchParams(p);
+        const qs = new URLSearchParams(payload);
         await fetch(`${url}?${qs}`, {redirect:'follow'});
       }
     } catch(e) {
@@ -2344,6 +2627,23 @@ function openSettings() {
     cl.style.display='block';
     document.getElementById('s-changelog-txt').textContent = lastChange;
   } else { cl.style.display='none'; }
+
+  // v4.0: Tampilkan info login
+  const authEl = document.getElementById('auth-info');
+  if (authEl) {
+    const mode = AUTH.getMode();
+    const exp  = localStorage.getItem(AUTH.EXPIRES_KEY) || '';
+    if (mode === 'vendor') {
+      const vn = localStorage.getItem(AUTH.VN_KEY) || '';
+      const vc = localStorage.getItem(AUTH.VC_KEY) || '';
+      authEl.innerHTML = `🤝 Vendor: <b>${vn}</b> (${vc})<br>Token berlaku sampai ${exp}`;
+    } else if (mode === 'internal') {
+      authEl.innerHTML = `🚚 Internal Driver<br>Token berlaku sampai ${exp}`;
+    } else {
+      authEl.textContent = 'Belum login';
+    }
+  }
+
   document.getElementById('settings-overlay').classList.add('show');
 }
 
