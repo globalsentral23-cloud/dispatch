@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.37</title>
+<title>Routing Optimizer v4.40</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -737,6 +737,69 @@ body.dispatch-active .dispatch-bar{display:flex}
 </div>
 
 <script>
+// ═══════════════════════════════════════════════════════
+// v4.40 — DISPATCHER TOKEN INTERCEPTOR
+// ═══════════════════════════════════════════════════════
+// Auto-inject token ke semua fetch() ke GAS. Active setelah login
+// (token disimpan di localStorage.dsp_token saat doLoginApp sukses).
+// Kenapa interceptor? Routing optimizer punya 15+ fetch call tersebar —
+// modify satu-per-satu bug-prone. Ini 1 tempat, zero logic change.
+// ═══════════════════════════════════════════════════════
+(function(){
+  const _getTok = () => {
+    const t = localStorage.getItem('dsp_token');
+    const e = localStorage.getItem('dsp_expires');
+    if (!t || !e) return null;
+    const exp = new Date(String(e).replace(' ','T'));
+    if (isNaN(exp.getTime()) || new Date() > exp) return null;
+    return t;
+  };
+  const _isGAS = (url) => typeof url === 'string' &&
+    (url.includes('script.google.com/macros/') || url.includes('script.googleusercontent.com'));
+
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = function(input, init) {
+    try {
+      let url = typeof input === 'string' ? input : (input && input.url);
+      if (!_isGAS(url)) return _origFetch(input, init);
+
+      const tok = _getTok();
+      if (!tok) return _origFetch(input, init);
+
+      // Skip kalau URL sudah punya token (explicit)
+      if (url.includes('token=')) return _origFetch(input, init);
+
+      const method = ((init && init.method) || 'GET').toUpperCase();
+
+      if (method === 'GET') {
+        const sep = url.includes('?') ? '&' : '?';
+        const newUrl = url + sep + 'token=' + encodeURIComponent(tok);
+        if (typeof input === 'string') input = newUrl;
+        else input = new Request(newUrl, input);
+      } else if (method === 'POST' && init && init.body) {
+        try {
+          const body = JSON.parse(init.body);
+          if (body && typeof body === 'object' && !body.token) {
+            body.token = tok;
+            init = Object.assign({}, init, { body: JSON.stringify(body) });
+          }
+        } catch(e) { /* body bukan JSON, skip */ }
+      }
+    } catch(e) {
+      console.warn('[v4.40 interceptor] error:', e);
+    }
+    return _origFetch(input, init);
+  };
+
+  // Helper global untuk logout manual (clear token)
+  window.dispatcherLogout = function() {
+    ['dsp_token','dsp_expires','session_user'].forEach(k => localStorage.removeItem(k));
+    location.reload();
+  };
+
+  console.log('[v4.40] Dispatcher token interceptor active. Token loaded:', !!_getTok());
+})();
+
 // ═══════════════════════════════════════════════════════
 // CONFIG & STATE
 // ═══════════════════════════════════════════════════════
@@ -4699,6 +4762,14 @@ async function doLoginApp() {
 
     // Login berhasil — simpan session
     currentUser = { username:data.username, nama:data.nama, role:data.role, gudang:data.gudang };
+    // v4.40: simpan token juga (dari backend v29.1+)
+    if (data.token && data.expires_at) {
+      currentUser.token      = data.token;
+      currentUser.expires_at = data.expires_at;
+      localStorage.setItem('dsp_token',   data.token);
+      localStorage.setItem('dsp_expires', data.expires_at);
+      console.log('[v4.40] Token dispatcher saved, expires:', data.expires_at);
+    }
     localStorage.setItem('session_user', JSON.stringify(currentUser));
     if (gsEl && url) gsEl.value = url;
 
@@ -4867,6 +4938,18 @@ function checkSavedSession() {
   if(saved){
     try{
       currentUser=JSON.parse(saved);
+      // v4.40: cek token expiry — kalau expired, force logout
+      if (currentUser.token && currentUser.expires_at) {
+        const expDate = new Date(String(currentUser.expires_at).replace(' ','T'));
+        if (!isNaN(expDate.getTime()) && new Date() > expDate) {
+          console.warn('[v4.40] Token dispatcher expired, forcing re-login');
+          localStorage.removeItem('session_user');
+          localStorage.removeItem('dsp_token');
+          localStorage.removeItem('dsp_expires');
+          currentUser = null;
+          return;
+        }
+      }
       document.getElementById('login-screen').style.display='none';
       document.getElementById('upload-screen').style.display='flex';
       updateUserBadge(); applyAccessControl();
