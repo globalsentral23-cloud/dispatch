@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GST Live Dashboard v1.0</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{
+  --nav:#0b1f3a; --accent:#2563eb; --bg:#f4f7fb; --border:#dbe3f0;
+  --text:#0f172a; --muted:#64748b;
+  --green:#16a34a; --red:#dc2626; --amber:#d97706; --blue:#0284c7;
+  --gray:#94a3b8;
+  --card-shadow:0 1px 3px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.04);
+}
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif}
+body{background:var(--bg);color:var(--text);min-height:100vh}
+.container{max-width:1440px;margin:0 auto;padding:14px}
+
+/* HEADER */
+.header{background:var(--nav);color:#fff;padding:12px 18px;border-radius:12px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+.header h1{font-size:18px;font-weight:800;letter-spacing:.02em}
+.header .sub{font-size:11px;opacity:.8;margin-top:2px}
+.header-right{display:flex;align-items:center;gap:12px}
+.user-badge{background:rgba(255,255,255,.1);padding:6px 12px;border-radius:20px;font-size:12px;display:flex;align-items:center;gap:6px}
+.user-badge .role-tag{background:#16a34a;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;text-transform:uppercase}
+.btn-logout{background:#dc2626;color:#fff;border:none;padding:7px 12px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px}
+.btn-logout:hover{background:#991b1b}
+.filter-select{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);padding:7px 10px;border-radius:6px;font-size:12px}
+.filter-select option{background:var(--nav)}
+
+/* LOGIN SCREEN */
+.login-screen{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;background:linear-gradient(135deg,#0f172a,#1e3a5f)}
+.login-card{background:#1e293b;border:1px solid #334155;border-radius:16px;padding:30px;max-width:400px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.4)}
+.login-card h2{color:#fff;font-size:20px;font-weight:800;text-align:center;margin-bottom:6px}
+.login-card .sub{color:#94a3b8;font-size:12px;text-align:center;margin-bottom:20px}
+.login-card input{width:100%;padding:11px 13px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;border-radius:8px;font-size:14px;margin-bottom:10px}
+.login-card input:focus{outline:none;border-color:var(--accent)}
+.login-card .login-err{background:#450a0a;border:1px solid #7f1d1d;color:#fca5a5;padding:10px;border-radius:6px;font-size:12px;margin-bottom:10px;display:none}
+.login-card button{width:100%;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;margin-top:6px}
+.login-card button:disabled{opacity:.5;cursor:not-allowed}
+
+/* GRID */
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px;margin-bottom:12px}
+.card{background:#fff;border-radius:12px;padding:14px;box-shadow:var(--card-shadow);border:1px solid var(--border)}
+.card-title{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.card-title i{color:var(--accent)}
+
+/* FLEET STATUS BAR */
+.fleet-bar{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.fleet-stat{background:var(--bg);border-radius:10px;padding:12px;text-align:center;border:1px solid var(--border);transition:transform .15s}
+.fleet-stat:hover{transform:translateY(-2px);cursor:pointer}
+.fleet-stat.active{background:#e0f2fe;border-color:#0284c7}
+.fleet-stat .num{font-size:26px;font-weight:800;line-height:1}
+.fleet-stat .lbl{font-size:10px;color:var(--muted);text-transform:uppercase;margin-top:4px;font-weight:700}
+.fs-jalan  .num{color:var(--green)}
+.fs-muat   .num{color:var(--amber)}
+.fs-selesai .num{color:var(--blue)}
+.fs-idle   .num{color:var(--gray)}
+.fs-alert  .num{color:var(--red)}
+
+/* PROGRESS PER GUDANG */
+.gudang-row{margin-bottom:12px}
+.gudang-row:last-child{margin-bottom:0}
+.gudang-header{display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:4px}
+.gudang-header .stats{color:var(--muted);font-weight:600}
+.progress-bar{height:22px;background:var(--bg);border-radius:6px;overflow:hidden;display:flex;position:relative}
+.progress-seg{transition:width .4s;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;min-width:0}
+.seg-selesai{background:var(--green)}
+.seg-jalan{background:var(--blue)}
+.seg-muat{background:var(--amber)}
+.seg-gagal{background:var(--red)}
+.seg-baru{background:#cbd5e1;color:var(--muted)}
+
+/* KPI CARDS */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.kpi-card{background:linear-gradient(135deg,#f1f5f9,#fff);border:1px solid var(--border);border-radius:10px;padding:12px}
+.kpi-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:.04em}
+.kpi-val{font-size:22px;font-weight:800;margin-top:3px;color:var(--text)}
+.kpi-sub{font-size:10px;color:var(--muted);margin-top:2px}
+.kpi-card.good .kpi-val{color:var(--green)}
+.kpi-card.bad  .kpi-val{color:var(--red)}
+.kpi-card.accent .kpi-val{color:var(--accent)}
+
+/* MAP */
+#map{height:460px;border-radius:10px;border:1px solid var(--border)}
+
+/* ALERTS */
+.alert-list{max-height:460px;overflow-y:auto}
+.alert-item{display:flex;gap:10px;padding:10px;border-radius:8px;margin-bottom:8px;cursor:pointer;transition:background .15s;border:1px solid transparent}
+.alert-item:hover{background:var(--bg);border-color:var(--border)}
+.alert-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px}
+.al-high .alert-icon{background:#fef2f2;color:var(--red)}
+.al-med  .alert-icon{background:#fffbeb;color:var(--amber)}
+.al-low  .alert-icon{background:#f0f9ff;color:var(--blue)}
+.alert-body{flex:1;min-width:0}
+.alert-title{font-size:13px;font-weight:700;margin-bottom:2px}
+.alert-detail{font-size:11px;color:var(--muted);line-height:1.4}
+.alert-meta{font-size:10px;color:var(--muted);margin-top:4px;display:flex;gap:8px}
+.alert-meta span{background:var(--bg);padding:2px 6px;border-radius:4px;font-weight:700}
+.alert-actions{display:flex;gap:6px;margin-top:6px}
+.alert-actions a{font-size:10px;padding:4px 8px;border-radius:4px;text-decoration:none;font-weight:700;background:var(--accent);color:#fff}
+.alert-actions a.wa{background:#16a34a}
+.empty-alert{text-align:center;padding:30px 10px;color:var(--muted);font-size:12px}
+
+/* FOOTER STATUS */
+.status-bar{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);margin-top:6px}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;margin-right:6px;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+.btn-refresh{background:var(--accent);color:#fff;border:none;padding:6px 10px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer}
+.btn-refresh:disabled{opacity:.5}
+
+.loading{text-align:center;padding:40px;color:var(--muted);font-size:14px}
+.loading i{font-size:24px;color:var(--accent);margin-bottom:10px;display:block}
+
+/* FLEET LIST (expandable) */
+.fleet-detail{display:none;margin-top:10px;max-height:0;transition:max-height .3s;overflow:hidden}
+.fleet-detail.show{display:block;max-height:600px;overflow-y:auto}
+.plat-item{display:flex;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px;cursor:pointer}
+.plat-item:hover{background:var(--bg)}
+.plat-item .p-plat{font-family:monospace;font-weight:700}
+.plat-item .p-status{font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;text-transform:uppercase}
+.ps-jalan{background:#dcfce7;color:#166534}
+.ps-muat{background:#fef3c7;color:#92400e}
+.ps-selesai{background:#dbeafe;color:#1e40af}
+.ps-idle{background:#f1f5f9;color:#475569}
+.ps-alert{background:#fee2e2;color:#991b1b}
+
+/* RESPONSIVE */
+@media (max-width:1024px){
+  .grid-map{grid-column:span 12 !important}
+  .grid-alerts{grid-column:span 12 !important}
+  #map{height:350px}
+}
+@media (max-width:640px){
+  .fleet-bar{grid-template-columns:repeat(3,1fr)}
+  .fleet-stat .num{font-size:20px}
+  .header h1{font-size:15px}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div class="login-screen" id="login-screen">
+  <div class="login-card">
+    <h2>🚚 GST Live Dashboard</h2>
+    <div class="sub">Login untuk akses monitoring real-time</div>
+    <div class="login-err" id="login-err"></div>
+    <input id="login-user" type="text" placeholder="Username (ex: dm_dispatcher)" autocomplete="username" autocapitalize="none">
+    <input id="login-pass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button id="btn-login" onclick="doLogin()">Masuk →</button>
+    <p style="font-size:10px;color:#64748b;text-align:center;margin-top:12px;line-height:1.5">
+      Dashboard khusus HG & supervisor.<br>
+      Dispatcher pakai routing optimizer.
+    </p>
+  </div>
+</div>
+
+<!-- MAIN DASHBOARD -->
+<div class="container" id="dashboard" style="display:none">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div>
+      <h1>🚚 GST Live Dashboard</h1>
+      <div class="sub" id="sub-info">—</div>
+    </div>
+    <div class="header-right">
+      <select class="filter-select" id="filter-gudang" onchange="applyGudangFilter()">
+        <option value="">🏢 Semua Gudang</option>
+        <option value="DAAN MOGOT">DAAN MOGOT</option>
+        <option value="DOYONG">DOYONG</option>
+        <option value="CIKUDA">CIKUDA</option>
+      </select>
+      <div class="user-badge">
+        <i class="fas fa-user"></i>
+        <span id="user-name">-</span>
+        <span class="role-tag" id="user-role">-</span>
+      </div>
+      <button class="btn-logout" onclick="doLogout()">
+        <i class="fas fa-sign-out-alt"></i> Logout
+      </button>
+    </div>
+  </div>
+
+  <!-- ROW 1: FLEET STATUS BAR -->
+  <div class="card">
+    <div class="card-title"><i class="fas fa-truck"></i> STATUS FLEET</div>
+    <div class="fleet-bar">
+      <div class="fleet-stat fs-jalan" onclick="toggleFleetDetail('jalan')">
+        <div class="num" id="fs-jalan">-</div>
+        <div class="lbl">🟢 Jalan</div>
+      </div>
+      <div class="fleet-stat fs-muat" onclick="toggleFleetDetail('muat')">
+        <div class="num" id="fs-muat">-</div>
+        <div class="lbl">🟡 Muat Kargo</div>
+      </div>
+      <div class="fleet-stat fs-selesai" onclick="toggleFleetDetail('selesai')">
+        <div class="num" id="fs-selesai">-</div>
+        <div class="lbl">🔵 Selesai</div>
+      </div>
+      <div class="fleet-stat fs-idle" onclick="toggleFleetDetail('idle')">
+        <div class="num" id="fs-idle">-</div>
+        <div class="lbl">⚫ Idle</div>
+      </div>
+      <div class="fleet-stat fs-alert" onclick="toggleFleetDetail('alert')">
+        <div class="num" id="fs-alert">-</div>
+        <div class="lbl">🔴 Alert</div>
+      </div>
+    </div>
+    <div class="fleet-detail" id="fleet-detail"></div>
+  </div>
+
+  <!-- ROW 2: PROGRESS + KPI -->
+  <div class="grid" style="margin-top:12px">
+    <div class="card" style="grid-column:span 7">
+      <div class="card-title"><i class="fas fa-warehouse"></i> PROGRESS PER GUDANG</div>
+      <div id="gudang-progress">
+        <div class="loading"><i class="fas fa-spinner fa-spin"></i>Memuat...</div>
+      </div>
+    </div>
+    <div class="card" style="grid-column:span 5">
+      <div class="card-title"><i class="fas fa-chart-line"></i> KPI HARI INI</div>
+      <div class="kpi-grid" id="kpi-grid">
+        <div class="loading" style="grid-column:1/-1"><i class="fas fa-spinner fa-spin"></i>Memuat...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 3: MAP + ALERTS -->
+  <div class="grid">
+    <div class="card grid-map" style="grid-column:span 8">
+      <div class="card-title">
+        <i class="fas fa-map-marker-alt"></i> LIVE MAP
+        <span style="margin-left:auto;font-weight:600;font-size:10px;color:var(--muted)" id="map-info">—</span>
+      </div>
+      <div id="map"></div>
+    </div>
+    <div class="card grid-alerts" style="grid-column:span 4">
+      <div class="card-title">
+        <i class="fas fa-bell"></i> ALERTS
+        <span id="alert-count" style="margin-left:auto;background:var(--red);color:#fff;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:700">0</span>
+      </div>
+      <div class="alert-list" id="alert-list">
+        <div class="empty-alert">Tidak ada alert — semua lancar 👍</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER STATUS -->
+  <div class="status-bar">
+    <div>
+      <span class="status-dot"></span>
+      Auto-refresh <strong id="refresh-interval">30</strong> detik · Last update: <strong id="last-update">-</strong>
+    </div>
+    <div>
+      <button class="btn-refresh" id="btn-refresh" onclick="loadData()">
+        <i class="fas fa-sync-alt"></i> Refresh
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════════
+// GST LIVE DASHBOARD v1.0
+// ═══════════════════════════════════════════════════════════════════════════════
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzWW4NJXYEZxcG5jiygObB6sitBmuQFi0m22C9vH2Wp2vnchw3lGv99I9E1mJ5uPXChNA/exec';
+const REFRESH_MS = 30000; // 30 detik
+
+const state = {
+  user: null,
+  data: null,
+  map: null,
+  markers: {},
+  filterGudang: '',
+  filterStatus: null,   // untuk toggle fleet detail
+  refreshTimer: null,
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FETCH INTERCEPTOR — inject token otomatis
+// ═══════════════════════════════════════════════════════════════════════════════
+(function(){
+  const _getTok = () => {
+    const t = localStorage.getItem('dash_token');
+    const e = localStorage.getItem('dash_expires');
+    if (!t || !e) return null;
+    const exp = new Date(String(e).replace(' ','T'));
+    if (isNaN(exp.getTime()) || new Date() > exp) return null;
+    return t;
+  };
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = function(input, init) {
+    try {
+      let url = typeof input === 'string' ? input : (input && input.url);
+      if (!url || !url.includes('script.google.com/macros/')) return _origFetch(input, init);
+      const tok = _getTok();
+      if (!tok || url.includes('token=')) return _origFetch(input, init);
+      const sep = url.includes('?') ? '&' : '?';
+      const newUrl = url + sep + 'token=' + encodeURIComponent(tok);
+      if (typeof input === 'string') input = newUrl;
+      else input = new Request(newUrl, input);
+    } catch(e) { console.warn('interceptor err', e); }
+    return _origFetch(input, init);
+  };
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUTH
+// ═══════════════════════════════════════════════════════════════════════════════
+async function doLogin() {
+  const btn = document.getElementById('btn-login');
+  const user = document.getElementById('login-user').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  const err  = document.getElementById('login-err');
+
+  if (!user || !pass) {
+    err.textContent = '⚠ Username dan password wajib';
+    err.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = '⏳ Verifikasi...';
+  err.style.display = 'none';
+
+  try {
+    const params = new URLSearchParams({ action:'login', username:user, password:pass });
+    const res = await fetch(`${GAS_URL}?${params}`, { method:'GET', redirect:'follow' });
+    const data = await res.json();
+
+    if (data.error) {
+      err.textContent = '⚠ ' + data.error;
+      err.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Masuk →';
+      return;
+    }
+
+    // Filter role: hanya HG (owner/admin) & supervisor boleh dashboard
+    const role = String(data.role||'').toLowerCase();
+    if (!['owner','admin','supervisor','superadmin'].includes(role) && user.toLowerCase() !== 'hg') {
+      err.textContent = '⚠ Role Anda tidak memiliki akses dashboard (hanya HG & supervisor)';
+      err.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Masuk →';
+      return;
+    }
+
+    // Simpan auth
+    state.user = {
+      username: data.username,
+      nama: data.nama,
+      role: data.role,
+      gudang: data.gudang,
+    };
+    localStorage.setItem('dash_user', JSON.stringify(state.user));
+    if (data.token) {
+      localStorage.setItem('dash_token', data.token);
+      localStorage.setItem('dash_expires', data.expires_at || '');
+    }
+
+    showDashboard();
+  } catch(e) {
+    err.textContent = '⚠ Koneksi gagal: ' + e.message;
+    err.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Masuk →';
+  }
+}
+
+function doLogout() {
+  if (state.refreshTimer) clearInterval(state.refreshTimer);
+  ['dash_user','dash_token','dash_expires'].forEach(k => localStorage.removeItem(k));
+  location.reload();
+}
+
+function checkSavedSession() {
+  const saved = localStorage.getItem('dash_user');
+  const tok = localStorage.getItem('dash_token');
+  const exp = localStorage.getItem('dash_expires');
+  if (!saved || !tok || !exp) return false;
+  // Check expiry
+  const expDate = new Date(String(exp).replace(' ','T'));
+  if (isNaN(expDate.getTime()) || new Date() > expDate) {
+    ['dash_user','dash_token','dash_expires'].forEach(k => localStorage.removeItem(k));
+    return false;
+  }
+  try {
+    state.user = JSON.parse(saved);
+    return true;
+  } catch(e) { return false; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════════════════════════════
+function showDashboard() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+
+  // Update user info
+  document.getElementById('user-name').textContent = state.user.nama || state.user.username;
+  document.getElementById('user-role').textContent = state.user.role || 'user';
+
+  // Auto-filter ke gudang user kalau supervisor
+  const role = String(state.user.role||'').toLowerCase();
+  if (role === 'supervisor' && state.user.gudang) {
+    const gdSelect = document.getElementById('filter-gudang');
+    gdSelect.value = state.user.gudang.toUpperCase();
+    gdSelect.disabled = true;
+    state.filterGudang = state.user.gudang.toUpperCase();
+  }
+
+  // Init map
+  initMap();
+
+  // Load data + start auto-refresh
+  loadData();
+  state.refreshTimer = setInterval(loadData, REFRESH_MS);
+}
+
+function initMap() {
+  // Jakarta center
+  state.map = L.map('map').setView([-6.175, 106.825], 11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap',
+  }).addTo(state.map);
+}
+
+function applyGudangFilter() {
+  state.filterGudang = document.getElementById('filter-gudang').value;
+  loadData();
+}
+
+async function loadData() {
+  const btn = document.getElementById('btn-refresh');
+  btn.disabled = true;
+
+  try {
+    const today = new Date();
+    const dateStr = String(today.getDate()).padStart(2,'0') + '/' +
+                    String(today.getMonth()+1).padStart(2,'0') + '/' +
+                    today.getFullYear();
+    const params = new URLSearchParams({
+      action: 'getLiveDashboard',
+      date: dateStr,
+    });
+    if (state.filterGudang) params.append('gudang', state.filterGudang);
+
+    const res = await fetch(`${GAS_URL}?${params}`, { redirect:'follow' });
+    const data = await res.json();
+
+    if (data.error) {
+      console.error('[loadData] error:', data.error);
+      return;
+    }
+
+    state.data = data;
+    renderAll();
+
+    const nowStr = new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    document.getElementById('last-update').textContent = nowStr;
+    document.getElementById('sub-info').textContent =
+      `${dateStr} · ${data.overall.totalDO} DO · ${data.overall.armadaAktif} armada aktif`;
+  } catch(e) {
+    console.error('[loadData] fetch error:', e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RENDERERS
+// ═══════════════════════════════════════════════════════════════════════════════
+function renderAll() {
+  renderFleetBar();
+  renderGudangProgress();
+  renderKPI();
+  renderMap();
+  renderAlerts();
+}
+
+function renderFleetBar() {
+  const c = state.data.fleet.counter;
+  document.getElementById('fs-jalan').textContent   = c.jalan   || 0;
+  document.getElementById('fs-muat').textContent    = c.muat    || 0;
+  document.getElementById('fs-selesai').textContent = c.selesai || 0;
+  document.getElementById('fs-idle').textContent    = c.idle    || 0;
+  document.getElementById('fs-alert').textContent   = c.alert   || 0;
+}
+
+function renderGudangProgress() {
+  const root = document.getElementById('gudang-progress');
+  const gudangs = state.data.gudang;
+
+  if (!gudangs.length) {
+    root.innerHTML = '<div class="loading">Belum ada data DO hari ini</div>';
+    return;
+  }
+
+  root.innerHTML = gudangs.map(g => {
+    const total = g.total || 1;
+    const donePct = Math.round((g.selesai / total) * 100);
+    const segs = [
+      { cls:'seg-selesai', n:g.selesai, lbl:g.selesai },
+      { cls:'seg-jalan',   n:g.jalan,   lbl:g.jalan },
+      { cls:'seg-muat',    n:g.muat,    lbl:g.muat },
+      { cls:'seg-gagal',   n:g.gagal,   lbl:g.gagal },
+      { cls:'seg-baru',    n:g.baru,    lbl:g.baru },
+    ].filter(s => s.n > 0).map(s => {
+      const pct = (s.n / total) * 100;
+      return `<div class="progress-seg ${s.cls}" style="width:${pct}%" title="${s.n}">${s.lbl > 0 && pct > 5 ? s.lbl : ''}</div>`;
+    }).join('');
+
+    return `
+      <div class="gudang-row">
+        <div class="gudang-header">
+          <span>${g.gudang}</span>
+          <span class="stats">${g.selesai}/${total} selesai (${donePct}%)</span>
+        </div>
+        <div class="progress-bar">${segs}</div>
+      </div>`;
+  }).join('');
+
+  // Total row
+  const tot = gudangs.reduce((acc,g) => ({
+    total:acc.total+g.total, baru:acc.baru+g.baru, muat:acc.muat+g.muat,
+    jalan:acc.jalan+g.jalan, selesai:acc.selesai+g.selesai, gagal:acc.gagal+g.gagal,
+  }), {total:0,baru:0,muat:0,jalan:0,selesai:0,gagal:0});
+  const totPct = tot.total > 0 ? Math.round((tot.selesai/tot.total)*100) : 0;
+  root.innerHTML += `
+    <div class="gudang-row" style="border-top:2px solid var(--border);padding-top:10px;margin-top:12px">
+      <div class="gudang-header">
+        <span><strong>TOTAL</strong></span>
+        <span class="stats"><strong>${tot.selesai}/${tot.total} selesai (${totPct}%)</strong></span>
+      </div>
+    </div>`;
+}
+
+function renderKPI() {
+  const o = state.data.overall;
+  const rupiah = v => 'Rp ' + Math.round(v).toLocaleString('id-ID');
+
+  document.getElementById('kpi-grid').innerHTML = `
+    <div class="kpi-card good">
+      <div class="kpi-lbl">On-Time Rate</div>
+      <div class="kpi-val">${o.ontimePct}%</div>
+      <div class="kpi-sub">${o.totalSelesai} dari ${o.totalDO} DO</div>
+    </div>
+    <div class="kpi-card ${o.gagalPct > 5 ? 'bad' : ''}">
+      <div class="kpi-lbl">Gagal Kirim</div>
+      <div class="kpi-val">${o.totalGagal}</div>
+      <div class="kpi-sub">${o.gagalPct}% dari total</div>
+    </div>
+    <div class="kpi-card accent">
+      <div class="kpi-lbl">Total DUS Terkirim</div>
+      <div class="kpi-val">${(o.totalDusTerima||0).toLocaleString('id-ID')}</div>
+      <div class="kpi-sub">dari ${(o.totalDus||0).toLocaleString('id-ID')} plan</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-lbl">Revenue Est.</div>
+      <div class="kpi-val" style="font-size:18px">${rupiah(o.revenueEst)}</div>
+      <div class="kpi-sub">@Rp 4.000/DUS</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-lbl">Avg DO/Armada</div>
+      <div class="kpi-val">${o.avgPerArmada}</div>
+      <div class="kpi-sub">${o.armadaAktif} armada jalan</div>
+    </div>`;
+}
+
+function renderMap() {
+  if (!state.map) return;
+  // Clear existing markers
+  Object.values(state.markers).forEach(m => state.map.removeLayer(m));
+  state.markers = {};
+
+  const plats = state.data.fleet.plats.filter(p => p.lat && p.lng);
+  document.getElementById('map-info').textContent = `${plats.length} kendaraan ter-track`;
+
+  if (plats.length === 0) return;
+
+  const bounds = [];
+  plats.forEach(p => {
+    const color = p.status === 'alert' ? '#dc2626' :
+                  p.status === 'jalan' ? '#16a34a' :
+                  p.status === 'muat'  ? '#d97706' :
+                  p.status === 'selesai' ? '#0284c7' : '#94a3b8';
+    const icon = L.divIcon({
+      className: 'live-marker',
+      html: `<div style="background:${color};width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)"></div>`,
+      iconSize: [22,22],
+      iconAnchor: [11,11],
+    });
+    const m = L.marker([p.lat, p.lng], { icon }).addTo(state.map);
+    const doInfo = p.currentDO
+      ? `<div style="margin-top:6px;padding:6px;background:#f1f5f9;border-radius:4px">
+           <strong>Sedang: ${p.currentDO.docNo}</strong><br>
+           ${p.currentDO.customer}<br>
+           <small>${p.currentDO.alamat}</small>
+         </div>` : '';
+    m.bindPopup(`
+      <div style="font-family:system-ui;min-width:200px">
+        <strong style="font-size:14px">${p.plat}</strong>
+        <span style="background:${color};color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px">${p.status.toUpperCase()}</span>
+        <div style="margin-top:4px;font-size:12px">
+          <strong>Driver:</strong> ${p.driver || '-'}<br>
+          <strong>Gudang:</strong> ${p.gudang || '-'}<br>
+          <strong>Progress:</strong> ${p.counts.selesai}/${p.counts.total} selesai
+          ${p.counts.gagal ? ` · <span style="color:#dc2626">${p.counts.gagal} gagal</span>` : ''}<br>
+          <strong>Speed:</strong> ${Math.round(p.speed||0)} km/h · ${(p.km||0).toFixed(1)} km<br>
+          <small style="color:#64748b">GPS: ${p.gpsTs || 'No GPS'}</small>
+        </div>
+        ${doInfo}
+      </div>
+    `);
+    state.markers[p.plat] = m;
+    bounds.push([p.lat, p.lng]);
+  });
+
+  // Fit bounds kalau belum
+  if (bounds.length > 0 && !state.mapFitted) {
+    state.map.fitBounds(bounds, { padding:[30,30] });
+    state.mapFitted = true;
+  }
+}
+
+function renderAlerts() {
+  const list = document.getElementById('alert-list');
+  const count = document.getElementById('alert-count');
+  const alerts = state.data.alerts || [];
+
+  count.textContent = alerts.length;
+  count.style.display = alerts.length > 0 ? 'inline' : 'none';
+
+  if (alerts.length === 0) {
+    list.innerHTML = '<div class="empty-alert">✨ Tidak ada alert — semua lancar</div>';
+    return;
+  }
+
+  list.innerHTML = alerts.map(a => {
+    const icon = a.type === 'gps_dead'   ? 'fa-location-dot'
+               : a.type === 'late_start' ? 'fa-clock'
+               : a.type === 'repeat_fail' ? 'fa-triangle-exclamation'
+               : 'fa-bell';
+    return `
+      <div class="alert-item al-${a.severity}" onclick="focusPlat('${a.plat}')">
+        <div class="alert-icon"><i class="fas ${icon}"></i></div>
+        <div class="alert-body">
+          <div class="alert-title">${a.plat} — ${a.msg}</div>
+          <div class="alert-detail">${a.driver || '-'} · ${a.gudang || '-'}</div>
+          <div class="alert-detail" style="margin-top:3px">${a.detail || ''}</div>
+          <div class="alert-actions">
+            <a href="#" onclick="event.stopPropagation();focusPlat('${a.plat}');return false">📍 Lihat di peta</a>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function focusPlat(plat) {
+  const m = state.markers[plat];
+  if (m) {
+    state.map.setView(m.getLatLng(), 14);
+    m.openPopup();
+  }
+}
+
+function toggleFleetDetail(status) {
+  const detail = document.getElementById('fleet-detail');
+  if (state.filterStatus === status) {
+    state.filterStatus = null;
+    detail.classList.remove('show');
+    document.querySelectorAll('.fleet-stat').forEach(el => el.classList.remove('active'));
+    return;
+  }
+  state.filterStatus = status;
+  document.querySelectorAll('.fleet-stat').forEach(el => el.classList.remove('active'));
+  document.querySelector(`.fs-${status}`).classList.add('active');
+
+  const plats = state.data.fleet.plats.filter(p => p.status === status);
+  if (!plats.length) {
+    detail.innerHTML = '<div class="empty-alert">Tidak ada kendaraan dengan status ini</div>';
+  } else {
+    detail.innerHTML = plats.map(p => `
+      <div class="plat-item" onclick="focusPlat('${p.plat}')">
+        <span><strong class="p-plat">${p.plat}</strong> · ${p.driver||'-'} · <small>${p.gudang||'-'}</small></span>
+        <span>
+          <span class="p-status ps-${p.status}">${p.status}</span>
+          <small style="color:#64748b;margin-left:8px">${p.counts.selesai}/${p.counts.total}</small>
+        </span>
+      </div>`).join('');
+  }
+  detail.classList.add('show');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════════════════
+if (checkSavedSession()) {
+  showDashboard();
+} else {
+  // Stay at login screen
+}
+</script>
+</body>
+</html>
