@@ -340,10 +340,15 @@ async function doLogin() {
       return;
     }
 
-    // Filter role: hanya HG (owner/admin) & supervisor boleh dashboard
+    // Filter role: whitelist role yang boleh akses dashboard
+    // Role di sistem GST: superadmin, dispatcher, settlement, kepala, pusat
+    // Akses dashboard: superadmin (full), kepala gudang (per gudang), pusat (ALL)
+    // Dispatcher & settlement tidak boleh akses dashboard (pakai routing optimizer)
     const role = String(data.role||'').toLowerCase();
-    if (!['owner','admin','supervisor','superadmin'].includes(role) && user.toLowerCase() !== 'hg') {
-      err.textContent = '⚠ Role Anda tidak memiliki akses dashboard (hanya HG & supervisor)';
+    const allowedRoles = ['superadmin', 'kepala', 'pusat', 'owner', 'admin', 'supervisor'];
+    if (!allowedRoles.includes(role)) {
+      err.textContent = '⚠ Role "' + data.role + '" tidak memiliki akses dashboard. ' +
+                        'Dashboard khusus Superadmin, Kepala Gudang, & Staff Pusat.';
       err.style.display = 'block';
       btn.disabled = false; btn.textContent = 'Masuk →';
       return;
@@ -404,13 +409,17 @@ function showDashboard() {
   document.getElementById('user-name').textContent = state.user.nama || state.user.username;
   document.getElementById('user-role').textContent = state.user.role || 'user';
 
-  // Auto-filter ke gudang user kalau supervisor
+  // Auto-filter ke gudang user kalau kepala gudang / supervisor
   const role = String(state.user.role||'').toLowerCase();
-  if (role === 'supervisor' && state.user.gudang) {
+  const isPerGudang = ['kepala','supervisor'].includes(role);
+  // Untuk role "pusat" dan "superadmin" → akses semua gudang
+  if (isPerGudang && state.user.gudang && state.user.gudang !== 'ALL') {
     const gdSelect = document.getElementById('filter-gudang');
-    gdSelect.value = state.user.gudang.toUpperCase();
+    // Normalize: DAAN_MOGOT → DAAN MOGOT (sesuai option value)
+    const gudangNormalized = state.user.gudang.replace(/_/g, ' ').toUpperCase();
+    gdSelect.value = gudangNormalized;
     gdSelect.disabled = true;
-    state.filterGudang = state.user.gudang.toUpperCase();
+    state.filterGudang = gudangNormalized;
   }
 
   // Init map
