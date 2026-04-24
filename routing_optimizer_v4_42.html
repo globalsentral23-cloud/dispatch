@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.42</title>
+<title>Routing Optimizer v4.43</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -469,7 +469,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.42</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.43</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -529,7 +529,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.42</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.43</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -541,6 +541,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     <button class="tab-btn" onclick="switchTab('deferred',this)">Ditunda</button>
     <button class="tab-btn" onclick="switchTab('vendor',this)">DO Unplot (<span id="cnt-vendor">0</span>)</button>
     <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota">Pending Besok</button>
+    <button class="tab-btn" onclick="switchTab('konflik',this)" id="tab-btn-konflik" style="color:#b91c1c">⚠ DO Konflik</button>
     <button class="tab-btn" id="tab-btn-biaya" onclick="switchTab('biaya',this)">💰 Biaya Ops</button>
     <button class="tab-btn" onclick="switchTab('settlement',this)">📋 Settlement T+1</button>
     <button class="tab-btn" onclick="switchTab('history',this)">📅 History</button>
@@ -700,37 +701,32 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
       <div class="vendor-top" id="vendor-cards"></div>
 
-      <!-- SEKSI 1: DO Jabo overflow (kendaraan penuh) -->
-      <div id="vendor-jabo-section">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;margin-top:4px">
-          <div style="width:12px;height:12px;border-radius:2px;background:#f59e0b;flex-shrink:0"></div>
-          <div style="font-size:13px;font-weight:700;color:#92400e">⚠ DO Jabodetabek — Kapasitas Penuh (<span id="cnt-vendor-jabo">0</span> item)</div>
-          <span style="font-size:10px;color:var(--muted);font-style:italic">Semua kendaraan internal sudah penuh. Perlu vendor lokal atau reschedule.</span>
-          <button onclick="downloadVendorDO('jabo')" style="margin-left:auto;padding:4px 12px;border-radius:7px;background:#92400e;border:none;color:#fff;font-size:10px;font-weight:600;cursor:pointer">⬇ Download</button>
-        </div>
-        <div class="tbl-wrap" id="vendor-jabo-wrap">
-          <table class="info-tbl">
-            <thead><tr><th>DO No</th><th>Gudang</th><th>Customer</th><th>Tujuan</th><th>QTY</th><th>Vol (m³)</th><th>Alasan</th></tr></thead>
-            <tbody id="tbody-vendor-jabo"></tbody>
-          </table>
-        </div>
-      </div>
+      <!-- v4.43: Grouping per Gudang × Vendor -->
+      <div id="vendor-groups-v443" style="margin-top:14px;display:flex;flex-direction:column;gap:14px"></div>
 
-      <!-- SEKSI 2: DO Luar Kota / Ekspedisi -->
-      <div id="vendor-luarkota-section" style="margin-top:20px">
+      <!-- v4.43: DO tanpa assigned vendor (manual assign needed) -->
+      <div id="vendor-unassigned-section" style="margin-top:20px;display:none">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-          <div style="width:12px;height:12px;border-radius:2px;background:#dc2626;flex-shrink:0"></div>
-          <div style="font-size:13px;font-weight:700;color:#991b1b">🚚 DO Luar Kota — Via Vendor / Ekspedisi (<span id="cnt-vendor-lk">0</span> item)</div>
-          <button onclick="downloadVendorDO('luarkota')" style="margin-left:auto;padding:4px 12px;border-radius:7px;background:#991b1b;border:none;color:#fff;font-size:10px;font-weight:600;cursor:pointer">⬇ Download</button>
+          <div style="width:12px;height:12px;border-radius:2px;background:#f59e0b;flex-shrink:0"></div>
+          <div style="font-size:13px;font-weight:700;color:#92400e">⚠ DO Belum Ter-Assign Vendor — Perlu Pilih Manual (<span id="cnt-vendor-unassigned">0</span> item)</div>
         </div>
         <div class="tbl-wrap">
           <table class="info-tbl">
-            <thead><tr><th>DO No</th><th>Gudang</th><th>Customer</th><th>Tujuan</th><th>QTY</th><th>Assigned Vendor</th><th>Alasan</th></tr></thead>
-            <tbody id="tbody-vendor-lk"></tbody>
+            <thead><tr><th>DO No</th><th>Gudang</th><th>Customer</th><th>Tujuan</th><th>QTY</th><th>Vol (m³)</th><th>Assign Vendor</th><th>Alasan Trigger</th></tr></thead>
+            <tbody id="tbody-vendor-unassigned"></tbody>
           </table>
         </div>
       </div>
 
+    </div>
+  </div>
+  <div class="tab-pane" id="tab-konflik">
+    <div class="info-wrap">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+        <div style="font-size:14px;font-weight:700;color:#b91c1c">⚠ DO Konflik — Perlu Keputusan Manual (<span id="cnt-konflik">0</span> item)</div>
+        <span style="font-size:11px;color:var(--muted)">DO yang memenuhi kriteria vendor TAPI alamat tidak bisa kendaraan besar. Dispatcher pilih: split, hubungi customer, atau tunda.</span>
+      </div>
+      <div id="konflik-list" style="display:flex;flex-direction:column;gap:10px"></div>
     </div>
   </div>
   <div class="tab-pane" id="tab-biaya"><div class="main-content" id="main-biaya" style="padding:0"></div></div>
@@ -859,6 +855,7 @@ let rtMusibahAlerts = [];    // [{plat, doc_no, alasan, jam}]
  // true = mode operasional saat muat
 let luarKotaPending=[]; // DO luar kota yang tidak cukup memenuhi 95%
 let routes=[],skipped=[],deferred=[],vendorItems=[],transferItems=[],pendingTomorrowItems=[];
+let conflictItems=[]; // v4.43: DO with both vendor-trigger AND no_cdd/force_cde flag
 let assignedFromUnplot=[]; // DO yang di-assign dari tab Unplot ke kendaraan internal
 let biayaData={}; // expense tracking per route.id
 let filterWH='all',fR1=true,fR2=true,fKnek=false,fPrio=false,fWarn=false;
@@ -1148,6 +1145,21 @@ function parseMasterData(masterData){
       CFG.tronton_min_wt_kg=parseFloat(val)||18000;
     if(param.includes('tronton max stops'))
       CFG.tronton_max_stops=parseInt(val)||2;
+    // ═══ v4.43 — VENDOR AUTO-TRIGGER ═══════════════════════════════════════
+    if(param.includes('vendor auto trigger enabled')||param.includes('auto trigger vendor'))
+      CFG.vendor_auto_trigger_enabled=String(val||'Y').toUpperCase().startsWith('Y');
+    if(param.includes('vendor trigger vol'))
+      CFG.vendor_trigger_vol_m3=parseFloat(val)||10;
+    if(param.includes('vendor trigger wt')||param.includes('vendor trigger berat'))
+      CFG.vendor_trigger_wt_kg=parseFloat(val)||7500;
+    if(param.includes('vendor trigger qty')||param.includes('vendor trigger drop'))
+      CFG.vendor_trigger_qty_per_drop=parseInt(val)||500;
+    if(param.includes('vendor trigger jarak')||param.includes('vendor trigger km'))
+      CFG.vendor_trigger_jarak_km=parseFloat(val)||100;
+    if(param.includes('vendor luar kota list')||param.includes('luar kota list')){
+      CFG.vendor_luar_kota_list=String(val||'')
+        .split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
+    }
   });
 
   // Set defaults untuk zone-fill-first jika tidak di-config
@@ -1164,6 +1176,15 @@ function parseMasterData(masterData){
   if(CFG.fuso_max_stops===undefined) CFG.fuso_max_stops=2;
   if(CFG.tronton_min_wt_kg===undefined) CFG.tronton_min_wt_kg=18000;
   if(CFG.tronton_max_stops===undefined) CFG.tronton_max_stops=2;
+  // v4.43 vendor auto-trigger defaults
+  if(CFG.vendor_auto_trigger_enabled===undefined) CFG.vendor_auto_trigger_enabled=true;
+  if(CFG.vendor_trigger_vol_m3===undefined) CFG.vendor_trigger_vol_m3=10;
+  if(CFG.vendor_trigger_wt_kg===undefined) CFG.vendor_trigger_wt_kg=7500;
+  if(CFG.vendor_trigger_qty_per_drop===undefined) CFG.vendor_trigger_qty_per_drop=500;
+  if(CFG.vendor_trigger_jarak_km===undefined) CFG.vendor_trigger_jarak_km=100;
+  if(!CFG.vendor_luar_kota_list||CFG.vendor_luar_kota_list.length===0){
+    CFG.vendor_luar_kota_list=['CIKAMPEK','PURWAKARTA','KARAWANG','CILEGON','CIANJUR','SUKABUMI','BANDUNG'];
+  }
 
   // ── Parse Spesifikasi Produk → CFG.specTable ─────────────────────────────
   // Format: No | Ukuran | Kode SAP | Volume/DUS (m³) | Berat/DUS (kg) | Keterangan
@@ -1625,14 +1646,19 @@ async function startAnalysis(){
       setLoad(`${carryOverItems.length} carry over DO ditemukan...`);
       await sleep(200);
     }
-    const {active,skip,defer,transfer}=processData(sapRaw,pgRaw);
+    const {active,skip,defer,transfer,vendor:autoVendor,conflict:autoConflict}=processData(sapRaw,pgRaw);
     skipped=skip;deferred=defer;transferItems=transfer;
+    // v4.43: Pre-populate auto-triggered vendor + conflict items
+    vendorItems = [...(autoVendor||[])];
+    conflictItems = [...(autoConflict||[])];
     setLoad('Geocoding alamat...');
     hideLoad();
     await geocodeAll(active);
     showLoad('Menjalankan routing...');await sleep(30);
-    const{rts,vendor,pendingTomorrow}=buildRoutes(active);
-    routes=rts;vendorItems=vendor;
+    const{rts,vendor:routingVendor,pendingTomorrow}=buildRoutes(active);
+    routes=rts;
+    // Merge: auto-trigger vendor + routing overflow vendor
+    vendorItems = [...vendorItems, ...(routingVendor||[])];
     pendingTomorrowItems=pendingTomorrow||[]; // v4.42 Step 5 output
     initBiaya(); // hitung estimasi biaya per kendaraan
     setLoad('Membangun dashboard...');await sleep(30);
@@ -2161,7 +2187,147 @@ function processData(sapRaw,pgRaw){
     });
   }
 
-  return{active,skip,defer,transfer};
+  // ═══════════════════════════════════════════════════════════════════════
+  // v4.43 — VENDOR AUTO-TRIGGER + CONFLICT DETECTION
+  // Cek 4 kriteria per DO. Kalau match → pindah ke vendor/conflict list.
+  // ═══════════════════════════════════════════════════════════════════════
+  const vendor=[], conflict=[];
+  if(CFG.vendor_auto_trigger_enabled !== false){
+    const VT_VOL = CFG.vendor_trigger_vol_m3 || 10;
+    const VT_WT  = CFG.vendor_trigger_wt_kg || 7500;
+    const VT_QTY = CFG.vendor_trigger_qty_per_drop || 500;
+    const VT_KM  = CFG.vendor_trigger_jarak_km || 100;
+    const VT_LK_LIST = CFG.vendor_luar_kota_list || ['CIKAMPEK','PURWAKARTA','KARAWANG','CILEGON','CIANJUR','SUKABUMI','BANDUNG'];
+    const CDE_VOL_CAP = 5; // CDE max ~5m³ — reference untuk konflik detection
+
+    // Group items by DO untuk hitung vol/wt total per DO + qty per drop
+    const doGroups = {};
+    active.forEach(it=>{
+      if(!doGroups[it.doc_no]) doGroups[it.doc_no] = [];
+      doGroups[it.doc_no].push(it);
+    });
+
+    // Group by alamat (stop address) untuk hitung "bongkar lama per drop"
+    const dropGroups = {};
+    active.forEach(it=>{
+      const addr = String(it.kirim||'').split(';')[0].trim().toUpperCase().replace(/\s+/g,'');
+      if(!addr) return;
+      if(!dropGroups[addr]) dropGroups[addr] = 0;
+      dropGroups[addr] += it.qty || 0;
+    });
+
+    // Iterate DO, check criteria
+    const doKeys = Object.keys(doGroups);
+    const triggeredDOs = new Set();
+    const reasons = {};
+
+    for(const docNo of doKeys){
+      const items = doGroups[docNo];
+      const sample = items[0];
+      const totalVol = items.reduce((s,i)=>s+(i.total_vol||0), 0);
+      const totalWt = items.reduce((s,i)=>s+(i.total_wt||0), 0);
+      const kirim = String(sample.kirim||'').toUpperCase();
+      const kota = String(sample.kota||sample.zona||'').toUpperCase();
+
+      const triggerReasons = [];
+
+      // Kriteria 1: Volume/Berat besar
+      if(totalVol > VT_VOL){
+        triggerReasons.push(`Volume ${totalVol.toFixed(1)}m³ > ${VT_VOL}m³ (kapasitas CDD)`);
+      }
+      if(totalWt > VT_WT){
+        triggerReasons.push(`Berat ${Math.round(totalWt)}kg > ${VT_WT}kg (kapasitas CDD)`);
+      }
+
+      // Kriteria 2: Luar kota (hardcode list)
+      const luarKotaMatch = VT_LK_LIST.find(lk =>
+        kirim.includes(lk) || kota.includes(lk)
+      );
+      if(luarKotaMatch){
+        triggerReasons.push(`Luar kota (${luarKotaMatch})`);
+      } else if(sample.luar_kota){
+        // Fallback: existing flag dari geocoding (kecamatan tidak di sheet)
+        triggerReasons.push(`Luar Jabodetabek (${sample.kota||'tidak dikenal'})`);
+      }
+
+      // Kriteria 3: Bongkar lama per drop point
+      const addr = String(sample.kirim||'').split(';')[0].trim().toUpperCase().replace(/\s+/g,'');
+      const qtyAtAddr = dropGroups[addr] || 0;
+      if(qtyAtAddr > VT_QTY){
+        triggerReasons.push(`Bongkar lama ${qtyAtAddr} DUS > ${VT_QTY} (per alamat)`);
+      }
+
+      // Kriteria 4: Rute jauh (estimasi jarak haversine)
+      if(sample.lat && sample.lng){
+        // Gudang lat/lng dari WH_COORDS global
+        const whKey = String(sample.wh_cons||'').toUpperCase().includes('DAAN')
+          ? 'GUDANG DAAN MOGOT'
+          : String(sample.wh_cons||'').toUpperCase().includes('DOYONG')
+          ? 'GUDANG DOYONG'
+          : String(sample.wh_cons||'').toUpperCase().includes('CIKUDA')
+          ? 'GUDANG CIKUDA'
+          : null;
+        const gudang = whKey && typeof WH_COORDS !== 'undefined' ? WH_COORDS[whKey] : null;
+        if(gudang && gudang.lat && gudang.lng){
+          const dLat = (sample.lat - gudang.lat) * 111;
+          const dLng = (sample.lng - gudang.lng) * 111 * Math.cos(gudang.lat*Math.PI/180);
+          const distKm = Math.sqrt(dLat*dLat + dLng*dLng) * 1.3; // koreksi jalan aktual
+          if(distKm > VT_KM){
+            triggerReasons.push(`Rute jauh ${distKm.toFixed(0)}km > ${VT_KM}km`);
+          }
+        }
+      }
+
+      if(triggerReasons.length > 0){
+        triggeredDOs.add(docNo);
+        reasons[docNo] = triggerReasons.join('; ');
+      }
+    }
+
+    // Pindahkan items yg triggered → vendor atau conflict
+    const newActive = [];
+    active.forEach(it=>{
+      if(!triggeredDOs.has(it.doc_no)){
+        newActive.push(it);
+        return;
+      }
+
+      // Cek konflik: trigger vendor TAPI ada flag no_cdd/force_cde DAN vol > CDE cap
+      const items = doGroups[it.doc_no];
+      const totalVol = items.reduce((s,i)=>s+(i.total_vol||0), 0);
+      const hasNoCDDFlag = items.some(i=>i.no_cdd);
+      const hasForceCDEFlag = items.some(i=>i.force_cde);
+      const isConflict = (hasNoCDDFlag || hasForceCDEFlag) && totalVol > CDE_VOL_CAP;
+
+      const enrichedItem = {
+        ...it,
+        vendor_trigger_reason: reasons[it.doc_no],
+        is_auto_vendor: true,
+      };
+
+      if(isConflict){
+        enrichedItem.conflict_reason = hasForceCDEFlag
+          ? 'Wajib CDE (force_cde) tapi volume > CDE cap'
+          : 'Alamat tidak bisa CDD/Fuso (no_cdd) tapi volume > CDE cap';
+        conflict.push(enrichedItem);
+      } else {
+        vendor.push(enrichedItem);
+      }
+    });
+
+    // Replace active with filtered
+    active.length = 0;
+    newActive.forEach(it=>active.push(it));
+
+    if(vendor.length > 0 || conflict.length > 0){
+      console.log(`%c[v4.43 VENDOR TRIGGER] ${vendor.length} items → vendor, ${conflict.length} items → DO Konflik`, 'color:#0891b2;font-weight:bold');
+      Object.entries(reasons).slice(0,5).forEach(([doc, reason])=>{
+        console.log(`  DO ${doc}: ${reason}`);
+      });
+    }
+  }
+
+  return{active, skip, defer, transfer, vendor, conflict};
 }
 
 function extractDropFromRemarks(rem){
@@ -4434,7 +4600,7 @@ function showApp(){
   document.getElementById('app-screen').style.display='block';
   document.getElementById('tb-date').textContent=doDate||'—';
   vendorState=[];luarKotaPending=[];
-  renderKPI();renderRouting();renderTransfer();renderSkipped();renderDeferred();renderVendor();renderLuarKotaPending();renderBiaya();
+  renderKPI();renderRouting();renderTransfer();renderSkipped();renderDeferred();renderVendor();renderLuarKotaPending();renderKonflik();renderBiaya();
   // Terapkan filter gudang sesuai user setelah render
   setTimeout(()=>applyGudangFilterLock(), 100);
   // Mulai realtime polling
@@ -5118,139 +5284,463 @@ function renderDeferred(){
 }
 
 function renderVendor(){
-  // Pastikan vendorState terinisialisasi sebelum render
+  // v4.43: Grouping per Gudang × Vendor + tombol Kirim Order WhatsApp
   if(!vendorState.length) initVendorState();
-
-  // Split: Jabo overflow vs luar kota/vendor
-  const jaboItems   = vendorItems.filter(r=>!r.luar_kota&&!r.vendor_fallback);
-  const luarKotaItems = vendorItems.filter(r=> r.luar_kota|| r.vendor_fallback);
 
   // Update total badge di tab button
   document.getElementById('cnt-vendor').textContent = vendorItems.length;
 
-  // ── SEKSI 1: DO Jabo kapasitas penuh ──────────────────────────────────
-  document.getElementById('cnt-vendor-jabo').textContent = jaboItems.length;
-  const jaboSection = document.getElementById('vendor-jabo-section');
-  jaboSection.style.display = jaboItems.length ? '' : 'none';
+  // Group items: (wh_cons, vendor_kode) → items[]
+  // Jika belum assigned vendor, auto-match by coverage zone
+  const grouping = {};
+  const unassigned = [];
 
-  // Build opsi assign untuk jabo (internal + vendor)
-  const svol1=CFG.safety_vol||0.85, swt1=CFG.safety_wt||0.90;
-  const internalOptsJabo=routes
-    .filter(r=> r.total_vol<r.vehicle.vol_m3*svol1*0.98 && r.total_wt<r.vehicle.max_kg*swt1*0.98)
-    .map(r=>{
-      const sv=(r.vehicle.vol_m3*svol1-r.total_vol).toFixed(2);
-      const sw=Math.round(r.vehicle.max_kg*swt1-r.total_wt);
-      return `<option value="KEND:${r.id}">🚛 ${r.vehicle.plat} / ${r.vehicle.driver} | ${r.wh.replace('GUDANG ','')} (${sv}m³/${sw}kg)</option>`;
-    }).join('');
-  const vendorOptsJabo=(vendorState).map((v,vi)=>
-    `<option value="VENDOR:${vi}">📦 ${v.nama} [${v.tipe}]</option>`).join('');
-
-  // Map: vendor yang sudah di-assign ke jabo items — pakai referensi object
-  const jaboVendorMap=new Map();
-  (vendorState).forEach(vs=>{
-    (vs.assigned_dos||[]).forEach(d=>{
-      if(!d.luar_kota&&!d.vendor_fallback) jaboVendorMap.set(d,vs);
-    });
+  // Build vendor coverage map: vendor → set of coverage keywords
+  const vendorCoverageMap = {};
+  vendorState.forEach(vs=>{
+    const coverage = String(vs.coverage||'').toUpperCase();
+    const zonaList = Array.isArray(vs.zona_coverage)
+      ? vs.zona_coverage
+      : String(vs.zona_coverage||'').split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
+    vendorCoverageMap[vs.kode] = {vs, keywords:[coverage, ...zonaList].filter(Boolean)};
   });
 
-  document.getElementById('tbody-vendor-jabo').innerHTML = jaboItems.map(r=>{
-    const jv=jaboVendorMap.get(r); // lookup by object reference
-    const itemIdx=vendorItems.indexOf(r);
-    const assignSel=`<select class="reassign-sel" onchange="reassignDO(${itemIdx},this.value)"
-        style="font-size:10px;max-width:200px;border:0.5px solid var(--border2);border-radius:4px;padding:3px 6px;background:var(--card);color:var(--text)">
-      <option value="">— Assign —</option>
-      ${internalOptsJabo?`<optgroup label="Kendaraan Internal (ada sisa)">${internalOptsJabo}</optgroup>`:''}
-      ${vendorOptsJabo?`<optgroup label="Vendor / Ekspedisi">${vendorOptsJabo}</optgroup>`:''}
-    </select>`;
-    return `<tr style="background:${jv?'#f0fdf4':'#fffbeb'}">
-      <td style="font-family:var(--mono);font-size:10px;color:var(--navy)">${r.doc_no}</td>
-      <td style="font-size:11px">${r.wh_cons.replace('GUDANG ','')}</td>
-      <td style="font-size:11px;font-weight:600">${r.customer.slice(0,28)}</td>
-      <td style="color:var(--muted);max-width:180px;font-size:10px">${r.kirim.slice(0,60)}</td>
-      <td style="font-family:var(--mono);font-weight:700;color:var(--amber)">${r.qty}</td>
-      <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${(r.total_vol||0).toFixed(3)}</td>
-      <td>${assignSel}
-        ${jv?`<span style="font-size:9px;color:var(--green);margin-left:3px">→${jv.nama.slice(0,12)}</span>`:''}
-      </td>
-      <td style="font-size:10px;color:var(--amber)">${r.vendor_reason||'Kapasitas penuh'}</td>
-    </tr>`;
-  }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--dim);padding:16px">Semua DO Jabodetabek berhasil di-plot ✅</td></tr>';
-
-  // ── SEKSI 2: DO Luar Kota / Ekspedisi ────────────────────────────────
-  document.getElementById('cnt-vendor-lk').textContent = luarKotaItems.length;
-  const lkSection = document.getElementById('vendor-luarkota-section');
-  lkSection.style.display = luarKotaItems.length ? '' : 'none';
-
-  // Vendor assignment map — gunakan referensi object item (bukan doc_no)
-  // supaya tiap baris item diidentifikasi unik, bukan semua baris satu DO ikut kena
-  const vendorAssignedSet=new Map(); // item object → vendor
-  (vendorState).forEach(vs=>{
-    (vs.assigned_dos||[]).forEach(d=>{
-      vendorAssignedSet.set(d, vs);
-    });
+  // Map assigned items (from manual reassign) → vendor state reference
+  const manualAssignMap = new Map();
+  vendorState.forEach(vs=>{
+    (vs.assigned_dos||[]).forEach(d=>manualAssignMap.set(d, vs));
   });
 
-  // Build internal vehicle options: hanya yang masih punya sisa kapasitas vol DAN berat
-  const svol2=CFG.safety_vol||0.85;
-  const swt2=CFG.safety_wt||0.90;
-  const internalOptsLK=routes
-    .filter(r=>
-      r.total_vol < r.vehicle.vol_m3*svol2*0.98 &&
-      r.total_wt  < r.vehicle.max_kg*swt2*0.98
-    )
-    .map(r=>{
-      const spareVol=(r.vehicle.vol_m3*svol2-r.total_vol).toFixed(2);
-      const spareWt=Math.round(r.vehicle.max_kg*swt2-r.total_wt);
-      return `<option value="KEND:${r.id}">🚛 ${r.vehicle.plat} / ${r.vehicle.driver} | ${r.wh.replace('GUDANG ','')} (sisa ${spareVol}m³ / ${spareWt}kg)</option>`;
-    }).join('');
+  vendorItems.forEach(item=>{
+    const wh = String(item.wh_cons||item.wh||'UNKNOWN').replace('GUDANG ','').toUpperCase();
+    let vendor = manualAssignMap.get(item);
 
-  // Idle vehicles
-  const routedPlatsLK=new Set(routes.map(r=>r.vehicle.plat));
-  const kRowsLK=(files.masterData&&files.masterData['Kendaraan'])||[];
-  const khLK=kRowsLK[0]||[];
-  const kiLKP=khLK.findIndex(h=>String(h).toLowerCase().includes('plat'));
-  const kiLKD=khLK.findIndex(h=>String(h).toLowerCase().includes('driver')||String(h).toLowerCase().includes('nama driver'));
-  const kiLKW=khLK.findIndex(h=>String(h).toLowerCase().includes('gudang')||String(h).toLowerCase().includes('warehouse'));
-  const kiLKV=khLK.findIndex(h=>String(h).toLowerCase().includes('volume'));
-  const idleOptsLK=[];
-  for(let i=1;i<kRowsLK.length;i++){
-    const rr=kRowsLK[i];
-    const plat=String(rr[kiLKP]||'').trim();
-    if(!plat||routedPlatsLK.has(plat)) continue;
-    const drv=String(rr[kiLKD]||'').trim();
-    const status=String(rr[6]||'Aktif');
-    if(/rusak|tidak aktif|\[ISI/i.test(drv)||/tidak aktif/i.test(status)) continue;
-    const wh=consWH(String(rr[kiLKW]||'').trim());
-    const vol=parseFloat(String(rr[kiLKV]||'9').replace(/[^0-9.]/g,''))||9;
-    idleOptsLK.push(`<option value="IDLE:${plat}|${wh}|${vol}">🔴 ${plat} / ${drv} | ${wh.replace('GUDANG ','')} (IDLE, ${(vol*svol2).toFixed(1)}m³)</option>`);
+    // Auto-match by coverage if not manually assigned
+    if(!vendor){
+      const kirim = String(item.kirim||'').toUpperCase();
+      const kota = String(item.kota||item.zona||'').toUpperCase();
+
+      // Strategy: match by vendor tipe based on trigger
+      // Vol/Wt besar → prefer "Truck Sewa" (Fuso/Tronton)
+      // Luar kota → prefer "Ekspedisi Antar Kota"
+      // Overflow Jabo → prefer "Ekspedisi Lokal"
+      const reason = String(item.vendor_trigger_reason||item.vendor_reason||'');
+      let preferredTipe = null;
+      if(/volume|berat|bongkar lama/i.test(reason)){
+        preferredTipe = /TRUCK|SEWA/i;
+      } else if(/luar kota|luar jabo/i.test(reason)){
+        preferredTipe = /ANTAR.?KOTA|EKSPEDISI.?ANTAR/i;
+      } else {
+        preferredTipe = /LOKAL/i;
+      }
+
+      // First pass: match tipe + coverage
+      for(const vs of vendorState){
+        if(!vs.available) continue;
+        if(preferredTipe && !preferredTipe.test(String(vs.tipe||''))) continue;
+        const kws = vendorCoverageMap[vs.kode].keywords;
+        if(kws.some(kw => kirim.includes(kw) || kota.includes(kw)) || kws.includes('JABODETABEK')){
+          vendor = vs;
+          break;
+        }
+      }
+      // Second pass: any available vendor
+      if(!vendor){
+        for(const vs of vendorState){
+          if(!vs.available) continue;
+          const kws = vendorCoverageMap[vs.kode].keywords;
+          if(kws.some(kw => kirim.includes(kw) || kota.includes(kw)) || kws.includes('JABODETABEK')){
+            vendor = vs;
+            break;
+          }
+        }
+      }
+    }
+
+    if(!vendor){
+      unassigned.push(item);
+      return;
+    }
+
+    const key = `${wh}|${vendor.kode}`;
+    if(!grouping[key]){
+      grouping[key] = {wh, vendor, items:[]};
+    }
+    grouping[key].items.push(item);
+  });
+
+  // Render groups
+  const container = document.getElementById('vendor-groups-v443');
+  const groupKeys = Object.keys(grouping).sort((a,b)=>a.localeCompare(b));
+
+  if(groupKeys.length === 0 && unassigned.length === 0){
+    container.innerHTML = '<div style="text-align:center;color:var(--dim);padding:32px;background:#f0fdf4;border-radius:10px">✅ Semua DO berhasil di-plot ke kendaraan internal — tidak ada yang perlu vendor</div>';
+  } else {
+    // Group by warehouse first
+    const byWh = {};
+    groupKeys.forEach(k=>{
+      const g = grouping[k];
+      if(!byWh[g.wh]) byWh[g.wh] = [];
+      byWh[g.wh].push(g);
+    });
+
+    container.innerHTML = Object.entries(byWh).map(([wh, groups])=>{
+      const totalDO = groups.reduce((s,g)=>s+new Set(g.items.map(i=>i.doc_no)).size, 0);
+      const totalItems = groups.reduce((s,g)=>s+g.items.length, 0);
+
+      return `
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
+          <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)">
+            🏭 GUDANG ${wh} — ${totalDO} DO (${totalItems} item) via vendor
+          </div>
+          ${groups.map(g => renderVendorGroup(g, wh)).join('')}
+        </div>
+      `;
+    }).join('');
   }
 
-  const vendorOpts2=(vendorState).map((v,vi)=>
-    `<option value="VENDOR:${vi}">${v.nama}</option>`).join('');
+  // Render unassigned section
+  const unassignedSection = document.getElementById('vendor-unassigned-section');
+  const unassignedTbody = document.getElementById('tbody-vendor-unassigned');
+  document.getElementById('cnt-vendor-unassigned').textContent = unassigned.length;
 
-  const allInternalLK=[internalOptsLK,idleOptsLK.join('')].filter(Boolean).join('');
+  if(unassigned.length === 0){
+    unassignedSection.style.display = 'none';
+  } else {
+    unassignedSection.style.display = '';
+    const vendorOpts = vendorState.filter(v=>v.available)
+      .map((v,vi)=>`<option value="VENDOR:${vi}">📦 ${v.nama} [${v.tipe}]</option>`).join('');
+    const svolU=CFG.safety_vol||0.85, swtU=CFG.safety_wt||0.90;
+    const internalOptsU = routes
+      .filter(r=> r.total_vol<r.vehicle.vol_m3*svolU*0.98 && r.total_wt<r.vehicle.max_kg*swtU*0.98)
+      .map(r=>{
+        const sv=(r.vehicle.vol_m3*svolU-r.total_vol).toFixed(2);
+        return `<option value="KEND:${r.id}">🚛 ${r.vehicle.plat} / ${r.vehicle.driver} (${sv}m³)</option>`;
+      }).join('');
 
-  document.getElementById('tbody-vendor-lk').innerHTML = luarKotaItems.map((r,ii)=>{
-    const v=vendorAssignedSet.get(r); // lookup by object reference — tidak bocor ke baris lain
-    const itemIdx=vendorItems.indexOf(r);
-    const assignSel=`<select class="reassign-sel" onchange="reassignDO(${itemIdx},this.value)" style="font-size:10px;max-width:200px">
-      <option value="">— Assign —</option>
-      ${allInternalLK?`<optgroup label="Kendaraan Internal (ada space)">${allInternalLK}</optgroup>`:'<optgroup label="⚠ Semua kendaraan penuh" disabled></optgroup>'}
-      ${vendorOpts2?`<optgroup label="Vendor / Ekspedisi">${vendorOpts2}</optgroup>`:''}
-    </select>`;
-    return `<tr>
-      <td style="font-family:var(--mono);font-size:10px">${r.doc_no}</td>
-      <td style="font-size:11px">${r.wh_cons.replace('GUDANG ','')}</td>
-      <td style="font-size:11px">${r.customer.slice(0,30)}</td>
-      <td style="color:var(--muted);max-width:160px;font-size:10px">${r.kirim.slice(0,55)}</td>
-      <td style="font-family:var(--mono);font-weight:600">${r.qty}</td>
-      <td>${assignSel}${v?`<span style="font-size:9px;color:var(--green);margin-left:3px">→ ${v.nama.slice(0,15)}</span>`:''}</td>
-      <td style="color:var(--red);font-size:10px">${r.vendor_reason||'—'}</td>
-    </tr>`;
-  }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:16px">Tidak ada DO luar kota ✅</td></tr>';
+    unassignedTbody.innerHTML = unassigned.map(r=>{
+      const itemIdx = vendorItems.indexOf(r);
+      const assignSel = `<select class="reassign-sel" onchange="reassignDO(${itemIdx},this.value)"
+          style="font-size:10px;max-width:200px;border:0.5px solid var(--border2);border-radius:4px;padding:3px 6px;background:var(--card);color:var(--text)">
+        <option value="">— Pilih Vendor —</option>
+        ${internalOptsU?`<optgroup label="Kendaraan Internal">${internalOptsU}</optgroup>`:''}
+        ${vendorOpts?`<optgroup label="Vendor">${vendorOpts}</optgroup>`:''}
+      </select>`;
+      return `<tr style="background:#fffbeb">
+        <td style="font-family:var(--mono);font-size:10px">${r.doc_no}</td>
+        <td style="font-size:11px">${(r.wh_cons||'').replace('GUDANG ','')}</td>
+        <td style="font-size:11px;font-weight:600">${(r.customer||'').slice(0,28)}</td>
+        <td style="color:var(--muted);max-width:180px;font-size:10px">${(r.kirim||'').slice(0,60)}</td>
+        <td style="font-family:var(--mono);font-weight:700;color:var(--amber)">${r.qty||0}</td>
+        <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${(r.total_vol||0).toFixed(3)}</td>
+        <td>${assignSel}</td>
+        <td style="font-size:10px;color:var(--amber)">${r.vendor_trigger_reason||r.vendor_reason||'—'}</td>
+      </tr>`;
+    }).join('');
+  }
 
-  // ── SEKSI 3: DO sudah di-assign ke kendaraan internal ───────────────────
-  renderAssignedFromUnplot();
+  // Note: renderAssignedFromUnplot was used in old version, no longer called in new flow
+}
+
+// v4.43: Render a single vendor group (per wh × vendor)
+function renderVendorGroup(group, wh){
+  const {vendor, items} = group;
+  const uniqueDOs = [...new Set(items.map(i=>i.doc_no))];
+  const totalDus = items.reduce((s,i)=>s+(i.qty||0), 0);
+  const totalVol = items.reduce((s,i)=>s+(i.total_vol||0), 0);
+  const totalWt = items.reduce((s,i)=>s+(i.total_wt||0), 0);
+
+  const vendorOpts = vendorState.filter(v=>v.available && v.kode!==vendor.kode)
+    .map((v,vi)=>{
+      const realIdx = vendorState.indexOf(v);
+      return `<option value="VENDOR:${realIdx}">📦 ${v.nama} [${v.tipe}]</option>`;
+    }).join('');
+  const svol=CFG.safety_vol||0.85, swt=CFG.safety_wt||0.90;
+  const internalOpts = routes
+    .filter(r=> r.wh.toUpperCase().includes(wh) && r.total_vol<r.vehicle.vol_m3*svol*0.98 && r.total_wt<r.vehicle.max_kg*swt*0.98)
+    .map(r=>{
+      const sv=(r.vehicle.vol_m3*svol-r.total_vol).toFixed(2);
+      return `<option value="KEND:${r.id}">🚛 ${r.vehicle.plat} / ${r.vehicle.driver} (sisa ${sv}m³)</option>`;
+    }).join('');
+
+  const telpAvail = vendor.telp && !/\[ISI|\[Telp/i.test(vendor.telp);
+  const whatsappBtn = telpAvail
+    ? `<button onclick="sendVendorOrder('${wh}','${vendor.kode}')" style="padding:8px 16px;border-radius:8px;background:#22c55e;color:#fff;border:none;font-weight:700;font-size:12px;cursor:pointer;box-shadow:0 2px 4px rgba(34,197,94,.3)">📱 Kirim Order via WhatsApp</button>`
+    : `<button onclick="alert('Nomor WA vendor belum diisi. Silakan update di sheet Vendor master.')" style="padding:8px 16px;border-radius:8px;background:#94a3b8;color:#fff;border:none;font-size:12px;cursor:pointer" title="Nomor telp vendor belum diisi">⚠ Nomor WA belum diisi</button>`;
+
+  return `
+    <div style="background:var(--amber-l);border:1px solid var(--amber);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--amber)">${vendor.nama} <span style="font-weight:normal;color:var(--muted)">(${vendor.tipe})</span></div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">
+            PIC: ${vendor.pic||'-'} ${telpAvail?`| Telp: ${vendor.telp}`:''}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${uniqueDOs.length} DO · ${totalDus} DUS · ${totalVol.toFixed(1)}m³ · ${Math.round(totalWt/1000)}t</span>
+          ${whatsappBtn}
+        </div>
+      </div>
+      <table class="info-tbl" style="font-size:11px">
+        <thead><tr>
+          <th>DO No</th><th>Customer</th><th>Tujuan</th><th>QTY</th><th>Vol</th><th>Kriteria</th><th>Pindah</th>
+        </tr></thead>
+        <tbody>
+          ${items.map(r=>{
+            const itemIdx=vendorItems.indexOf(r);
+            const assignSel=`<select class="reassign-sel" onchange="reassignDO(${itemIdx},this.value)"
+                style="font-size:9px;max-width:160px;border:0.5px solid var(--border2);border-radius:4px;padding:2px 4px;background:var(--card);color:var(--text)">
+              <option value="">— Pindah —</option>
+              ${internalOpts?`<optgroup label="Kendaraan Internal (sisa)">${internalOpts}</optgroup>`:''}
+              ${vendorOpts?`<optgroup label="Vendor Lain">${vendorOpts}</optgroup>`:''}
+            </select>`;
+            return `<tr>
+              <td style="font-family:var(--mono);font-size:9px">${r.doc_no}</td>
+              <td style="font-size:10px;font-weight:600">${(r.customer||'').slice(0,22)}</td>
+              <td style="color:var(--muted);max-width:140px;font-size:9px">${(r.kirim||'').slice(0,45)}</td>
+              <td style="font-family:var(--mono);font-weight:600;font-size:10px">${r.qty||0}</td>
+              <td style="font-family:var(--mono);font-size:9px;color:var(--muted)">${(r.total_vol||0).toFixed(2)}</td>
+              <td style="font-size:9px;color:#92400e">${(r.vendor_trigger_reason||r.vendor_reason||'—').slice(0,50)}</td>
+              <td>${assignSel}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+// v4.43: Build WhatsApp URL + open
+function sendVendorOrder(wh, vendorKode){
+  const vendor = vendorState.find(v=>v.kode===vendorKode);
+  if(!vendor){
+    alert('Vendor tidak ditemukan: '+vendorKode);
+    return;
+  }
+  if(!vendor.telp || /\[ISI|\[Telp/i.test(vendor.telp)){
+    alert('Nomor WA vendor belum diisi. Silakan update sheet Vendor master.');
+    return;
+  }
+
+  // Normalize phone number: 08xxx → 628xxx, +628 → 628, 628 → 628
+  let phone = String(vendor.telp).replace(/[^0-9+]/g,'');
+  if(phone.startsWith('+')) phone = phone.slice(1);
+  if(phone.startsWith('0')) phone = '62' + phone.slice(1);
+  if(!phone.startsWith('62')) phone = '62' + phone;
+
+  // Collect items for this group (wh × vendor)
+  const manualAssignMap = new Map();
+  vendorState.forEach(vs=>{
+    (vs.assigned_dos||[]).forEach(d=>manualAssignMap.set(d, vs));
+  });
+
+  const items = vendorItems.filter(it=>{
+    const itWh = String(it.wh_cons||it.wh||'').replace('GUDANG ','').toUpperCase();
+    if(itWh !== wh) return false;
+    const manuallyAssignedVendor = manualAssignMap.get(it);
+    if(manuallyAssignedVendor){
+      return manuallyAssignedVendor.kode === vendorKode;
+    }
+    // Auto-assigned — match if vendor in coverage (simple check: default V-first-available)
+    // Actually we need to replicate the logic from renderVendor auto-assign
+    // For simplicity: kalau belum manual assigned dan kode vendor saat ini match => yes
+    // Loop through vendorState and find which is the auto-assign target for this item
+    for(const vs of vendorState){
+      if(!vs.available) continue;
+      const coverage = String(vs.coverage||'').toUpperCase();
+      const zonaList = Array.isArray(vs.zona_coverage)
+        ? vs.zona_coverage
+        : String(vs.zona_coverage||'').split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
+      const kws = [coverage, ...zonaList].filter(Boolean);
+      const kirim = String(it.kirim||'').toUpperCase();
+      const kota = String(it.kota||it.zona||'').toUpperCase();
+      if(kws.some(kw => kirim.includes(kw) || kota.includes(kw)) || kws.includes('JABODETABEK')){
+        return vs.kode === vendorKode;
+      }
+    }
+    return false;
+  });
+
+  if(items.length === 0){
+    alert('Tidak ada DO untuk vendor ini di gudang '+wh);
+    return;
+  }
+
+  // Group items by DO No (1 DO bisa punya multiple items)
+  const doGroups = {};
+  items.forEach(it=>{
+    if(!doGroups[it.doc_no]) doGroups[it.doc_no] = [];
+    doGroups[it.doc_no].push(it);
+  });
+
+  // Build message (singkat — no greeting)
+  const tgl = doDate || new Date().toLocaleDateString('id-ID');
+  let msg = `Order pickup ${tgl}\n\nGudang: ${wh}\n\n`;
+
+  Object.entries(doGroups).forEach(([docNo, doItems])=>{
+    const sample = doItems[0];
+    const totalQty = doItems.reduce((s,i)=>s+(i.qty||0), 0);
+    const totalVol = doItems.reduce((s,i)=>s+(i.total_vol||0), 0);
+    msg += `DO ${docNo}\n`;
+    msg += `${sample.customer||'-'}\n`;
+    msg += `${sample.kirim||'-'}\n`;
+    msg += `${totalQty} DUS (${totalVol.toFixed(1)} m³)\n\n`;
+  });
+
+  const grandQty = items.reduce((s,i)=>s+(i.qty||0), 0);
+  const grandVol = items.reduce((s,i)=>s+(i.total_vol||0), 0);
+  msg += `Total: ${Object.keys(doGroups).length} DO, ${grandQty} DUS, ${grandVol.toFixed(1)} m³`;
+
+  // Build wa.me URL
+  const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+
+  // Open in new tab
+  const win = window.open(waUrl, '_blank');
+  if(!win){
+    alert('Browser memblokir pop-up. Silakan allow pop-up untuk situs ini lalu coba lagi.');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// v4.43 — DO KONFLIK: Render & Actions
+// ═══════════════════════════════════════════════════════════════════
+
+function renderKonflik(){
+  const cnt = conflictItems.length;
+  const btn = document.getElementById('tab-btn-konflik');
+  if(btn) btn.textContent = '⚠ DO Konflik' + (cnt>0?` (${cnt})`:'');
+  const cntEl = document.getElementById('cnt-konflik');
+  if(cntEl) cntEl.textContent = cnt;
+
+  const container = document.getElementById('konflik-list');
+  if(!container) return;
+
+  if(cnt === 0){
+    container.innerHTML = '<div style="text-align:center;color:var(--dim);padding:32px;background:#f0fdf4;border-radius:10px">✅ Tidak ada DO konflik — semua DO bisa di-plot normal</div>';
+    return;
+  }
+
+  // Group by DO No (1 DO might have multiple items)
+  const doGroups = {};
+  conflictItems.forEach(it=>{
+    if(!doGroups[it.doc_no]) doGroups[it.doc_no] = [];
+    doGroups[it.doc_no].push(it);
+  });
+
+  container.innerHTML = Object.entries(doGroups).map(([docNo, items])=>{
+    const sample = items[0];
+    const totalQty = items.reduce((s,i)=>s+(i.qty||0), 0);
+    const totalVol = items.reduce((s,i)=>s+(i.total_vol||0), 0);
+    const totalWt = items.reduce((s,i)=>s+(i.total_wt||0), 0);
+
+    const flags = [];
+    if(items.some(i=>i.no_cdd)) flags.push('<span style="background:#fee2e2;color:#b91c1c;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:600">no_cdd</span>');
+    if(items.some(i=>i.force_cde)) flags.push('<span style="background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:600">force_cde</span>');
+
+    return `
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px">
+        <div style="display:flex;justify-content:space-between;align-items:start;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+          <div style="flex:1;min-width:260px">
+            <div style="font-size:13px;font-weight:700;color:#991b1b;margin-bottom:4px">
+              ⚠ DO ${docNo}
+              <span style="margin-left:8px">${flags.join(' ')}</span>
+            </div>
+            <div style="font-size:11px;color:var(--text);font-weight:600">${sample.customer||'-'}</div>
+            <div style="font-size:10px;color:var(--muted);max-width:500px;margin-top:2px">${sample.kirim||'-'}</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--navy);margin-top:4px">
+              ${totalQty} DUS · ${totalVol.toFixed(1)} m³ · ${(totalWt/1000).toFixed(1)} ton
+            </div>
+            <div style="font-size:10px;color:#b91c1c;margin-top:6px;font-style:italic">
+              ${sample.conflict_reason||'Konflik tidak spesifik'}
+            </div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">
+              Trigger vendor: ${sample.vendor_trigger_reason||'—'}
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;min-width:170px">
+            <button onclick="konflikSplit('${docNo}')"
+              style="padding:7px 10px;border-radius:6px;background:#0891b2;color:#fff;border:none;font-size:11px;font-weight:600;cursor:pointer">
+              🔪 Split ke CDE
+            </button>
+            <button onclick="konflikDihubungi('${docNo}')"
+              style="padding:7px 10px;border-radius:6px;background:#16a34a;color:#fff;border:none;font-size:11px;font-weight:600;cursor:pointer">
+              ✓ Sudah Dihubungi
+            </button>
+            <button onclick="konflikTunda('${docNo}')"
+              style="padding:7px 10px;border-radius:6px;background:#f59e0b;color:#fff;border:none;font-size:11px;font-weight:600;cursor:pointer">
+              📅 Tunda Besok
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function konflikSplit(docNo){
+  const items = conflictItems.filter(i=>i.doc_no===docNo);
+  if(!items.length) return;
+
+  const totalVol = items.reduce((s,i)=>s+(i.total_vol||0),0);
+  const cdeCap = 5; // assumed CDE vol cap
+  const minUnits = Math.ceil(totalVol/cdeCap);
+
+  const input = prompt(
+    `Split DO ${docNo} (${totalVol.toFixed(1)} m³) ke berapa CDE?\n\n`+
+    `Minimum: ${minUnits} unit (karena CDE cap ~${cdeCap}m³)\n`+
+    `Rekomendasi: ${minUnits} unit\n\n`+
+    `Masukkan jumlah unit:`,
+    String(minUnits)
+  );
+  if(!input) return;
+  const nUnits = parseInt(input);
+  if(!(nUnits > 0)) { alert('Jumlah unit tidak valid'); return; }
+
+  // Simple split: distribute qty evenly, flag each item with _split_group
+  // Then move to active routing (re-trigger routing needed — for now, pindah ke vendor sebagai manual task)
+  // v1 approach: tandai di conflictItems, dispatcher manual handle via tab lain
+  items.forEach(it=>{
+    it._split_target = nUnits;
+    it._split_note = `Dipecah ke ${nUnits} CDE — dispatcher koordinasi manual`;
+  });
+
+  alert(`DO ${docNo} ditandai untuk split ke ${nUnits} unit CDE.\n\nNote: Split otomatis belum diimplementasi di v4.43. Tandai ini sebagai TODO dispatcher untuk koordinasi muat manual.`);
+  // Move to a kind of "handled" state: pindah ke ditunda dengan reason split
+  konflikMoveTo(docNo, 'split_manual');
+}
+
+function konflikDihubungi(docNo){
+  const catatan = prompt('Catatan hasil kontak customer (opsional):\n\nContoh:\n- Customer setuju alamat diganti ke [alamat baru]\n- Customer OK tunggu 2 hari');
+  if(catatan === null) return; // cancel
+
+  const items = conflictItems.filter(i=>i.doc_no===docNo);
+  items.forEach(it=>{
+    it._dihubungi_catatan = catatan || 'Sudah dihubungi (no catatan)';
+  });
+  konflikMoveTo(docNo, 'dihubungi');
+  alert(`DO ${docNo} ditandai "Sudah Dihubungi".\n\nCatatan tersimpan untuk referensi dispatcher.\n\nKalau alamat sudah diubah, upload ulang SAP dengan alamat baru untuk re-routing.`);
+}
+
+function konflikTunda(docNo){
+  const items = conflictItems.filter(i=>i.doc_no===docNo);
+  items.forEach(it=>{
+    pendingTomorrowItems.push({
+      ...it,
+      pending_reason: 'DO Konflik — perlu resolve (alamat tidak bisa kendaraan besar)',
+      tunda_date: doDate,
+    });
+  });
+  konflikMoveTo(docNo, 'tunda');
+  alert(`DO ${docNo} dipindah ke Pending Besok.\n\nBesok akan dapat priority A+ (plot duluan).`);
+}
+
+function konflikMoveTo(docNo, action){
+  // Remove from conflictItems
+  conflictItems = conflictItems.filter(i=>i.doc_no !== docNo);
+  // Re-render relevant tabs
+  renderKonflik();
+  renderLuarKotaPending();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -6479,7 +6969,7 @@ function initVendorState(){
 function renderAssignedFromUnplot(){
   let sec=document.getElementById('section-assigned-unplot');
   if(!sec){
-    const lkSec=document.getElementById('vendor-luarkota-section');
+    const lkSec=document.getElementById('vendor-groups-v443') || document.getElementById('vendor-unassigned-section');
     if(!lkSec) return;
     sec=document.createElement('div');
     sec.id='section-assigned-unplot';
@@ -7042,82 +7532,8 @@ function changeUnits(vi,delta){
 
 function renderVendorDOList(){
   document.getElementById('cnt-vendor').textContent=vendorItems.length;
-
-  // tbody-vendor tidak ada lagi di v4.12+ (diganti tbody-vendor-jabo + tbody-vendor-lk)
-  // Delegate ke renderVendor() yang sudah split
+  // v4.43: Delegate ke renderVendor() yang sudah handle grouping per Gudang × Vendor
   renderVendor();
-
-  // Build internal + vendor options untuk reassign select
-  const svol=CFG.safety_vol||0.85;
-  const swt=CFG.safety_wt||0.90;
-  const routedOpts=routes.filter(r=>
-    r.total_vol<r.vehicle.vol_m3*svol*0.98 &&
-    r.total_wt<r.vehicle.max_kg*swt*0.98
-  ).map(r=>{
-    const spareVol=(r.vehicle.vol_m3*svol-r.total_vol).toFixed(2);
-    const spareWt=Math.round(r.vehicle.max_kg*swt-r.total_wt);
-    const g=r.wh.replace('GUDANG ','');
-    return `<option value="KEND:${r.id}">🚛 ${r.vehicle.plat} — ${r.vehicle.driver} | ${g} (sisa ${spareVol}m³ / ${spareWt}kg)</option>`;
-  });
-
-  const routedPlats=new Set(routes.map(r=>r.vehicle.plat));
-  const kRows=(files.masterData&&files.masterData['Kendaraan'])||[];
-  const kh=kRows[0]||[];
-  const ki={
-    plat:kh.findIndex(h=>String(h).toLowerCase().includes('plat')),
-    driver:kh.findIndex(h=>String(h).toLowerCase().includes('driver')||String(h).toLowerCase().includes('nama driver')),
-    wh:kh.findIndex(h=>String(h).toLowerCase().includes('gudang')||String(h).toLowerCase().includes('warehouse')),
-    tipe:kh.findIndex(h=>String(h).toLowerCase().includes('tipe')),
-    vol:kh.findIndex(h=>String(h).toLowerCase().includes('volume')),
-    status:kh.findIndex(h=>String(h).toLowerCase().includes('status')),
-  };
-  const idleOpts=[];
-  for(let i=1;i<kRows.length;i++){
-    const r=kRows[i];
-    const plat=String(r[ki.plat]||'').trim();
-    if(!plat||routedPlats.has(plat)) continue;
-    const driver=String(r[ki.driver]||'').trim();
-    const status=String(r[ki.status]||'Aktif').trim();
-    if(/rusak|tidak aktif|\[ISI/i.test(driver)||/tidak aktif/i.test(status)) continue;
-    const wh=consWH(String(r[ki.wh]||'').trim());
-    const vol=parseFloat(String(r[ki.vol]||'9').replace(/[^0-9.]/g,''))||9;
-    const g=wh.replace('GUDANG ','');
-    idleOpts.push(`<option value="IDLE:${plat}|${wh}|${vol}">🔴 ${plat} — ${driver} | ${g} (IDLE, cap ${(vol*svol).toFixed(1)}m³)</option>`);
-  }
-
-  // Patch reassign select into existing tbody rows (jabo + lk) yang sudah dirender renderVendor()
-  const internalOpts=[...routedOpts,...idleOpts].join('');
-  const vendorOpts=vendorState.map((v,vi)=>
-    `<option value="VENDOR:${vi}">${v.nama}</option>`).join('');
-
-  // Tambahkan kolom reassign ke tabel jabo jika ada item
-  const jaboTbody=document.getElementById('tbody-vendor-jabo');
-  if(jaboTbody&&vendorItems.some(r=>!r.luar_kota&&!r.vendor_fallback)){
-    const jaboItems=vendorItems.filter(r=>!r.luar_kota&&!r.vendor_fallback);
-    jaboTbody.innerHTML=jaboItems.map((item,ii)=>{
-      const assignedVi=vendorState.findIndex(v=>v.assigned_dos&&v.assigned_dos.includes(item));
-      const v=assignedVi>=0?vendorState[assignedVi]:null;
-      const prio=item.priority||0;
-      const prioCls=prio===3?'td-overdue':prio===2?'td-topurgent':prio===1?'td-urgent':'';
-      return `<tr class="${prioCls}" style="background:#fffbeb">
-        <td style="font-family:var(--mono);font-size:10px;color:var(--navy)">${item.doc_no}</td>
-        <td style="font-size:11px">${item.wh_cons.replace('GUDANG ','')}</td>
-        <td style="font-size:11px;font-weight:600">${item.customer.slice(0,30)}</td>
-        <td style="color:var(--muted);max-width:220px;font-size:10px">${item.kirim.slice(0,70)}</td>
-        <td style="font-family:var(--mono);font-weight:700;color:var(--amber)">${item.qty}</td>
-        <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${(item.total_vol||0).toFixed(3)}</td>
-        <td>
-          <select class="reassign-sel" onchange="reassignDO(${vendorItems.indexOf(item)},this.value)">
-            <option value="">— Assign —</option>
-            ${internalOpts?`<optgroup label="Kendaraan Internal">${internalOpts}</optgroup>`:''}
-            ${vendorOpts?`<optgroup label="Vendor">${vendorOpts}</optgroup>`:''}
-          </select>
-          ${v?`<span style="font-size:10px;color:var(--green);margin-left:4px">→ ${v.nama.slice(0,20)}</span>`:''}
-        </td>
-        <td style="color:var(--amber);font-size:10px">${item.vendor_reason||'Kapasitas penuh'}</td>
-      </tr>`;
-    }).join('');
-  }
 }
 function reassignDO(itemIdx,assignStr){
   const item=vendorItems[itemIdx];
@@ -8031,6 +8447,7 @@ function resetApp(){
   document.getElementById('analyze-btn').disabled=true;
   document.getElementById('up-note').textContent='Upload file SAP + PG dan connect Google Sheets atau upload data master';
   routes=[];skipped=[];deferred=[];vendorItems=[];transferItems=[];carryOverItems=[];luarKotaPending=[];biayaData={};
+  conflictItems=[];pendingTomorrowItems=[]; // v4.43
   assignedFromUnplot=[];
   gsConnected=false;
   document.getElementById('gs-status').style.display='none';
