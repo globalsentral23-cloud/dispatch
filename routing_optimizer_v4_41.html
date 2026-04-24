@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.40</title>
+<title>Routing Optimizer v4.41</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -456,8 +456,20 @@ body.dispatch-active .dispatch-bar{display:flex}
 </div>
 
 <!-- UPLOAD -->
-<div id="upload-screen" style="display:none">
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.26</div>
+<div id="upload-screen" style="display:none;position:relative">
+  <!-- v4.41: User badge + logout button di upload-screen -->
+  <div id="upload-user-bar" style="position:absolute;top:20px;right:20px;display:flex;align-items:center;gap:8px;padding:6px 14px;background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(15,23,42,.08);border:1px solid #dbe3f0;z-index:10">
+    <div style="width:8px;height:8px;border-radius:50%;background:#22c55e"></div>
+    <div style="font-size:11px;line-height:1.3">
+      <div id="up-user-nama" style="font-weight:700;color:#0f172a">—</div>
+      <div id="up-user-info" style="color:#64748b;font-size:9px">—</div>
+    </div>
+    <button onclick="doLogout()" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;margin-left:4px">
+      <span style="font-size:13px">⏻</span> Logout
+    </button>
+  </div>
+
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.41</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -517,7 +529,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.38</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.41</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -738,7 +750,7 @@ body.dispatch-active .dispatch-bar{display:flex}
 
 <script>
 // ═══════════════════════════════════════════════════════
-// v4.40 — DISPATCHER TOKEN INTERCEPTOR
+// v4.41 — DISPATCHER TOKEN INTERCEPTOR
 // ═══════════════════════════════════════════════════════
 // Auto-inject token ke semua fetch() ke GAS. Active setelah login
 // (token disimpan di localStorage.dsp_token saat doLoginApp sukses).
@@ -4800,9 +4812,16 @@ function togglePassVis() {
 function updateUserBadge() {
   if (!currentUser) return;
   const roleLabel={dispatcher:'Dispatcher',settlement:'Keuangan',kepala:'Kepala Gudang',pusat:'Staff Pusat',superadmin:'Super Admin'};
-  document.getElementById('user-badge-nama').textContent = currentUser.nama;
-  document.getElementById('user-badge-info').textContent =
-    (roleLabel[currentUser.role]||currentUser.role)+' · '+(GUDANG_LABEL[currentUser.gudang]||currentUser.gudang);
+  const nama = currentUser.nama || currentUser.username;
+  const info = (roleLabel[currentUser.role]||currentUser.role)+' · '+(GUDANG_LABEL[currentUser.gudang]||currentUser.gudang);
+
+  // App screen badge
+  const nm = document.getElementById('user-badge-nama'); if (nm) nm.textContent = nama;
+  const inf = document.getElementById('user-badge-info'); if (inf) inf.textContent = info;
+
+  // v4.41: Upload screen badge
+  const upNm = document.getElementById('up-user-nama'); if (upNm) upNm.textContent = nama;
+  const upInf = document.getElementById('up-user-info'); if (upInf) upInf.textContent = info;
 }
 
 function applyAccessControl() {
@@ -4897,18 +4916,48 @@ function filterByGudang(items) {
 }
 
 function doLogout() {
-  if (!confirm('Yakin logout?')) return;
-  sendAuditLog('LOGOUT','Logout manual');
-  currentUser=null; localStorage.removeItem('session_user');
-  document.getElementById('app-screen').style.display='none';
-  document.getElementById('upload-screen').style.display='none';
-  document.getElementById('login-screen').style.display='flex';
-  document.getElementById('login-user').value='';
-  document.getElementById('login-pass').value='';
-  document.getElementById('login-error').style.display='none';
-  document.querySelectorAll('.tab-btn').forEach(b=>b.style.display='');
-  routes=[];files={sap:null,pg:null,master:null};
-  const gb=document.getElementById('gudang-badge'); if(gb) gb.remove();
+  // v4.41: Custom modal — bypass confirm() yang bisa silent-fail
+  const overlay = document.createElement('div');
+  overlay.id = 'logout-confirm-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:22px;max-width:340px;width:100%;box-shadow:0 10px 30px rgba(0,0,0,.3)">
+      <div style="font-size:32px;text-align:center;margin-bottom:8px">🚪</div>
+      <h3 style="font-size:16px;font-weight:700;text-align:center;margin-bottom:4px;color:#0f172a">Logout Routing Optimizer?</h3>
+      <p style="font-size:12px;color:#64748b;text-align:center;margin-bottom:16px;line-height:1.5">
+        Session akan dihapus.<br>User lain bisa login setelah ini.
+      </p>
+      <div style="display:flex;gap:8px">
+        <button id="btn-logout-cancel" style="flex:1;padding:11px;background:#e2e8f0;color:#334155;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">
+          Batal
+        </button>
+        <button id="btn-logout-confirm" style="flex:1;padding:11px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">
+          Ya, Logout
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  document.getElementById('btn-logout-cancel').onclick = () => overlay.remove();
+  document.getElementById('btn-logout-confirm').onclick = () => {
+    const btn = document.getElementById('btn-logout-confirm');
+    btn.disabled = true;
+    btn.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite">⏳</span> Logging out...';
+
+    try {
+      sendAuditLog('LOGOUT','Logout manual');
+    } catch(e) {}
+
+    // v4.41: Clear SEMUA token + session — dispatcher token juga
+    ['session_user', 'dsp_token', 'dsp_expires'].forEach(k => localStorage.removeItem(k));
+    currentUser = null;
+
+    // Short delay untuk user lihat feedback
+    setTimeout(() => { location.reload(); }, 300);
+  };
+
+  // Tap outside untuk cancel
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 }
 
 function sendAuditLog(auditAction,detail) {
