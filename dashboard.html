@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>GST Live Dashboard v1.0</title>
+<title>GST Live Dashboard v1.1 — Live Tracking</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -87,6 +87,28 @@ body{background:var(--bg);color:var(--text);min-height:100vh}
 /* MAP */
 #map{height:460px;border-radius:10px;border:1px solid var(--border)}
 
+/* LIVE TRACKING UI */
+.track-ctrl{background:#fff;border:1px solid var(--border);color:var(--text);padding:5px 9px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s}
+.track-ctrl:hover{background:var(--bg);border-color:var(--accent)}
+.track-ctrl.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.track-ctrl b{font-weight:800}
+
+/* FLEET SIDEBAR */
+.fleet-sidebar{width:220px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;background:#fafbfc}
+.fs-header{padding:8px;border-bottom:1px solid var(--border);background:#fff}
+.fs-header input{width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:11px;outline:none}
+.fs-header input:focus{border-color:var(--accent)}
+.fleet-list{flex:1;overflow-y:auto;font-size:11px}
+.fl-item{padding:8px 10px;border-bottom:1px solid #eef2f7;cursor:pointer;transition:background .15s;display:flex;gap:8px;align-items:flex-start}
+.fl-item:hover{background:#fff}
+.fl-item.selected{background:#dbeafe;border-left:3px solid var(--accent);padding-left:7px}
+.fl-dot{width:10px;height:10px;border-radius:50%;margin-top:3px;flex-shrink:0;border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.1)}
+.fl-body{flex:1;min-width:0}
+.fl-plat{font-family:monospace;font-weight:800;font-size:12px;color:var(--text)}
+.fl-driver{color:var(--muted);font-size:10px;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fl-meta{font-size:9px;color:var(--muted);margin-top:3px;display:flex;gap:6px;flex-wrap:wrap}
+.fl-meta span{background:#fff;padding:1px 4px;border-radius:3px;border:1px solid var(--border)}
+
 /* ALERTS */
 .alert-list{max-height:460px;overflow-y:auto}
 .alert-item{display:flex;gap:10px;padding:10px;border-radius:8px;margin-bottom:8px;cursor:pointer;transition:background .15s;border:1px solid transparent}
@@ -134,11 +156,14 @@ body{background:var(--bg);color:var(--text);min-height:100vh}
   .grid-map{grid-column:span 12 !important}
   .grid-alerts{grid-column:span 12 !important}
   #map{height:350px}
+  .fleet-sidebar{width:180px}
 }
 @media (max-width:640px){
   .fleet-bar{grid-template-columns:repeat(3,1fr)}
   .fleet-stat .num{font-size:20px}
   .header h1{font-size:15px}
+  .fleet-sidebar{width:140px;font-size:10px}
+  .fl-plat{font-size:11px}
 }
 </style>
 </head>
@@ -231,15 +256,71 @@ body{background:var(--bg);color:var(--text);min-height:100vh}
     </div>
   </div>
 
-  <!-- ROW 3: MAP + ALERTS -->
+  <!-- ROW 3: LIVE TRACKING (map + fleet sidebar) + ALERTS -->
   <div class="grid">
-    <div class="card grid-map" style="grid-column:span 8">
-      <div class="card-title">
-        <i class="fas fa-map-marker-alt"></i> LIVE MAP
-        <span style="margin-left:auto;font-weight:600;font-size:10px;color:var(--muted)" id="map-info">—</span>
+    <div class="card grid-map" style="grid-column:span 8;padding:0;overflow:hidden">
+      <!-- Header dengan controls -->
+      <div style="padding:14px 14px 10px;border-bottom:1px solid var(--border)">
+        <div class="card-title" style="margin-bottom:6px">
+          <i class="fas fa-map-marker-alt"></i> LIVE TRACKING
+          <span style="margin-left:auto;font-weight:600;font-size:10px;color:var(--muted)" id="map-info">—</span>
+        </div>
+        <!-- Control bar -->
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:11px">
+          <button class="track-ctrl" id="btn-trail" onclick="toggleTrail()" title="Tampilkan/sembunyikan jejak perjalanan">
+            <i class="fas fa-route"></i> Trail: <b id="trail-state">OFF</b>
+          </button>
+          <button class="track-ctrl" id="btn-follow" onclick="toggleFollow()" title="Auto-follow kendaraan yang dipilih">
+            <i class="fas fa-crosshairs"></i> Follow: <b id="follow-state">OFF</b>
+          </button>
+          <button class="track-ctrl" id="btn-replay" onclick="toggleReplayMode()" title="Replay perjalanan historical">
+            <i class="fas fa-clock-rotate-left"></i> Replay: <b id="replay-state">OFF</b>
+          </button>
+          <button class="track-ctrl" onclick="resetMapView()" title="Reset tampilan peta ke semua kendaraan">
+            <i class="fas fa-expand"></i> Fit All
+          </button>
+          <span style="margin-left:auto;color:var(--muted);font-size:10px" id="follow-target-info"></span>
+        </div>
       </div>
-      <div id="map"></div>
+
+      <!-- Map + Fleet Sidebar -->
+      <div style="display:flex;height:460px">
+        <!-- Fleet sidebar -->
+        <div class="fleet-sidebar" id="fleet-sidebar">
+          <div class="fs-header">
+            <input type="text" id="fleet-search" placeholder="🔍 Cari plat/driver..." oninput="filterFleetList()">
+          </div>
+          <div id="fleet-list" class="fleet-list">
+            <div style="padding:20px;text-align:center;color:var(--muted);font-size:11px">Memuat...</div>
+          </div>
+        </div>
+        <!-- Map -->
+        <div id="map" style="flex:1;height:460px"></div>
+      </div>
+
+      <!-- Replay slider (hidden by default) -->
+      <div id="replay-panel" style="display:none;padding:12px 14px;border-top:1px solid var(--border);background:#f8fafc">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;font-size:11px">
+          <button class="track-ctrl" id="btn-play" onclick="toggleReplayPlay()" style="background:var(--accent);color:#fff;border-color:var(--accent)">
+            <i class="fas fa-play" id="play-icon"></i> <span id="play-label">Play</span>
+          </button>
+          <span style="font-weight:700;color:var(--text)" id="replay-time">06:00</span>
+          <select id="replay-speed" onchange="setReplaySpeed()" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);font-size:11px">
+            <option value="1">1×</option>
+            <option value="2">2×</option>
+            <option value="4" selected>4×</option>
+            <option value="8">8×</option>
+            <option value="16">16×</option>
+          </select>
+          <span style="margin-left:auto;color:var(--muted);font-size:10px" id="replay-plat-info">Pilih kendaraan dari sidebar</span>
+        </div>
+        <input type="range" id="replay-slider" min="360" max="1200" value="360" oninput="onReplaySlide()" style="width:100%;accent-color:var(--accent)">
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:2px">
+          <span>06:00</span><span>09:00</span><span>12:00</span><span>15:00</span><span>18:00</span><span>20:00</span>
+        </div>
+      </div>
     </div>
+
     <div class="card grid-alerts" style="grid-column:span 4">
       <div class="card-title">
         <i class="fas fa-bell"></i> ALERTS
@@ -280,6 +361,23 @@ const state = {
   filterGudang: '',
   filterStatus: null,   // untuk toggle fleet detail
   refreshTimer: null,
+
+  // ── Live Tracking state ──
+  trailEnabled: false,
+  followEnabled: false,
+  followPlat: null,       // plat yang sedang di-follow
+  replayMode: false,
+  replayPlaying: false,
+  replaySpeed: 4,
+  replayCurrentMin: 360,  // current time slider dalam menit (default 06:00)
+  replayTimer: null,
+  replayPlat: null,       // plat untuk replay (single vehicle)
+
+  gpsTrails: {},          // plat → {points, stats} (cached dari getFleetGPSTrail)
+  trailLayers: {},        // plat → L.polyline (trail line di map)
+  replayMarker: null,     // marker khusus replay
+
+  searchQuery: '',
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -470,6 +568,11 @@ async function loadData() {
     state.data = data;
     renderAll();
 
+    // Auto-refresh trail kalau aktif (biar update jalur terbaru)
+    if (state.trailEnabled && state.followPlat) {
+      loadTrail(state.followPlat);
+    }
+
     const nowStr = new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     document.getElementById('last-update').textContent = nowStr;
     document.getElementById('sub-info').textContent =
@@ -583,6 +686,13 @@ function renderKPI() {
 
 function renderMap() {
   if (!state.map) return;
+
+  // Render fleet sidebar
+  renderFleetSidebar();
+
+  // Di replay mode, skip update marker live (replay pakai marker sendiri)
+  if (state.replayMode) return;
+
   // Clear existing markers
   Object.values(state.markers).forEach(m => state.map.removeLayer(m));
   state.markers = {};
@@ -594,15 +704,15 @@ function renderMap() {
 
   const bounds = [];
   plats.forEach(p => {
-    const color = p.status === 'alert' ? '#dc2626' :
-                  p.status === 'jalan' ? '#16a34a' :
-                  p.status === 'muat'  ? '#d97706' :
-                  p.status === 'selesai' ? '#0284c7' : '#94a3b8';
+    const color = statusColor(p.status);
+    const isFollowed = state.followEnabled && state.followPlat === p.plat;
+    const size = isFollowed ? 22 : 16;
+    const ring = isFollowed ? '4px solid #fbbf24' : '3px solid #fff';
     const icon = L.divIcon({
       className: 'live-marker',
-      html: `<div style="background:${color};width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3)"></div>`,
-      iconSize: [22,22],
-      iconAnchor: [11,11],
+      html: `<div style="background:${color};width:${size}px;height:${size}px;border-radius:50%;border:${ring};box-shadow:0 2px 6px rgba(0,0,0,.3)"></div>`,
+      iconSize: [size+6, size+6],
+      iconAnchor: [(size+6)/2, (size+6)/2],
     });
     const m = L.marker([p.lat, p.lng], { icon }).addTo(state.map);
     const doInfo = p.currentDO
@@ -624,18 +734,420 @@ function renderMap() {
           <small style="color:#64748b">GPS: ${p.gpsTs || 'No GPS'}</small>
         </div>
         ${doInfo}
+        <div style="margin-top:6px;display:flex;gap:4px">
+          <button onclick="selectPlat('${p.plat}')" style="flex:1;padding:4px;background:var(--accent,#2563eb);color:#fff;border:none;border-radius:4px;font-size:10px;cursor:pointer">🎯 Follow</button>
+        </div>
       </div>
     `);
+    m.on('click', () => { state.selectedPlat = p.plat; highlightInSidebar(p.plat); });
     state.markers[p.plat] = m;
     bounds.push([p.lat, p.lng]);
   });
 
-  // Fit bounds kalau belum
-  if (bounds.length > 0 && !state.mapFitted) {
+  // Fit bounds kalau belum + tidak sedang follow
+  if (bounds.length > 0 && !state.mapFitted && !state.followEnabled) {
     state.map.fitBounds(bounds, { padding:[30,30] });
     state.mapFitted = true;
   }
+
+  // Auto-follow camera kalau aktif
+  if (state.followEnabled && state.followPlat) {
+    const p = state.data.fleet.plats.find(x => x.plat === state.followPlat);
+    if (p && p.lat && p.lng) {
+      state.map.panTo([p.lat, p.lng], { animate:true, duration:0.5 });
+    }
+  }
+
+  // Re-render trail kalau aktif
+  if (state.trailEnabled) renderTrails();
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LIVE TRACKING — fleet sidebar, trails, follow, replay
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function statusColor(status) {
+  return status === 'alert'   ? '#dc2626' :
+         status === 'jalan'   ? '#16a34a' :
+         status === 'muat'    ? '#d97706' :
+         status === 'selesai' ? '#0284c7' : '#94a3b8';
+}
+
+function renderFleetSidebar() {
+  const list = document.getElementById('fleet-list');
+  if (!list) return;
+  const plats = state.data.fleet.plats || [];
+
+  // Filter by search query
+  const q = (state.searchQuery || '').toLowerCase().trim();
+  const filtered = q
+    ? plats.filter(p =>
+        p.plat.toLowerCase().includes(q) ||
+        (p.driver||'').toLowerCase().includes(q) ||
+        (p.gudang||'').toLowerCase().includes(q))
+    : plats;
+
+  if (!filtered.length) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:11px">Tidak ada kendaraan</div>';
+    return;
+  }
+
+  list.innerHTML = filtered.map(p => {
+    const color = statusColor(p.status);
+    const isSel = state.followPlat === p.plat || state.replayPlat === p.plat;
+    const speed = p.speed ? `${Math.round(p.speed)} km/h` : '—';
+    const gpsAge = p.gpsTs || 'No GPS';
+    const gpsTime = gpsAge.length > 8 ? gpsAge.slice(-8) : gpsAge;
+    return `
+      <div class="fl-item ${isSel ? 'selected':''}" onclick="selectPlat('${p.plat}')">
+        <div class="fl-dot" style="background:${color}"></div>
+        <div class="fl-body">
+          <div class="fl-plat">${p.plat}</div>
+          <div class="fl-driver">${p.driver || '—'}</div>
+          <div class="fl-meta">
+            <span>${p.gudang || '—'}</span>
+            <span>${p.counts.selesai}/${p.counts.total}</span>
+            <span>${speed}</span>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function filterFleetList() {
+  state.searchQuery = document.getElementById('fleet-search').value;
+  renderFleetSidebar();
+}
+
+function highlightInSidebar(plat) {
+  document.querySelectorAll('.fl-item').forEach(el => el.classList.remove('selected'));
+  // Re-render ensures "selected" class correctly applied via state.followPlat
+  renderFleetSidebar();
+  // Scroll ke item
+  const items = document.querySelectorAll('.fl-item');
+  items.forEach(el => {
+    if (el.querySelector('.fl-plat')?.textContent === plat) {
+      el.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    }
+  });
+}
+
+// Select plat dari sidebar atau marker — trigger follow / show trail / open popup
+function selectPlat(plat) {
+  const p = (state.data?.fleet?.plats || []).find(x => x.plat === plat);
+  if (!p) return;
+
+  // Dalam replay mode: set replayPlat dan load trail
+  if (state.replayMode) {
+    state.replayPlat = plat;
+    loadTrailForReplay(plat);
+    renderFleetSidebar();
+    return;
+  }
+
+  // Normal mode: toggle follow + open marker popup + load trail
+  if (state.followEnabled && state.followPlat === plat) {
+    // Deselect
+    state.followPlat = null;
+    document.getElementById('follow-target-info').textContent = '';
+  } else {
+    state.followPlat = plat;
+    document.getElementById('follow-target-info').textContent = `🎯 Follow: ${plat}`;
+    if (p.lat && p.lng) {
+      state.map.setView([p.lat, p.lng], Math.max(state.map.getZoom(), 14), { animate:true });
+    }
+    const m = state.markers[plat];
+    if (m) m.openPopup();
+  }
+
+  // Auto-load trail untuk plat terpilih kalau trail aktif
+  if (state.trailEnabled) loadTrail(plat);
+
+  renderMap();  // redraw untuk update highlighted marker + sidebar
+}
+
+function toggleFollow() {
+  state.followEnabled = !state.followEnabled;
+  document.getElementById('follow-state').textContent = state.followEnabled ? 'ON' : 'OFF';
+  document.getElementById('btn-follow').classList.toggle('active', state.followEnabled);
+  if (!state.followEnabled) {
+    state.followPlat = null;
+    document.getElementById('follow-target-info').textContent = '';
+  }
+  renderMap();
+}
+
+function toggleTrail() {
+  state.trailEnabled = !state.trailEnabled;
+  document.getElementById('trail-state').textContent = state.trailEnabled ? 'ON' : 'OFF';
+  document.getElementById('btn-trail').classList.toggle('active', state.trailEnabled);
+
+  if (state.trailEnabled) {
+    // Load trail untuk kendaraan aktif
+    if (state.followPlat) {
+      loadTrail(state.followPlat);
+    } else {
+      // Load trail semua kendaraan yang statusnya jalan/muat
+      const activePlats = (state.data?.fleet?.plats || [])
+        .filter(p => p.status === 'jalan' || p.status === 'muat' || p.status === 'alert');
+      activePlats.forEach(p => loadTrail(p.plat));
+    }
+  } else {
+    clearTrails();
+  }
+}
+
+async function loadTrail(plat) {
+  try {
+    const today = formatDateDDMMYYYY(new Date());
+    const params = new URLSearchParams({
+      action:'getFleetGPSTrail',
+      date: today,
+      plat: plat,
+      decimate: 'true',
+    });
+    const res = await fetch(`${GAS_URL}?${params}`, { redirect:'follow' });
+    const data = await res.json();
+    if (data.error || !data.plats || !data.plats.length) return;
+    const trail = data.plats[0];
+    state.gpsTrails[plat] = trail;
+    drawTrailLine(plat, trail.points);
+  } catch(e) {
+    console.warn('[loadTrail] error:', e);
+  }
+}
+
+function drawTrailLine(plat, points) {
+  if (!state.map || !points || points.length < 2) return;
+  // Remove old trail for this plat
+  if (state.trailLayers[plat]) {
+    state.map.removeLayer(state.trailLayers[plat]);
+    delete state.trailLayers[plat];
+  }
+  const coords = points.map(p => [p.lat, p.lng]);
+  const p = state.data?.fleet?.plats?.find(x => x.plat === plat);
+  const color = statusColor(p?.status || 'jalan');
+  const line = L.polyline(coords, {
+    color,
+    weight: 3,
+    opacity: 0.7,
+    dashArray: '5, 6',
+  }).addTo(state.map);
+  state.trailLayers[plat] = line;
+}
+
+function clearTrails() {
+  Object.values(state.trailLayers).forEach(l => state.map.removeLayer(l));
+  state.trailLayers = {};
+}
+
+function renderTrails() {
+  // Redraw trails berdasarkan cache
+  Object.entries(state.gpsTrails).forEach(([plat, trail]) => {
+    drawTrailLine(plat, trail.points);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// REPLAY MODE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function toggleReplayMode() {
+  state.replayMode = !state.replayMode;
+  document.getElementById('replay-state').textContent = state.replayMode ? 'ON' : 'OFF';
+  document.getElementById('btn-replay').classList.toggle('active', state.replayMode);
+  document.getElementById('replay-panel').style.display = state.replayMode ? 'block' : 'none';
+
+  if (state.replayMode) {
+    // Stop live refresh saat replay aktif
+    if (state.refreshTimer) clearInterval(state.refreshTimer);
+    // Clear live markers biar tidak bentrok dengan replay
+    Object.values(state.markers).forEach(m => state.map.removeLayer(m));
+    state.markers = {};
+    // Prompt user untuk pilih kendaraan
+    document.getElementById('replay-plat-info').textContent = 'Pilih kendaraan dari sidebar →';
+  } else {
+    // Stop replay + resume live
+    stopReplayPlayback();
+    if (state.replayMarker) {
+      state.map.removeLayer(state.replayMarker);
+      state.replayMarker = null;
+    }
+    clearTrails();
+    state.replayPlat = null;
+    document.getElementById('replay-plat-info').textContent = '';
+    // Resume auto-refresh
+    state.refreshTimer = setInterval(loadData, REFRESH_MS);
+    loadData();
+  }
+}
+
+async function loadTrailForReplay(plat) {
+  document.getElementById('replay-plat-info').textContent = `⏳ Loading trail ${plat}...`;
+  const today = formatDateDDMMYYYY(new Date());
+  const params = new URLSearchParams({
+    action: 'getFleetGPSTrail',
+    date: today,
+    plat: plat,
+    decimate: 'true',
+  });
+  try {
+    const res = await fetch(`${GAS_URL}?${params}`, { redirect:'follow' });
+    const data = await res.json();
+    if (data.error || !data.plats || !data.plats.length || !data.plats[0].points.length) {
+      document.getElementById('replay-plat-info').textContent = `⚠ Tidak ada data GPS untuk ${plat} hari ini`;
+      return;
+    }
+    const trail = data.plats[0];
+    state.gpsTrails[plat] = trail;
+
+    // Draw full trail
+    clearTrails();
+    drawTrailLine(plat, trail.points);
+
+    // Fit bounds
+    const coords = trail.points.map(p => [p.lat, p.lng]);
+    state.map.fitBounds(coords, { padding:[40,40] });
+
+    // Set slider range sesuai firstTs - lastTs
+    const firstMin = tsToMinOfDay(trail.stats.firstTs);
+    const lastMin  = tsToMinOfDay(trail.stats.lastTs);
+    const slider = document.getElementById('replay-slider');
+    slider.min = firstMin || 360;
+    slider.max = lastMin || 1200;
+    slider.value = firstMin || 360;
+    state.replayCurrentMin = firstMin || 360;
+
+    updateReplayMarkerAt(state.replayCurrentMin);
+
+    document.getElementById('replay-plat-info').textContent =
+      `📍 ${plat} · ${trail.points.length} titik · ${trail.stats.totalKm.toFixed(1)} km · max ${Math.round(trail.stats.maxSpeed)} km/h`;
+  } catch(e) {
+    document.getElementById('replay-plat-info').textContent = `❌ Gagal load: ${e.message}`;
+  }
+}
+
+function tsToMinOfDay(ts) {
+  // "dd/MM/yyyy HH:mm:ss" → minute of day
+  const m = String(ts||'').match(/(\d{2}):(\d{2})/);
+  if (!m) return 0;
+  return (+m[1]) * 60 + (+m[2]);
+}
+
+function onReplaySlide() {
+  const val = parseInt(document.getElementById('replay-slider').value, 10);
+  state.replayCurrentMin = val;
+  updateReplayMarkerAt(val);
+}
+
+function updateReplayMarkerAt(minOfDay) {
+  const hh = String(Math.floor(minOfDay/60)).padStart(2,'0');
+  const mm = String(minOfDay % 60).padStart(2,'0');
+  document.getElementById('replay-time').textContent = `${hh}:${mm}`;
+
+  if (!state.replayPlat || !state.gpsTrails[state.replayPlat]) return;
+  const trail = state.gpsTrails[state.replayPlat];
+  const pt = findNearestPoint(trail.points, minOfDay);
+  if (!pt) return;
+
+  const color = statusColor('jalan');
+  if (!state.replayMarker) {
+    const icon = L.divIcon({
+      className: 'replay-marker',
+      html: `<div style="background:${color};width:20px;height:20px;border-radius:50%;border:4px solid #fbbf24;box-shadow:0 2px 10px rgba(0,0,0,.4)"></div>`,
+      iconSize:[28,28], iconAnchor:[14,14],
+    });
+    state.replayMarker = L.marker([pt.lat, pt.lng], { icon }).addTo(state.map);
+    state.replayMarker.bindPopup('');
+  } else {
+    state.replayMarker.setLatLng([pt.lat, pt.lng]);
+  }
+  state.replayMarker.setPopupContent(`
+    <div style="font-size:12px;font-family:system-ui">
+      <strong>${state.replayPlat}</strong> · ${pt.ts.slice(-8)}<br>
+      Speed: ${Math.round(pt.speed||0)} km/h<br>
+      KM total: ${(pt.km||0).toFixed(1)} km
+    </div>`);
+}
+
+function findNearestPoint(points, minOfDay) {
+  if (!points || !points.length) return null;
+  // Binary search atau linear — points sudah sorted by ts
+  let best = points[0], bestDiff = Infinity;
+  for (const pt of points) {
+    const m = tsToMinOfDay(pt.ts);
+    const diff = Math.abs(m - minOfDay);
+    if (diff < bestDiff) { bestDiff = diff; best = pt; }
+    else if (m > minOfDay + 1) break;  // sudah lewat, berhenti
+  }
+  return best;
+}
+
+function toggleReplayPlay() {
+  if (!state.replayPlat) {
+    alert('Pilih kendaraan dari sidebar dulu');
+    return;
+  }
+  if (state.replayPlaying) {
+    stopReplayPlayback();
+  } else {
+    startReplayPlayback();
+  }
+}
+
+function startReplayPlayback() {
+  state.replayPlaying = true;
+  document.getElementById('play-icon').className = 'fas fa-pause';
+  document.getElementById('play-label').textContent = 'Pause';
+  const slider = document.getElementById('replay-slider');
+  const maxVal = parseInt(slider.max, 10);
+
+  state.replayTimer = setInterval(() => {
+    // Step 1 menit per tick, frekuensi tergantung speed
+    state.replayCurrentMin += 1;
+    if (state.replayCurrentMin > maxVal) {
+      stopReplayPlayback();
+      state.replayCurrentMin = parseInt(slider.min, 10);
+    }
+    slider.value = state.replayCurrentMin;
+    updateReplayMarkerAt(state.replayCurrentMin);
+  }, Math.max(1000 / state.replaySpeed, 50));
+}
+
+function stopReplayPlayback() {
+  state.replayPlaying = false;
+  document.getElementById('play-icon').className = 'fas fa-play';
+  document.getElementById('play-label').textContent = 'Play';
+  if (state.replayTimer) { clearInterval(state.replayTimer); state.replayTimer = null; }
+}
+
+function setReplaySpeed() {
+  state.replaySpeed = parseInt(document.getElementById('replay-speed').value, 10) || 4;
+  if (state.replayPlaying) {
+    stopReplayPlayback();
+    startReplayPlayback();
+  }
+}
+
+function resetMapView() {
+  const plats = (state.data?.fleet?.plats || []).filter(p => p.lat && p.lng);
+  if (!plats.length) return;
+  const bounds = plats.map(p => [p.lat, p.lng]);
+  state.map.fitBounds(bounds, { padding:[30,30] });
+  // Reset follow juga
+  if (state.followEnabled) {
+    state.followPlat = null;
+    document.getElementById('follow-target-info').textContent = '';
+  }
+}
+
+function formatDateDDMMYYYY(d) {
+  return String(d.getDate()).padStart(2,'0') + '/' +
+         String(d.getMonth()+1).padStart(2,'0') + '/' +
+         d.getFullYear();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function renderAlerts() {
   const list = document.getElementById('alert-list');
