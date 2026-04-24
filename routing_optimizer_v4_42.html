@@ -647,20 +647,47 @@ body.dispatch-active .dispatch-bar{display:flex}
   <div class="tab-pane" id="tab-luarkota">
     <div class="info-wrap">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
-        <div style="font-size:14px;font-weight:600">DO Luar Kota — Pending Routing Besok (<span id="cnt-luarkota">0</span> item)</div>
+        <div style="font-size:14px;font-weight:600">Pending Besok — <span id="cnt-luarkota">0</span> item luar kota + <span id="cnt-lowutil">0</span> item low-util</div>
         <button onclick="downloadLuarKotaPending()" style="padding:6px 16px;border-radius:8px;background:var(--navy);border:none;color:#fff;font-size:12px;font-weight:600;cursor:pointer">⬇ Download List DO</button>
-        <span style="font-size:11px;color:var(--muted)">Volume belum mencapai 95% kapasitas kendaraan terbesar — tunda sampai volume cukup</span>
+        <span style="font-size:11px;color:var(--muted)">DO yang ditunda untuk plot besok (kapasitas belum cukup, atau util kendaraan rendah)</span>
       </div>
       <div id="luar-kota-summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
-      <div class="tbl-wrap">
-        <table class="info-tbl">
-          <thead><tr>
-            <th>DO No</th><th>Gudang</th><th>Customer</th><th>Area Tujuan</th>
-            <th>Tujuan</th><th>QTY</th><th>Volume (m³)</th>
-            <th>Status Volume</th><th>Keterangan</th>
-          </tr></thead>
-          <tbody id="tbody-luarkota"></tbody>
-        </table>
+
+      <!-- SEKSI 1: Luar Kota Pending -->
+      <div id="luarkota-section" style="margin-bottom:20px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <div style="width:12px;height:12px;border-radius:2px;background:#f59e0b;flex-shrink:0"></div>
+          <div style="font-size:13px;font-weight:700;color:#92400e">🌍 DO Luar Kota — Volume Belum Cukup</div>
+        </div>
+        <div class="tbl-wrap">
+          <table class="info-tbl">
+            <thead><tr>
+              <th>DO No</th><th>Gudang</th><th>Customer</th><th>Area Tujuan</th>
+              <th>Tujuan</th><th>QTY</th><th>Volume (m³)</th>
+              <th>Status Volume</th><th>Keterangan</th>
+            </tr></thead>
+            <tbody id="tbody-luarkota"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SEKSI 2: Low-Util Pending (v4.42 baru) -->
+      <div id="lowutil-section" style="margin-bottom:20px;display:none">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <div style="width:12px;height:12px;border-radius:2px;background:#06b6d4;flex-shrink:0"></div>
+          <div style="font-size:13px;font-weight:700;color:#0e7490">⚡ DO Ditunda — Util Kendaraan Rendah (&lt;30%)</div>
+          <span style="font-size:11px;color:var(--muted)">Kendaraan dengan muatan kurang dari 30% ditunda ke hari berikutnya (lebih efisien)</span>
+        </div>
+        <div class="tbl-wrap">
+          <table class="info-tbl">
+            <thead><tr>
+              <th>DO No</th><th>Gudang</th><th>Customer</th><th>Kota Tujuan</th>
+              <th>Tujuan</th><th>QTY</th><th>Volume (m³)</th>
+              <th>Kendaraan (sebelumnya)</th><th>Alasan</th>
+            </tr></thead>
+            <tbody id="tbody-lowutil"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -831,7 +858,7 @@ let rtPollingTimer = null;
 let rtMusibahAlerts = [];    // [{plat, doc_no, alasan, jam}]
  // true = mode operasional saat muat
 let luarKotaPending=[]; // DO luar kota yang tidak cukup memenuhi 95%
-let routes=[],skipped=[],deferred=[],vendorItems=[],transferItems=[];
+let routes=[],skipped=[],deferred=[],vendorItems=[],transferItems=[],pendingTomorrowItems=[];
 let assignedFromUnplot=[]; // DO yang di-assign dari tab Unplot ke kendaraan internal
 let biayaData={}; // expense tracking per route.id
 let filterWH='all',fR1=true,fR2=true,fKnek=false,fPrio=false,fWarn=false;
@@ -1107,6 +1134,20 @@ function parseMasterData(masterData){
       CFG.zone_lock_after=(parseFloat(val)||70)/100;
     if(param.includes('overflow max detour'))
       CFG.overflow_max_detour_km=parseFloat(val)||5;
+    // ═══ v4.42 — LOW-UTIL FILTER ═══════════════════════════════════════════
+    if(param.includes('low util threshold')||param.includes('min util kendaraan'))
+      CFG.low_util_threshold=(parseFloat(val)||30)/100;
+    if(param.includes('low util enabled')||param.includes('tunda kendaraan rendah'))
+      CFG.low_util_enabled=String(val||'Y').toUpperCase().startsWith('Y');
+    // ═══ v4.42 — FUSO/TRONTON RULES ════════════════════════════════════════
+    if(param.includes('fuso min berat')||param.includes('fuso min wt'))
+      CFG.fuso_min_wt_kg=parseFloat(val)||13000;
+    if(param.includes('fuso max stops')||param.includes('fuso max titik'))
+      CFG.fuso_max_stops=parseInt(val)||2;
+    if(param.includes('tronton min berat'))
+      CFG.tronton_min_wt_kg=parseFloat(val)||18000;
+    if(param.includes('tronton max stops'))
+      CFG.tronton_max_stops=parseInt(val)||2;
   });
 
   // Set defaults untuk zone-fill-first jika tidak di-config
@@ -1115,6 +1156,14 @@ function parseMasterData(masterData){
   if(CFG.target_util_wt===undefined) CFG.target_util_wt=0.95;
   if(CFG.zone_lock_after===undefined) CFG.zone_lock_after=0.70;
   if(CFG.overflow_max_detour_km===undefined) CFG.overflow_max_detour_km=5;
+  // v4.42 low-util defaults
+  if(CFG.low_util_threshold===undefined) CFG.low_util_threshold=0.30;
+  if(CFG.low_util_enabled===undefined) CFG.low_util_enabled=true;
+  // v4.42 Fuso/Tronton defaults
+  if(CFG.fuso_min_wt_kg===undefined) CFG.fuso_min_wt_kg=13000;
+  if(CFG.fuso_max_stops===undefined) CFG.fuso_max_stops=2;
+  if(CFG.tronton_min_wt_kg===undefined) CFG.tronton_min_wt_kg=18000;
+  if(CFG.tronton_max_stops===undefined) CFG.tronton_max_stops=2;
 
   // ── Parse Spesifikasi Produk → CFG.specTable ─────────────────────────────
   // Format: No | Ukuran | Kode SAP | Volume/DUS (m³) | Berat/DUS (kg) | Keterangan
@@ -1582,8 +1631,9 @@ async function startAnalysis(){
     hideLoad();
     await geocodeAll(active);
     showLoad('Menjalankan routing...');await sleep(30);
-    const{rts,vendor}=buildRoutes(active);
+    const{rts,vendor,pendingTomorrow}=buildRoutes(active);
     routes=rts;vendorItems=vendor;
+    pendingTomorrowItems=pendingTomorrow||[]; // v4.42 Step 5 output
     initBiaya(); // hitung estimasi biaya per kendaraan
     setLoad('Membangun dashboard...');await sleep(30);
     hideLoad();
@@ -3716,7 +3766,191 @@ function buildRoutes(active){
   }
   // ── END TRIP 2 PASS ──────────────────────────────────────────────────────
 
-  return{rts,vendor};
+  // ═══════════════════════════════════════════════════════════════════════
+  // v4.42 STEP 5 — LOW-UTIL FILTER
+  // Kendaraan dengan util < 30% di-tunda ke besok (Pending Besok),
+  // KECUALI ada DO carry-over (wajib jalan meski util rendah).
+  // ═══════════════════════════════════════════════════════════════════════
+  const pendingTomorrow = [];
+  if(CFG.low_util_enabled !== false){
+    const lowUtilThreshold = CFG.low_util_threshold || 0.30;
+    const toTunda = [];
+
+    for(const r of rts){
+      // Jangan tunda: Fuso/Tronton route (cek di Step 6), large DO, atau Trip 2
+      if(r.is_large_do) continue;
+      if(r.trip_no === 2) continue;
+      if(/FUSO|TRONTON/i.test(r.vehicle.tipe)) continue;
+
+      const utilVol = r.total_vol / r.vehicle.vol_m3;
+      const utilWt  = r.total_wt  / r.vehicle.max_kg;
+      const utilMax = Math.max(utilVol, utilWt);
+
+      // Cek carry-over: ada DO dengan flag is_carry_over?
+      const hasCarryOver = r.items && r.items.some(i=>i.is_carry_over||i.carry_over_days>=1);
+
+      if(utilMax < lowUtilThreshold && !hasCarryOver){
+        toTunda.push(r);
+      }
+    }
+
+    // Move the low-util routes to pendingTomorrow
+    for(const r of toTunda){
+      const rIdx = rts.indexOf(r);
+      if(rIdx >= 0) rts.splice(rIdx, 1);
+      // Convert items back to pending DOs
+      r.items.forEach(item=>{
+        pendingTomorrow.push({
+          ...item,
+          pending_reason: `Util kendaraan rendah (${(Math.max(r.total_vol/r.vehicle.vol_m3, r.total_wt/r.vehicle.max_kg)*100).toFixed(0)}% < ${(CFG.low_util_threshold*100).toFixed(0)}%) — ditunda ke hari berikutnya`,
+          previous_plat: r.vehicle.plat,
+          previous_driver: r.vehicle.driver,
+          tunda_date: doDate,
+        });
+      });
+      console.log(`[v4.42 low-util] ${r.vehicle.plat} ${r.vehicle.driver}: ${r.items.length} DO di-tunda (util ${(Math.max(r.total_vol/r.vehicle.vol_m3, r.total_wt/r.vehicle.max_kg)*100).toFixed(0)}%)`);
+    }
+    if(toTunda.length > 0){
+      console.log(`%c[v4.42 LOW-UTIL FILTER] ${toTunda.length} kendaraan ditunda ke besok, ${pendingTomorrow.length} DO dipindah ke Pending Besok`, 'color:#f59e0b;font-weight:bold');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // v4.42 STEP 6 — FUSO/TRONTON RULES
+  // Rule A: max 2 titik (alamat unik)
+  // Rule B: 2 titik harus 1 wilayah (bearing delta < 30°)
+  // Rule C: min util berat (Fuso 13t, Tronton 18t)
+  // Fallback: kalau ada ≥2 CDD nganggur → pecah ke CDD
+  // ═══════════════════════════════════════════════════════════════════════
+  {
+    const fusoRoutes = rts.filter(r => /FUSO|TRONTON/i.test(r.vehicle.tipe));
+    for(const r of fusoRoutes){
+      const isTronton = /TRONTON/i.test(r.vehicle.tipe);
+      const minWt = isTronton ? (CFG.tronton_min_wt_kg||18000) : (CFG.fuso_min_wt_kg||13000);
+      const maxStops = isTronton ? (CFG.tronton_max_stops||2) : (CFG.fuso_max_stops||2);
+      const tipeLabel = isTronton ? 'Tronton' : 'Fuso';
+
+      // Hitung unique stops (alamat unik)
+      const uniqueAddrs = new Set();
+      r.items.forEach(i=>{
+        const addr = String(i.kirim||'').split(';')[0].trim().toUpperCase().replace(/\s+/g,'');
+        if(addr) uniqueAddrs.add(addr);
+      });
+      const stopCount = uniqueAddrs.size;
+
+      // Rule A: check max stops
+      if(stopCount > maxStops){
+        r._fuso_warn = `${tipeLabel} punya ${stopCount} titik (max ${maxStops})`;
+        console.warn(`[v4.42 ${tipeLabel}-rule] ${r.vehicle.plat}: ${stopCount} titik > max ${maxStops}`);
+      }
+
+      // Rule B: kalau tepat 2 titik, cek bearing delta (wilayah sama)
+      if(stopCount === 2 && r.groups && r.groups.length >= 2){
+        const bearings = r.groups.map(g=>g.bearing||0);
+        const bDelta = Math.abs(bearings[0] - bearings[1]);
+        const bDeltaNorm = Math.min(bDelta, 360-bDelta);
+        if(bDeltaNorm > 30){ // > 30° = beda wilayah
+          r._fuso_warn = (r._fuso_warn?r._fuso_warn+'; ':'') + `2 titik beda wilayah (delta ${bDeltaNorm.toFixed(0)}°)`;
+          console.warn(`[v4.42 ${tipeLabel}-rule] ${r.vehicle.plat}: 2 titik beda wilayah (bearing delta ${bDeltaNorm.toFixed(0)}°)`);
+        }
+      }
+
+      // Rule C: cek min util berat
+      if(r.total_wt < minWt){
+        // Coba cari ≥2 CDD nganggur (tidak ter-assign route)
+        const allVehiclesWh = vehicles.filter(v=>v.wh===r.wh && /CDD/i.test(v.tipe));
+        const usedPlats = new Set(rts.map(x=>x.vehicle.plat));
+        const idleCDDs = allVehiclesWh.filter(v=>!usedPlats.has(v.plat));
+
+        if(idleCDDs.length >= 2){
+          // Ada ≥2 CDD idle — pecah Fuso ke 2 CDD
+          const svol = CFG.safety_vol || 0.85;
+          const swt = CFG.safety_wt || 0.90;
+
+          // Split items by nearest-neighbor clustering (simple: by alamat)
+          const byAddr = {};
+          r.items.forEach(i=>{
+            const addr = String(i.kirim||'').split(';')[0].trim().toUpperCase().replace(/\s+/g,'');
+            if(!byAddr[addr]) byAddr[addr] = [];
+            byAddr[addr].push(i);
+          });
+
+          const addrGroups = Object.values(byAddr);
+          // Alokasi: alternate per CDD
+          const cdd1 = idleCDDs[0], cdd2 = idleCDDs[1];
+          const part1={items:[],vol:0,wt:0}, part2={items:[],vol:0,wt:0};
+          addrGroups.forEach(grp=>{
+            const gVol = grp.reduce((s,i)=>s+i.total_vol,0);
+            const gWt  = grp.reduce((s,i)=>s+i.total_wt,0);
+            // Masuk ke CDD dengan load paling sedikit dulu (balance)
+            if(part1.vol <= part2.vol){
+              part1.items.push(...grp); part1.vol += gVol; part1.wt += gWt;
+            } else {
+              part2.items.push(...grp); part2.vol += gVol; part2.wt += gWt;
+            }
+          });
+
+          const fit1 = part1.vol <= cdd1.vol_m3*svol && part1.wt <= cdd1.max_kg*swt;
+          const fit2 = part2.vol <= cdd2.vol_m3*svol && part2.wt <= cdd2.max_kg*swt;
+
+          if(fit1 && fit2 && part1.items.length>0 && part2.items.length>0){
+            // Pecah berhasil — ganti route Fuso dengan 2 route CDD
+            const rIdx = rts.indexOf(r);
+            if(rIdx >= 0) rts.splice(rIdx, 1);
+
+            // Build 2 new CDD routes
+            [{veh:cdd1,part:part1},{veh:cdd2,part:part2}].forEach(({veh,part})=>{
+              if(part.items.length===0) return;
+              // Reconstruct groups from items
+              const byDoc = {};
+              part.items.forEach(i=>{
+                if(!byDoc[i.doc_no]) byDoc[i.doc_no] = [];
+                byDoc[i.doc_no].push(i);
+              });
+              const newGroups = Object.entries(byDoc).map(([dn,items])=>({
+                doc_no:dn, items,
+                total_vol:items.reduce((s,i)=>s+i.total_vol,0),
+                total_wt:items.reduce((s,i)=>s+i.total_wt,0),
+                priority:Math.max(...items.map(i=>i.priority||0)),
+                zona:items[0].zona,
+                kecamatan:items[0].kecamatan,
+                kota:items[0].kota||'',
+                lat:items[0].lat||origin.lat,
+                lng:items[0].lng||origin.lng,
+                bearing:bearing(origin,{lat:items[0].lat||origin.lat,lng:items[0].lng||origin.lng}),
+                sub_urutan:items[0].sub_urutan||99,
+                sub_cluster:items[0].sub_cluster||'',
+                window_tutup:items[0].window_tutup,
+                window_ketat:items[0].window_ketat,
+              }));
+              const ordered = nearestNeighbor(newGroups, origin);
+              const itms = buildItems(ordered);
+              const eta = calcETA(ordered, origin);
+              const zonas = [...new Set(itms.map(i=>i.sub_cluster||normalizeZona(i.zona)).filter(Boolean))];
+              rts.push({
+                id:rid++, vehicle:veh, wh:r.wh,
+                items:itms, groups:ordered,
+                total_vol:+part.vol.toFixed(3), total_wt:+part.wt.toFixed(1),
+                route_no:1,
+                has_knek:itms.some(i=>i.needs_knek),
+                max_priority:Math.max(0,...itms.map(i=>i.priority||0)),
+                eta_selesai:eta.selesai, eta_ok:eta.ok, total_km:eta.km||0,
+                zona_coverage:zonas, _eta_menit:eta.menit,
+                _fuso_split_from: r.vehicle.plat,
+              });
+            });
+            console.log(`%c[v4.42 ${tipeLabel}-split] ${r.vehicle.plat} (${r.total_wt}kg < ${minWt}kg) pecah ke 2 CDD: ${cdd1.plat} + ${cdd2.plat}`, 'color:#06b6d4');
+            continue; // skip warn (sudah dipecah)
+          }
+        }
+        // Tidak bisa pecah (tidak ada 2 CDD idle atau tidak fit) → Fuso tetap jalan + warning
+        r._fuso_warn = (r._fuso_warn?r._fuso_warn+'; ':'') + `Util berat ${r.total_wt}kg < min ${minWt}kg`;
+        console.warn(`[v4.42 ${tipeLabel}-rule] ${r.vehicle.plat}: util berat ${r.total_wt}kg < ${minWt}kg (2 CDD idle: ${idleCDDs.length})`);
+      }
+    }
+  }
+
+  return{rts,vendor,pendingTomorrow};
 }
 
 function buildItems(ordered){
@@ -6623,9 +6857,13 @@ function printSJVendor(vendorKodeEncoded){
 
 function renderLuarKotaPending(){
   const cnt=luarKotaPending.length;
+  const cntLowUtil = (pendingTomorrowItems||[]).length;
   document.getElementById('cnt-luarkota').textContent=cnt;
+  const cntLU = document.getElementById('cnt-lowutil');
+  if(cntLU) cntLU.textContent = cntLowUtil;
   const btn=document.getElementById('tab-btn-luarkota');
-  if(btn) btn.textContent='Pending Besok'+(cnt>0?' ('+cnt+')':'');
+  const totalPending = cnt + cntLowUtil;
+  if(btn) btn.textContent='Pending Besok'+(totalPending>0?' ('+totalPending+')':'');
 
   // Summary cards per area
   const byArea={};
@@ -6649,7 +6887,7 @@ function renderLuarKotaPending(){
     </div>`;
   }).join('');
 
-  // Table
+  // Table Luar Kota
   document.getElementById('tbody-luarkota').innerHTML=luarKotaPending.map(r=>{
     const pct=r.pending_pct||0;
     const rowBg=pct>=75?'fffbeb':'fff5f5';
@@ -6670,26 +6908,74 @@ function renderLuarKotaPending(){
       <td style="color:var(--muted);font-size:9px">${(r.pending_reason||'').slice(0,80)}</td>
     </tr>`;
   }).join('');
+
+  // v4.42: Table Low-Util Pending
+  const lowUtilSect = document.getElementById('lowutil-section');
+  const lowUtilTbody = document.getElementById('tbody-lowutil');
+  if(lowUtilSect && lowUtilTbody){
+    if(cntLowUtil > 0){
+      lowUtilSect.style.display = 'block';
+      lowUtilTbody.innerHTML = (pendingTomorrowItems||[]).map(r=>{
+        return `<tr style="background:#ecfeff">
+          <td style="font-family:var(--mono);font-size:10px">${r.doc_no||'-'}</td>
+          <td>${r.wh_cons||r.wh||'-'}</td>
+          <td>${(r.customer||'-').slice(0,28)}</td>
+          <td style="font-weight:600;color:#0e7490">${r.kota||r.zona||'-'}</td>
+          <td style="color:var(--muted);max-width:180px;font-size:10px">${(r.kirim||'').slice(0,55)}</td>
+          <td style="font-family:var(--mono);font-weight:600">${r.qty||0}</td>
+          <td style="font-family:var(--mono);font-size:10px">${(r.total_vol||0).toFixed(3)}</td>
+          <td style="font-size:10px;color:var(--muted)">${r.previous_plat||'-'} ${r.previous_driver||''}</td>
+          <td style="color:var(--muted);font-size:9px">${(r.pending_reason||'').slice(0,80)}</td>
+        </tr>`;
+      }).join('');
+    } else {
+      lowUtilSect.style.display = 'none';
+      lowUtilTbody.innerHTML = '';
+    }
+  }
 }
 
 function downloadLuarKotaPending(){
-  if(!luarKotaPending.length){alert('Tidak ada DO pending');return;}
+  const hasLuar = luarKotaPending.length > 0;
+  const hasLowUtil = (pendingTomorrowItems||[]).length > 0;
+  if(!hasLuar && !hasLowUtil){alert('Tidak ada DO pending');return;}
   const wb=XLSX.utils.book_new();
-  const h=['DO No','Gudang','Customer','Area Tujuan','Tujuan Kirim','Nama Barang',
-    'Shade','Size','QTY','UOM','Volume (m³)','Remarks',
-    'Volume Saat Ini (m³)','Threshold 95% (m³)','% Terpenuhi','Keterangan'];
-  const rows=[h,...luarKotaPending.map(r=>[
-    r.doc_no,r.wh_cons,r.customer,r.luar_kota_area||'',r.kirim,
-    r.stock_name,r.shade,r.size,r.qty,r.uom||'DUS',
-    (r.total_vol||0).toFixed(3),r.remarks.slice(0,100),
-    r.pending_current_m3||'',r.pending_threshold_m3||'',
-    (r.pending_pct||0)+'%',r.pending_reason||''
-  ])];
-  const ws=XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols']=[{wch:14},{wch:18},{wch:28},{wch:14},{wch:50},{wch:30},
-    {wch:10},{wch:12},{wch:8},{wch:6},{wch:12},{wch:50},{wch:16},{wch:16},{wch:10},{wch:60}];
-  XLSX.utils.book_append_sheet(wb,ws,'DO Pending Luar Kota');
-  XLSX.writeFile(wb,'do_pending_luarkota_'+doDate.replace(/\./g,'')+'.xlsx');
+
+  // Sheet 1: Luar Kota Pending
+  if(hasLuar){
+    const h=['DO No','Gudang','Customer','Area Tujuan','Tujuan Kirim','Nama Barang',
+      'Shade','Size','QTY','UOM','Volume (m³)','Remarks',
+      'Volume Saat Ini (m³)','Threshold 95% (m³)','% Terpenuhi','Keterangan'];
+    const rows=[h,...luarKotaPending.map(r=>[
+      r.doc_no,r.wh_cons,r.customer,r.luar_kota_area||'',r.kirim,
+      r.stock_name,r.shade,r.size,r.qty,r.uom||'DUS',
+      (r.total_vol||0).toFixed(3),r.remarks.slice(0,100),
+      r.pending_current_m3||'',r.pending_threshold_m3||'',
+      (r.pending_pct||0)+'%',r.pending_reason||''
+    ])];
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols']=[{wch:14},{wch:18},{wch:28},{wch:14},{wch:50},{wch:30},
+      {wch:10},{wch:12},{wch:8},{wch:6},{wch:12},{wch:50},{wch:16},{wch:16},{wch:10},{wch:60}];
+    XLSX.utils.book_append_sheet(wb,ws,'Luar Kota Pending');
+  }
+
+  // Sheet 2: Low-Util Pending (v4.42)
+  if(hasLowUtil){
+    const h2=['DO No','Gudang','Customer','Kota Tujuan','Tujuan Kirim','Nama Barang',
+      'Shade','Size','QTY','UOM','Volume (m³)','Kendaraan Rencana','Driver','Alasan'];
+    const rows2=[h2,...pendingTomorrowItems.map(r=>[
+      r.doc_no||'',r.wh_cons||r.wh||'',r.customer||'',r.kota||r.zona||'',r.kirim||'',
+      r.stock_name||'',r.shade||'',r.size||'',r.qty||0,r.uom||'DUS',
+      (r.total_vol||0).toFixed(3),r.previous_plat||'',r.previous_driver||'',
+      r.pending_reason||''
+    ])];
+    const ws2=XLSX.utils.aoa_to_sheet(rows2);
+    ws2['!cols']=[{wch:14},{wch:18},{wch:28},{wch:16},{wch:50},{wch:30},
+      {wch:10},{wch:12},{wch:8},{wch:6},{wch:12},{wch:14},{wch:16},{wch:60}];
+    XLSX.utils.book_append_sheet(wb,ws2,'Low Util Pending');
+  }
+
+  XLSX.writeFile(wb,'pending_besok_'+doDate.replace(/\./g,'')+'.xlsx');
 }
 
 function renderVendorTab(){
