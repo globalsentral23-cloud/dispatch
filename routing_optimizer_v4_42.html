@@ -2676,43 +2676,46 @@ function zoneFillFirstAssign(doGroups,vehicles,origin,wh,svol,swt){
   // ── PASS 2: OVERFLOW — DO sisa → titip ke kendaraan yang "lewat" ──────
   // Auto-detect: kendaraan kandidat harus
   //   (a) punya kapasitas cukup
-  //   (b) zoneLocked == DO.kota ATAU bearing delta < 45°
+  //   (b) zoneLocked == DO.kota ATAU bearing delta < 90° (relaxed dari 45°)
   //   (c) adjacency KOTA_JABO (isKotaCompatible)
+  // v4.42.1: Tier fallback — kalau tidak ada kandidat strict, coba relaxed
   const stillUnassigned = [];
-  for(const dg of unassigned){
+  const tryAssign = (dg, strict) => {
     const dgKota = dg._kota_key;
-
+    const bearingLimit = strict ? 90 : 180; // strict: arah sama-ish. relaxed: apapun asal muat
     const candidates = loads.filter(vl=>{
       if(!isEligible(vl,dg)) return false;
       if(vl.vol + dg.total_vol > vl.vehicle.vol_m3*svol) return false;
       if(vl.wt  + dg.total_wt  > vl.vehicle.max_kg*swt) return false;
+      if(vl.groups.length === 0) return false; // idle skip — Pass 1 sudah coba
 
-      // Kalau kendaraan masih idle, skip (pass 1 seharusnya sudah bisa)
-      if(vl.groups.length === 0) return false;
-
-      // Cek zone lock
-      if(vl.zoneLocked){
-        // Kendaraan sudah di-lock ke zona X. Hanya terima DO kalau:
-        // - DO.kota == vl.zoneLocked (same zone, perfect)
-        // - isKotaCompatible(vl.zoneLocked, DO.kota) (adjacent)
+      // Cek zone lock (only in strict mode)
+      if(strict && vl.zoneLocked){
+        if(vl.zoneLocked === dgKota) return true;
+        if(typeof isKotaCompatible === 'function'
+           && isKotaCompatible(vl.zoneLocked, dgKota)) return true;
+        return false;
+      }
+      if(!strict && vl.zoneLocked){
+        // Relaxed: still need KOTA compat untuk zone-locked vehicles
         if(vl.zoneLocked === dgKota) return true;
         if(typeof isKotaCompatible === 'function'
            && isKotaCompatible(vl.zoneLocked, dgKota)) return true;
         return false;
       }
 
-      // Kendaraan belum lock — cek bearing compatibility
-      if(dg.bearing !== undefined && vl.avgBrg !== undefined){
+      // Bearing check (relaxed tier skip ini)
+      if(strict && dg.bearing !== undefined && vl.avgBrg !== undefined){
         const bDelta = Math.abs(vl.avgBrg - dg.bearing);
         const bDeltaNorm = Math.min(bDelta, 360-bDelta);
-        if(bDeltaNorm > 45) return false; // terlalu jauh dari arah rute
+        if(bDeltaNorm > bearingLimit) return false;
       }
 
-      // Cek KOTA compat (KOTA_JABO check)
-      if(dgKota && typeof KOTA_JABO !== 'undefined' && KOTA_JABO.has(dgKota)){
+      // KOTA compat check (relaxed skip jika bukan zone-locked)
+      if(strict && dgKota && typeof KOTA_JABO !== 'undefined' && KOTA_JABO.has(dgKota)){
         const kotaCounts = {};
         vl.groups.forEach(g=>{
-          const k = g._kota_key || g.kota || zonaToKota(g.zona) || '';
+          const k = g._kota_key || g.kota || (typeof zonaToKota==='function'?zonaToKota(g.zona):'') || '';
           if(k && KOTA_JABO.has(k)) kotaCounts[k] = (kotaCounts[k]||0) + (g.total_vol||1);
         });
         const sorted = Object.entries(kotaCounts).sort((a,b)=>b[1]-a[1]);
@@ -2725,19 +2728,15 @@ function zoneFillFirstAssign(doGroups,vehicles,origin,wh,svol,swt){
       return true;
     });
 
-    if(!candidates.length){ stillUnassigned.push(dg); continue; }
+    if(!candidates.length) return false;
 
-    // Pilih kandidat terbaik: minimum detour (bearing delta terkecil)
     candidates.sort((a,b)=>{
-      // 1. Same zone lock wins
       const aSame = a.zoneLocked===dgKota?1:0;
       const bSame = b.zoneLocked===dgKota?1:0;
       if(aSame!==bSame) return bSame-aSame;
-      // 2. Minimum bearing delta
       const aBD = dg.bearing!==undefined ? Math.min(Math.abs(a.avgBrg-dg.bearing),360-Math.abs(a.avgBrg-dg.bearing)) : 0;
       const bBD = dg.bearing!==undefined ? Math.min(Math.abs(b.avgBrg-dg.bearing),360-Math.abs(b.avgBrg-dg.bearing)) : 0;
       if(Math.abs(aBD-bBD)>10) return aBD-bBD;
-      // 3. Least loaded wins (spread load)
       return a.vol-b.vol;
     });
 
@@ -2747,7 +2746,20 @@ function zoneFillFirstAssign(doGroups,vehicles,origin,wh,svol,swt){
     best.wt  += dg.total_wt;
     best.scs.add(dg.sub_cluster);
     best.avgBrg = best.groups.reduce((s,g)=>s+(g.bearing||0),0) / best.groups.length;
-    dg._overflow_assigned = true;
+    dg._overflow_assigned = strict ? 'strict' : 'relaxed';
+    return true;
+  };
+
+  // Sort unassigned: prioritas tinggi + volume besar duluan biar dapat slot
+  unassigned.sort((a,b)=>{
+    if(b.priority!==a.priority) return b.priority-a.priority;
+    return b.total_vol-a.total_vol;
+  });
+
+  for(const dg of unassigned){
+    if(tryAssign(dg, true)) continue;     // Pass 2a: strict (bearing <90°)
+    if(tryAssign(dg, false)) continue;    // Pass 2b: relaxed (skip bearing, keep KOTA compat)
+    stillUnassigned.push(dg);
   }
 
   return { loads, unassigned: stillUnassigned };
