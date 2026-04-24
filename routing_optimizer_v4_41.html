@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.41</title>
+<title>Routing Optimizer v4.42</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -469,7 +469,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.41</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.42</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -529,7 +529,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.41</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.42</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -1096,7 +1096,25 @@ function parseMasterData(masterData){
     if(param.includes('mel limit')||param.includes('limit mel')) CFG.mel_limit_per_hari=parseFloat(val)||50000;
     if(param.includes('track base url')||param.includes('dispatch url'))
       CFG.track_base_url=String(val||'').trim()||'https://globalsentral23-cloud.github.io/dispatch';
+    // ═══ v4.42 — ZONE-FILL-FIRST CONFIG ═══════════════════════════════════
+    if(param.includes('routing mode')||param.includes('mode routing'))
+      CFG.routing_mode=String(val||'zone_first').toLowerCase().trim();
+    if(param.includes('target util vol')||param.includes('target utilisasi volume'))
+      CFG.target_util_vol=(parseFloat(val)||95)/100;
+    if(param.includes('target util wt')||param.includes('target utilisasi berat'))
+      CFG.target_util_wt=(parseFloat(val)||95)/100;
+    if(param.includes('zone lock after'))
+      CFG.zone_lock_after=(parseFloat(val)||70)/100;
+    if(param.includes('overflow max detour'))
+      CFG.overflow_max_detour_km=parseFloat(val)||5;
   });
+
+  // Set defaults untuk zone-fill-first jika tidak di-config
+  if(CFG.routing_mode===undefined) CFG.routing_mode='zone_first';
+  if(CFG.target_util_vol===undefined) CFG.target_util_vol=0.95;
+  if(CFG.target_util_wt===undefined) CFG.target_util_wt=0.95;
+  if(CFG.zone_lock_after===undefined) CFG.zone_lock_after=0.70;
+  if(CFG.overflow_max_detour_km===undefined) CFG.overflow_max_detour_km=5;
 
   // ── Parse Spesifikasi Produk → CFG.specTable ─────────────────────────────
   // Format: No | Ukuran | Kode SAP | Volume/DUS (m³) | Berat/DUS (kg) | Keterangan
@@ -2497,6 +2515,244 @@ function sweepIdx(zona, wh){
   return idx>=0?idx:order.length;
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// v4.42 — ZONE-FILL-FIRST ALGORITHM
+// ══════════════════════════════════════════════════════════════════════════
+// Strategi baru: untuk setiap zona (urut DUS terbesar), fokus isi 1 kendaraan
+// sampai 95% util. Kalau zona masih ada sisa, ambil kendaraan baru. Kalau
+// zona akan habis tapi sisa DO sedikit, titip ke kendaraan lain (overflow).
+//
+// PASS 1: Zone-fill — per zona besar, ambil kendaraan, isi sampai 95% util
+// PASS 2: Overflow — DO sisa kecil → kendaraan nearby (auto-detect detour)
+//
+// Return: {loads, unassigned} — format sama dengan clusterFirstAssign
+// ══════════════════════════════════════════════════════════════════════════
+function zoneFillFirstAssign(doGroups,vehicles,origin,wh,svol,swt){
+  const targetVol = CFG.target_util_vol || 0.95;
+  const targetWt  = CFG.target_util_wt  || 0.95;
+  const zoneLock  = CFG.zone_lock_after || 0.70;
+  const maxDetourKm = CFG.overflow_max_detour_km || 5;
+
+  // Precompute bearing & kota untuk setiap DO
+  doGroups.forEach(dg=>{
+    dg.bearing=bearing(origin,{lat:dg.lat||origin.lat,lng:dg.lng||origin.lng});
+    dg.zona_norm=normalizeZona(dg.zona);
+    dg.sweep_idx=dg.sub_urutan||sweepIdx(dg.zona,wh);
+    if(!dg.sub_cluster) dg.sub_cluster=dg.zona_norm+'_X';
+    dg._kota_key = dg.kota || zonaToKota(dg.zona) || dg.zona_norm || 'LAINNYA';
+  });
+
+  // Group DOs per kota (KOTA lock v4.38 key)
+  const byKota = new Map();
+  doGroups.forEach(dg=>{
+    if(dg.vendor_fallback||dg.items.every(i=>i.luar_kota)) return; // luar kota → skip
+    const k = dg._kota_key;
+    if(!byKota.has(k)) byKota.set(k,{kota:k,items:[],total_vol:0,total_wt:0,avg_bearing:0});
+    const bucket = byKota.get(k);
+    bucket.items.push(dg);
+    bucket.total_vol += dg.total_vol;
+    bucket.total_wt  += dg.total_wt;
+  });
+  byKota.forEach(b=>{
+    b.avg_bearing = b.items.reduce((s,g)=>s+(g.bearing||0),0) / b.items.length;
+    // Sort DO dalam zona: prioritas tertinggi dulu, lalu volume terbesar
+    b.items.sort((a,b)=>{
+      if(b.priority!==a.priority) return b.priority-a.priority;
+      return b.total_vol-a.total_vol;
+    });
+  });
+
+  // PASS 0: Sort zona berdasarkan total DUS terbesar dulu
+  const zonesSorted = [...byKota.values()].sort((a,b)=>{
+    // Prioritas items di dalamnya dulu
+    const aP = Math.max(...a.items.map(i=>i.priority||0));
+    const bP = Math.max(...b.items.map(i=>i.priority||0));
+    if(bP!==aP) return bP-aP;
+    return b.total_vol - a.total_vol; // volume terbesar dulu
+  });
+
+  // Init loads — format sama dengan clusterFirstAssign
+  const loads = vehicles.map(v=>({
+    vehicle:v, groups:[], vol:0, wt:0,
+    scs:new Set(), avgBrg:0,
+    zoneLocked:null, // v4.42: kota yg di-lock setelah 70% util
+  }));
+  const unassigned = [];
+  const isEligible = (vl,dg) => eligible(vl.vehicle, dg);
+
+  // ── PASS 1: ZONE-FILL ──────────────────────────────────────────────────
+  // Untuk setiap zona (terbesar dulu), ambil kendaraan, isi sampai penuh
+  for(const zone of zonesSorted){
+    let remaining = [...zone.items];
+    while(remaining.length > 0){
+      // Pilih kendaraan BELUM terpakai (idle) yang kapasitasnya cocok
+      // untuk item terbesar di remaining
+      const biggestDO = remaining[0];
+
+      let bestVeh = null, bestScore = -Infinity;
+      for(const vl of loads){
+        if(vl.groups.length > 0) continue; // harus idle
+        if(!isEligible(vl,biggestDO)) continue;
+        if(vl.vehicle.vol_m3*svol < biggestDO.total_vol) continue;
+        if(vl.vehicle.max_kg*swt < biggestDO.total_wt) continue;
+
+        // Score: prefer kendaraan dengan kapasitas yang pas (tidak over-oversize)
+        // Kapasitas efektif kendaraan = min(vol*svol, wt*swt)
+        // Kita pilih yang paling mendekati total zona (biar util tinggi)
+        const capVol = vl.vehicle.vol_m3 * svol;
+        const capWt  = vl.vehicle.max_kg * swt;
+        // Skor: semakin kecil kapasitas yang cukup menampung, semakin baik (biar util tinggi)
+        // Tapi harus cukup besar untuk biggestDO
+        const fitVol = Math.min(zone.total_vol, capVol);
+        const fitWt  = Math.min(zone.total_wt,  capWt);
+        const utilEst = Math.max(fitVol/capVol, fitWt/capWt);
+        // Prefer util tinggi, prefer rank sesuai tipe (kecil dulu kalau muat)
+        const score = utilEst*100 - vl.vehicle.rank*0.1;
+        if(score > bestScore){ bestScore = score; bestVeh = vl; }
+      }
+
+      if(!bestVeh){
+        // Tidak ada kendaraan idle yang cocok → sisa DO zona ini jadi kandidat overflow
+        unassigned.push(...remaining);
+        break;
+      }
+
+      // Isi bestVeh dengan DO zona ini sampai 95% util atau habis
+      const capVol = bestVeh.vehicle.vol_m3 * svol;
+      const capWt  = bestVeh.vehicle.max_kg * swt;
+      const newRemaining = [];
+
+      for(const dg of remaining){
+        if(!isEligible(bestVeh,dg)){ newRemaining.push(dg); continue; }
+
+        const newVol = bestVeh.vol + dg.total_vol;
+        const newWt  = bestVeh.wt  + dg.total_wt;
+
+        // Cek muat kapasitas fisik
+        if(newVol > capVol || newWt > capWt){
+          newRemaining.push(dg);
+          continue;
+        }
+
+        // Hitung util setelah tambah
+        const utilAfter = Math.max(newVol/capVol, newWt/capWt);
+
+        // Cek: kalau sudah melewati targetUtil DAN masih ada DO besar lain yang bisa
+        // pindah ke kendaraan baru, stop dulu (biar kendaraan kedua bisa optimal juga)
+        // Tapi kalau DO sudah kecil semua, tetap lanjut isi.
+        const currentUtil = Math.max(bestVeh.vol/capVol, bestVeh.wt/capWt);
+        if(currentUtil >= targetVol || currentUtil >= targetWt){
+          // Sudah 95%, stop — sisanya ke kendaraan baru
+          newRemaining.push(dg);
+          continue;
+        }
+
+        // Muat
+        bestVeh.groups.push(dg);
+        bestVeh.vol = newVol;
+        bestVeh.wt  = newWt;
+        bestVeh.scs.add(dg.sub_cluster);
+      }
+
+      // Update avgBearing + set zoneLocked kalau util tinggi
+      if(bestVeh.groups.length > 0){
+        bestVeh.avgBrg = bestVeh.groups.reduce((s,g)=>s+(g.bearing||0),0) / bestVeh.groups.length;
+        const util = Math.max(bestVeh.vol/capVol, bestVeh.wt/capWt);
+        if(util >= zoneLock){
+          bestVeh.zoneLocked = zone.kota;
+        }
+      }
+
+      remaining = newRemaining;
+      // Safety break: kalau remaining tidak berubah (DO tidak muat di kendaraan idle manapun),
+      // lempar ke unassigned untuk overflow pass
+      if(bestVeh.groups.length === 0){
+        unassigned.push(...remaining);
+        break;
+      }
+    }
+  }
+
+  // ── PASS 2: OVERFLOW — DO sisa → titip ke kendaraan yang "lewat" ──────
+  // Auto-detect: kendaraan kandidat harus
+  //   (a) punya kapasitas cukup
+  //   (b) zoneLocked == DO.kota ATAU bearing delta < 45°
+  //   (c) adjacency KOTA_JABO (isKotaCompatible)
+  const stillUnassigned = [];
+  for(const dg of unassigned){
+    const dgKota = dg._kota_key;
+
+    const candidates = loads.filter(vl=>{
+      if(!isEligible(vl,dg)) return false;
+      if(vl.vol + dg.total_vol > vl.vehicle.vol_m3*svol) return false;
+      if(vl.wt  + dg.total_wt  > vl.vehicle.max_kg*swt) return false;
+
+      // Kalau kendaraan masih idle, skip (pass 1 seharusnya sudah bisa)
+      if(vl.groups.length === 0) return false;
+
+      // Cek zone lock
+      if(vl.zoneLocked){
+        // Kendaraan sudah di-lock ke zona X. Hanya terima DO kalau:
+        // - DO.kota == vl.zoneLocked (same zone, perfect)
+        // - isKotaCompatible(vl.zoneLocked, DO.kota) (adjacent)
+        if(vl.zoneLocked === dgKota) return true;
+        if(typeof isKotaCompatible === 'function'
+           && isKotaCompatible(vl.zoneLocked, dgKota)) return true;
+        return false;
+      }
+
+      // Kendaraan belum lock — cek bearing compatibility
+      if(dg.bearing !== undefined && vl.avgBrg !== undefined){
+        const bDelta = Math.abs(vl.avgBrg - dg.bearing);
+        const bDeltaNorm = Math.min(bDelta, 360-bDelta);
+        if(bDeltaNorm > 45) return false; // terlalu jauh dari arah rute
+      }
+
+      // Cek KOTA compat (KOTA_JABO check)
+      if(dgKota && typeof KOTA_JABO !== 'undefined' && KOTA_JABO.has(dgKota)){
+        const kotaCounts = {};
+        vl.groups.forEach(g=>{
+          const k = g._kota_key || g.kota || zonaToKota(g.zona) || '';
+          if(k && KOTA_JABO.has(k)) kotaCounts[k] = (kotaCounts[k]||0) + (g.total_vol||1);
+        });
+        const sorted = Object.entries(kotaCounts).sort((a,b)=>b[1]-a[1]);
+        if(sorted.length > 0){
+          const vehKota = sorted[0][0];
+          if(typeof isKotaCompatible === 'function'
+             && !isKotaCompatible(vehKota, dgKota)) return false;
+        }
+      }
+      return true;
+    });
+
+    if(!candidates.length){ stillUnassigned.push(dg); continue; }
+
+    // Pilih kandidat terbaik: minimum detour (bearing delta terkecil)
+    candidates.sort((a,b)=>{
+      // 1. Same zone lock wins
+      const aSame = a.zoneLocked===dgKota?1:0;
+      const bSame = b.zoneLocked===dgKota?1:0;
+      if(aSame!==bSame) return bSame-aSame;
+      // 2. Minimum bearing delta
+      const aBD = dg.bearing!==undefined ? Math.min(Math.abs(a.avgBrg-dg.bearing),360-Math.abs(a.avgBrg-dg.bearing)) : 0;
+      const bBD = dg.bearing!==undefined ? Math.min(Math.abs(b.avgBrg-dg.bearing),360-Math.abs(b.avgBrg-dg.bearing)) : 0;
+      if(Math.abs(aBD-bBD)>10) return aBD-bBD;
+      // 3. Least loaded wins (spread load)
+      return a.vol-b.vol;
+    });
+
+    const best = candidates[0];
+    best.groups.push(dg);
+    best.vol += dg.total_vol;
+    best.wt  += dg.total_wt;
+    best.scs.add(dg.sub_cluster);
+    best.avgBrg = best.groups.reduce((s,g)=>s+(g.bearing||0),0) / best.groups.length;
+    dg._overflow_assigned = true;
+  }
+
+  return { loads, unassigned: stillUnassigned };
+}
+
 // ── SUB-CLUSTER BASED VEHICLE ASSIGNMENT (Opsi 1) ──
 function clusterFirstAssign(doGroups,vehicles,origin,wh,svol,swt){
   // isEligible uses outer eligible() arrow fn
@@ -2809,9 +3065,37 @@ function buildRoutes(active){
     // Kendaraan Fuso/Tronton yang direservasi untuk large DO dikeluarkan dari pool normal
     const poolV = whV.filter(v=>!usedBigVeh.has(v.plat));
 
-    // ── ASSIGN: Cluster-First + Capacity-Fill via Map ──────────────
-    // Pass 1: clusterFirstAssign (geografis coherent) — hanya DO normal
-    const {loads:loads1,unassigned:unassigned1}=clusterFirstAssign(normalDGs,poolV,origin,wh,svol,swt);
+    // ── ASSIGN: v4.42 Zone-Fill-First (default) atau Cluster-First (legacy) ──
+    // Mode switch via CFG.routing_mode ('zone_first' default, 'vehicle_first' legacy)
+    const routingMode = (CFG.routing_mode || 'zone_first').toLowerCase();
+    let loads1, unassigned1;
+    if(routingMode === 'zone_first'){
+      // v4.42: Pass 1 = zone-fill-first (fokus 1 zona sampai 95% util)
+      //         Pass 2 (overflow) sudah include di dalam zoneFillFirstAssign
+      const res = zoneFillFirstAssign(normalDGs, poolV, origin, wh, svol, swt);
+      loads1 = res.loads; unassigned1 = res.unassigned;
+      // Debug: log per-vehicle zone distribution
+      const usedCount = loads1.filter(l=>l.groups.length>0).length;
+      console.log(`%c[v4.42 zone_first] ${wh}`,'color:#10b981;font-weight:bold',
+                  `${normalDGs.length} DO → ${usedCount} kendaraan, ${unassigned1.length} unassigned`);
+      loads1.filter(l=>l.groups.length>0).forEach(l=>{
+        const kotas={};
+        l.groups.forEach(g=>{
+          const k=g.kota||(typeof zonaToKota==='function'?zonaToKota(g.zona):'')||'?';
+          kotas[k]=(kotas[k]||0)+1;
+        });
+        const kotaStr=Object.entries(kotas).map(([k,n])=>`${k}(${n})`).join(' + ');
+        const uVol=(l.vol/(l.vehicle.vol_m3*svol)*100).toFixed(0);
+        const uWt =(l.wt /(l.vehicle.max_kg*swt)*100).toFixed(0);
+        const lockTag = l.zoneLocked ? ` 🔒${l.zoneLocked}` : '';
+        console.log(`  ${l.vehicle.plat} ${l.vehicle.driver}: ${l.groups.length} DO · ${uVol}%v ${uWt}%w${lockTag} · ${kotaStr}`);
+      });
+    } else {
+      // Legacy mode (v4.41)
+      const res = clusterFirstAssign(normalDGs, poolV, origin, wh, svol, swt);
+      loads1 = res.loads; unassigned1 = res.unassigned;
+      console.log(`[v4.41 vehicle_first legacy] ${wh}: ${normalDGs.length} DO`);
+    }
 
     // Build vehState Map for pool vehicles (excluding reserved Fuso/Tronton)
     const vehState=new Map();
@@ -2826,6 +3110,9 @@ function buildRoutes(active){
     // eligibility check → see eligible() defined above buildRoutes
 
     // Pass 2: assign all unassigned DOs to any eligible vehicle with capacity
+    // v4.42: Kalau mode zone_first, hanya DO yang benar-benar tidak muat di
+    //        overflow pass (bukan luar kota) yang akan masuk sini.
+    //        Respect zone-lock dari Pass 1 — cek KOTA compatibility sebelum fill.
     const unplotted=[];
     const sortedU=[...unassigned1].sort((a,b)=>{
       if(a.vendor_fallback!==b.vendor_fallback) return a.vendor_fallback?1:-1;
@@ -2837,13 +3124,30 @@ function buildRoutes(active){
       if(dg.vendor_fallback||dg.items.every(i=>i.luar_kota)){
         unplotted.push(dg);continue;
       }
+      const dgKota = dg.kota || (typeof zonaToKota==='function' ? zonaToKota(dg.zona) : '') || '';
       let best=null,bestFree=-1;
       for(const s of vehState.values()){
         if(!eligible(s.vehicle,dg)) continue;
         const free=s.vehicle.vol_m3*svol-s.vol;
         if(s.vol+dg.total_vol<=s.vehicle.vol_m3*svol&&
-           s.wt+dg.total_wt<=s.vehicle.max_kg*swt&&free>bestFree){
-          best=s;bestFree=free;
+           s.wt+dg.total_wt<=s.vehicle.max_kg*swt){
+          // v4.42 KOTA compat guard (hanya aktif di zone_first mode)
+          if(routingMode==='zone_first' && dgKota
+             && typeof KOTA_JABO!=='undefined' && KOTA_JABO.has(dgKota)
+             && s.groups.length > 0){
+            const kotaCounts = {};
+            s.groups.forEach(g=>{
+              const k = g.kota || (typeof zonaToKota==='function'?zonaToKota(g.zona):'') || '';
+              if(k && KOTA_JABO.has(k)) kotaCounts[k] = (kotaCounts[k]||0)+(g.total_vol||1);
+            });
+            const sorted2 = Object.entries(kotaCounts).sort((a,b)=>b[1]-a[1]);
+            if(sorted2.length > 0){
+              const vehKota = sorted2[0][0];
+              if(typeof isKotaCompatible==='function'
+                 && !isKotaCompatible(vehKota, dgKota)) continue;
+            }
+          }
+          if(free>bestFree){ best=s; bestFree=free; }
         }
       }
       if(!best){unplotted.push(dg);continue;}
