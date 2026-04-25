@@ -1,9 +1,29 @@
 <!DOCTYPE html>
+<!--
+  v4.43.1 CHANGELOG (25 April 2026) — Fix vendor matching
+  Fix 3 bug yang terkait:
+    1. WA message bocor (data leak) — renderVendor() dan sendVendorOrder()
+       melakukan auto-match independen dengan logic berbeda, resulting
+       group yang ditampilkan ≠ items yang dikirim via WA.
+    2. Alert "Tidak ada DO untuk vendor ini di gudang" palsu — akibat
+       inconsistency dari bug #1.
+    3. Coverage matching salah (Bandung 0.3m³ masuk Turbo 1 bukan
+       Pegasus) — karena JABODETABEK umbrella di-treat sebagai match
+       semua alamat; ditambah preferredTipe fallback = /LOKAL/ yang
+       tidak pernah match (master vendor tidak punya tipe Lokal).
+
+  Solusi: single source of truth via buildVendorAssignmentMap().
+    - findBestVendorForItem(): pure function, pakai scoring
+      (strong=10 zona spesifik, weak=1 JABODETABEK umbrella valid
+       jika alamat anchor Jabo, 0.5 Seluruh Indonesia, 0 tidak match).
+    - renderVendor dan sendVendorOrder pakai map yang sama →
+      konsisten by construction, tidak ada recompute.
+-->
 <html lang="id">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.43</title>
+<title>Routing Optimizer v4.43.1</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -5283,85 +5303,151 @@ function renderDeferred(){
   </tr>`).join('');
 }
 
-function renderVendor(){
-  // v4.43: Grouping per Gudang × Vendor + tombol Kirim Order WhatsApp
-  if(!vendorState.length) initVendorState();
+// ═══════════════════════════════════════════════════════════════════
+// v4.43.1 FIX — Vendor matching: single source of truth
+// Fix 3 bug: (1) WA message bocor karena renderVendor vs sendVendorOrder
+//            recompute dengan logic berbeda, (2) alert "tidak ada DO"
+//            palsu, (3) Bandung ke Turbo bukan Pegasus karena JABODETABEK
+//            umbrella match semua alamat.
+// ═══════════════════════════════════════════════════════════════════
 
-  // Update total badge di tab button
-  document.getElementById('cnt-vendor').textContent = vendorItems.length;
+// Anchor list kota-kota Jabodetabek — pakai ini untuk validasi umbrella
+// "JABODETABEK" supaya tidak auto-match alamat luar kota.
+const JABO_ANCHOR_CITIES = [
+  'JAKARTA','JAKBAR','JAKSEL','JAKTIM','JAKUT','JAKPUS',
+  'BEKASI','DEPOK','BOGOR','TANGERANG','TANGSEL',
+  'CIBUBUR','CILEDUG','SERPONG','BINTARO','CIKARANG',
+  'CIPUTAT','CINERE','CIBINONG','BSD','CENGKARENG',
+  'KELAPA GADING','PONDOK INDAH','TEBET','MENTENG',
+  'KEMAYORAN','TANAH ABANG','KEBAYORAN','PONDOK AREN'
+];
 
-  // Group items: (wh_cons, vendor_kode) → items[]
-  // Jika belum assigned vendor, auto-match by coverage zone
-  const grouping = {};
-  const unassigned = [];
+function isJabodetabekAddress(addr){
+  const a = String(addr||'').toUpperCase();
+  return JABO_ANCHOR_CITIES.some(c => a.includes(c));
+}
 
-  // Build vendor coverage map: vendor → set of coverage keywords
-  const vendorCoverageMap = {};
-  vendorState.forEach(vs=>{
-    const coverage = String(vs.coverage||'').toUpperCase();
-    const zonaList = Array.isArray(vs.zona_coverage)
-      ? vs.zona_coverage
-      : String(vs.zona_coverage||'').split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
-    vendorCoverageMap[vs.kode] = {vs, keywords:[coverage, ...zonaList].filter(Boolean)};
+// Pure function — score 1 vendor terhadap 1 item.
+// Score 10 = strong (zona spesifik match), 1 = weak (umbrella valid), 0 = tidak match.
+function scoreVendorForItem(vendor, item){
+  const kirim = String(item.kirim||'').toUpperCase();
+  const kota  = String(item.kota||item.zona||'').toUpperCase();
+  const addr  = kirim + ' ' + kota;
+
+  const zonaList = Array.isArray(vendor.zona_coverage)
+    ? vendor.zona_coverage.map(z=>String(z).toUpperCase())
+    : String(vendor.zona_coverage||'').split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
+
+  // Coverage utama (single string di field coverage) — treat as one more zona
+  const coverageMain = String(vendor.coverage||'').toUpperCase().trim();
+  const allZonas = [...zonaList];
+  if(coverageMain && !allZonas.includes(coverageMain)) allZonas.push(coverageMain);
+
+  let best = 0;
+  for(const zone of allZonas){
+    if(!zone) continue;
+    if(zone === 'JABODETABEK' || zone === 'JABO'){
+      // Umbrella — weak match, hanya valid kalau alamat BENAR-BENAR di Jabo
+      if(isJabodetabekAddress(addr)) best = Math.max(best, 1);
+    } else if(zone === 'SELURUH INDONESIA' || zone === 'INDONESIA'){
+      // Sangat umbrella — match tapi score-nya paling rendah
+      best = Math.max(best, 0.5);
+    } else {
+      // Zona spesifik (BANDUNG, BEKASI, dll) — strong match
+      if(addr.includes(zone)) best = Math.max(best, 10);
+    }
+  }
+  return best;
+}
+
+// Pure function — cari vendor terbaik untuk 1 item.
+// Return vendor object atau null kalau tidak ada yang cocok.
+// Bonus: kalau preferredTipe di-set dan ada vendor yang match tipe + zona, prefer itu.
+function findBestVendorForItem(item, vendorList){
+  const reason = String(item.vendor_trigger_reason||item.vendor_reason||'').toLowerCase();
+  let preferredTipeRegex = null;
+  if(/volume|berat|bongkar lama|oversized|fuso|tronton/i.test(reason)){
+    preferredTipeRegex = /TRUCK|SEWA/i;
+  } else if(/luar kota|luar jabo|antar kota/i.test(reason)){
+    preferredTipeRegex = /ANTAR.?KOTA|EKSPEDISI.?ANTAR/i;
+  }
+  // Note: tidak ada preferred "LOKAL" karena master vendor tidak punya tipe Lokal.
+
+  // Score semua available vendor
+  const candidates = vendorList
+    .filter(v=>v.available)
+    .map(v=>({
+      vendor: v,
+      score: scoreVendorForItem(v, item),
+      tipeMatch: preferredTipeRegex ? preferredTipeRegex.test(String(v.tipe||'')) : false
+    }))
+    .filter(c=>c.score > 0);
+
+  if(candidates.length === 0) return null;
+
+  // Sort: tipe match & score tinggi dulu
+  candidates.sort((a,b)=>{
+    // Prioritas 1: kalau ada preferred tipe, yang match tipe naik duluan
+    if(preferredTipeRegex){
+      if(a.tipeMatch && !b.tipeMatch) return -1;
+      if(!a.tipeMatch && b.tipeMatch) return 1;
+    }
+    // Prioritas 2: score tinggi duluan
+    return b.score - a.score;
   });
 
-  // Map assigned items (from manual reassign) → vendor state reference
+  return candidates[0].vendor;
+}
+
+// Build assignment map untuk semua vendorItems. Dipanggil sekali
+// di renderVendor, hasilnya disimpan di window.__vendorAssignMap
+// supaya sendVendorOrder tinggal baca, tidak recompute.
+function buildVendorAssignmentMap(){
   const manualAssignMap = new Map();
   vendorState.forEach(vs=>{
     (vs.assigned_dos||[]).forEach(d=>manualAssignMap.set(d, vs));
   });
 
+  const assignMap = new Map(); // item reference → vendor object
+  const unassigned = [];
+
   vendorItems.forEach(item=>{
-    const wh = String(item.wh_cons||item.wh||'UNKNOWN').replace('GUDANG ','').toUpperCase();
-    let vendor = manualAssignMap.get(item);
-
-    // Auto-match by coverage if not manually assigned
-    if(!vendor){
-      const kirim = String(item.kirim||'').toUpperCase();
-      const kota = String(item.kota||item.zona||'').toUpperCase();
-
-      // Strategy: match by vendor tipe based on trigger
-      // Vol/Wt besar → prefer "Truck Sewa" (Fuso/Tronton)
-      // Luar kota → prefer "Ekspedisi Antar Kota"
-      // Overflow Jabo → prefer "Ekspedisi Lokal"
-      const reason = String(item.vendor_trigger_reason||item.vendor_reason||'');
-      let preferredTipe = null;
-      if(/volume|berat|bongkar lama/i.test(reason)){
-        preferredTipe = /TRUCK|SEWA/i;
-      } else if(/luar kota|luar jabo/i.test(reason)){
-        preferredTipe = /ANTAR.?KOTA|EKSPEDISI.?ANTAR/i;
-      } else {
-        preferredTipe = /LOKAL/i;
-      }
-
-      // First pass: match tipe + coverage
-      for(const vs of vendorState){
-        if(!vs.available) continue;
-        if(preferredTipe && !preferredTipe.test(String(vs.tipe||''))) continue;
-        const kws = vendorCoverageMap[vs.kode].keywords;
-        if(kws.some(kw => kirim.includes(kw) || kota.includes(kw)) || kws.includes('JABODETABEK')){
-          vendor = vs;
-          break;
-        }
-      }
-      // Second pass: any available vendor
-      if(!vendor){
-        for(const vs of vendorState){
-          if(!vs.available) continue;
-          const kws = vendorCoverageMap[vs.kode].keywords;
-          if(kws.some(kw => kirim.includes(kw) || kota.includes(kw)) || kws.includes('JABODETABEK')){
-            vendor = vs;
-            break;
-          }
-        }
-      }
-    }
-
-    if(!vendor){
-      unassigned.push(item);
+    const manual = manualAssignMap.get(item);
+    if(manual){
+      assignMap.set(item, manual);
       return;
     }
+    const best = findBestVendorForItem(item, vendorState);
+    if(best){
+      assignMap.set(item, best);
+    } else {
+      unassigned.push(item);
+    }
+  });
 
+  window.__vendorAssignMap = assignMap;
+  window.__vendorUnassigned = unassigned;
+  return { assignMap, unassigned };
+}
+
+function renderVendor(){
+  // v4.43: Grouping per Gudang × Vendor + tombol Kirim Order WhatsApp
+  // v4.43.1: pakai buildVendorAssignmentMap sebagai single source of truth
+  if(!vendorState.length) initVendorState();
+
+  // Update total badge di tab button
+  document.getElementById('cnt-vendor').textContent = vendorItems.length;
+
+  // Build assignment map (single source of truth untuk renderVendor + sendVendorOrder)
+  const { assignMap, unassigned } = buildVendorAssignmentMap();
+
+  // Group items: (wh_cons, vendor_kode) → items[]
+  const grouping = {};
+
+  vendorItems.forEach(item=>{
+    const vendor = assignMap.get(item);
+    if(!vendor) return; // sudah masuk unassigned
+    const wh = String(item.wh_cons||item.wh||'UNKNOWN').replace('GUDANG ','').toUpperCase();
     const key = `${wh}|${vendor.kode}`;
     if(!grouping[key]){
       grouping[key] = {wh, vendor, items:[]};
@@ -5530,36 +5616,20 @@ function sendVendorOrder(wh, vendorKode){
   if(!phone.startsWith('62')) phone = '62' + phone;
 
   // Collect items for this group (wh × vendor)
-  const manualAssignMap = new Map();
-  vendorState.forEach(vs=>{
-    (vs.assigned_dos||[]).forEach(d=>manualAssignMap.set(d, vs));
-  });
+  // v4.43.1: pakai __vendorAssignMap yang sudah di-build di renderVendor
+  // (tidak recompute lagi supaya konsisten dengan yang tampil di UI)
+  if(!window.__vendorAssignMap){
+    // Fallback: kalau map belum ada, trigger renderVendor dulu untuk build map
+    try { buildVendorAssignmentMap(); }
+    catch(e){ console.error('[sendVendorOrder] failed to build assignment map', e); }
+  }
+  const assignMap = window.__vendorAssignMap || new Map();
 
   const items = vendorItems.filter(it=>{
     const itWh = String(it.wh_cons||it.wh||'').replace('GUDANG ','').toUpperCase();
     if(itWh !== wh) return false;
-    const manuallyAssignedVendor = manualAssignMap.get(it);
-    if(manuallyAssignedVendor){
-      return manuallyAssignedVendor.kode === vendorKode;
-    }
-    // Auto-assigned — match if vendor in coverage (simple check: default V-first-available)
-    // Actually we need to replicate the logic from renderVendor auto-assign
-    // For simplicity: kalau belum manual assigned dan kode vendor saat ini match => yes
-    // Loop through vendorState and find which is the auto-assign target for this item
-    for(const vs of vendorState){
-      if(!vs.available) continue;
-      const coverage = String(vs.coverage||'').toUpperCase();
-      const zonaList = Array.isArray(vs.zona_coverage)
-        ? vs.zona_coverage
-        : String(vs.zona_coverage||'').split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
-      const kws = [coverage, ...zonaList].filter(Boolean);
-      const kirim = String(it.kirim||'').toUpperCase();
-      const kota = String(it.kota||it.zona||'').toUpperCase();
-      if(kws.some(kw => kirim.includes(kw) || kota.includes(kw)) || kws.includes('JABODETABEK')){
-        return vs.kode === vendorKode;
-      }
-    }
-    return false;
+    const assigned = assignMap.get(it);
+    return assigned && assigned.kode === vendorKode;
   });
 
   if(items.length === 0){
