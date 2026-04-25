@@ -551,7 +551,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       <button class="tb-btn" onclick="openTambahDO()" style="background:#7c3aed;color:#fff;border-color:#7c3aed" title="Tambah DO manual untuk kendaraan yang sudah ada">➕ Tambah DO</button>
       <button class="tb-btn" onclick="printAll()">🖨 Print SJ</button>
       <button class="tb-btn" onclick="syncToGSheets()" title="Sync ke Google Sheets + kirim tugas ke driver app">☁ Sync</button>
-      <button class="tb-btn" onclick="openMonitorMap()" title="Buka Live Monitoring GPS kendaraan" style="color:#3b82f6;border-color:#3b82f6">🗺 Monitor</button>
+      <a href="dispatcher_map.html" target="_blank" class="tb-btn" title="Live Monitoring GPS kendaraan (buka tab baru)" style="color:#fff;background:#2563eb;border-color:#1d4ed8;font-weight:700;text-decoration:none;display:inline-flex;align-items:center">🗺 Monitor</a>
       <button id="btn-dispatch" class="tb-btn" onclick="toggleDispatchMode()" title="Mode operasional saat muat — Skip/Cancel/Partial/Pindah per DO" style="background:#059669;color:#fff;border-color:#047857;font-weight:700">🚛 Dispatch</button>
       <button class="tb-btn" onclick="resetApp()">↩ Upload Baru</button>
       <div id="user-badge" style="display:flex;align-items:center;gap:6px;padding:4px 10px;background:#1e3a5f;border-radius:8px;border:1px solid #334155;margin-left:4px">
