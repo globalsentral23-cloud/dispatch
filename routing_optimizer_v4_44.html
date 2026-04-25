@@ -1,29 +1,9 @@
 <!DOCTYPE html>
-<!--
-  v4.43.1 CHANGELOG (25 April 2026) — Fix vendor matching
-  Fix 3 bug yang terkait:
-    1. WA message bocor (data leak) — renderVendor() dan sendVendorOrder()
-       melakukan auto-match independen dengan logic berbeda, resulting
-       group yang ditampilkan ≠ items yang dikirim via WA.
-    2. Alert "Tidak ada DO untuk vendor ini di gudang" palsu — akibat
-       inconsistency dari bug #1.
-    3. Coverage matching salah (Bandung 0.3m³ masuk Turbo 1 bukan
-       Pegasus) — karena JABODETABEK umbrella di-treat sebagai match
-       semua alamat; ditambah preferredTipe fallback = /LOKAL/ yang
-       tidak pernah match (master vendor tidak punya tipe Lokal).
-
-  Solusi: single source of truth via buildVendorAssignmentMap().
-    - findBestVendorForItem(): pure function, pakai scoring
-      (strong=10 zona spesifik, weak=1 JABODETABEK umbrella valid
-       jika alamat anchor Jabo, 0.5 Seluruh Indonesia, 0 tidak match).
-    - renderVendor dan sendVendorOrder pakai map yang sama →
-      konsisten by construction, tidak ada recompute.
--->
 <html lang="id">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.43.1</title>
+<title>Routing Optimizer v4.44</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -489,7 +469,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.43</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.44</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -1180,6 +1160,11 @@ function parseMasterData(masterData){
       CFG.vendor_luar_kota_list=String(val||'')
         .split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
     }
+    // ═══ v4.44 — LUAR KOTA CONSOLIDATION THRESHOLD ═════════════════════════
+    if(param.includes('luar kota min vol')||param.includes('luar_kota_min_vol'))
+      CFG.luar_kota_min_vol_m3=parseFloat(val)||8.0;
+    if(param.includes('luar kota min wt')||param.includes('luar kota min berat')||param.includes('luar_kota_min_wt'))
+      CFG.luar_kota_min_wt_kg=parseFloat(val)||6000;
   });
 
   // Set defaults untuk zone-fill-first jika tidak di-config
@@ -1205,6 +1190,9 @@ function parseMasterData(masterData){
   if(!CFG.vendor_luar_kota_list||CFG.vendor_luar_kota_list.length===0){
     CFG.vendor_luar_kota_list=['CIKAMPEK','PURWAKARTA','KARAWANG','CILEGON','CIANJUR','SUKABUMI','BANDUNG'];
   }
+  // v4.44 Luar Kota consolidation threshold defaults (80% CDD)
+  if(CFG.luar_kota_min_vol_m3===undefined) CFG.luar_kota_min_vol_m3=8.0;
+  if(CFG.luar_kota_min_wt_kg===undefined)  CFG.luar_kota_min_wt_kg=6000;
 
   // ── Parse Spesifikasi Produk → CFG.specTable ─────────────────────────────
   // Format: No | Ukuran | Kode SAP | Volume/DUS (m³) | Berat/DUS (kg) | Keterangan
@@ -1335,7 +1323,45 @@ async function syncToGSheets(){
       else synced++;
     }
 
-    // 3. Sync Settlement (jika ada data biaya)
+    // 3. Sync Pending Luar Kota (v4.44)
+    try{
+      const _toSave = [
+        ...(window.__pendingLuarKotaToSave||[]),
+        ...(window.__pendingCarryOverToUpdate||[])
+      ].map(i=>({
+        doc_no       : i.doc_no,
+        gudang       : (i.wh_cons||'').replace('GUDANG ',''),
+        customer     : i.customer,
+        kirim        : i.kirim,
+        luar_kota_area: i.luar_kota_area,
+        qty          : i.qty||0,
+        total_vol    : i.total_vol||0,
+        total_wt     : i.total_wt||0,
+        stock_name   : i.stock_name||'',
+        shade        : i.shade||'',
+        size         : i.size||'',
+        catatan      : i.pending_reason||''
+      }));
+      if(_toSave.length > 0){
+        const _rSave = await fetch(gsUrl,{method:'POST',
+          headers:{'Content-Type':'text/plain'},redirect:'follow',
+          body:JSON.stringify({action:'savePendingLuarKota',items:_toSave})});
+        const _dSave = await _rSave.json();
+        if(_dSave.error) errors.push('PendingLuarKota-save: '+_dSave.error);
+        else{ synced++; console.log(`[v4.44] Saved ${_dSave.inserted||0} new + ${_dSave.updated||0} updated pending luar kota`); }
+      }
+      const _toRelease = window.__releasedDocNosToGAS||[];
+      if(_toRelease.length > 0){
+        const _rRel = await fetch(gsUrl,{method:'POST',
+          headers:{'Content-Type':'text/plain'},redirect:'follow',
+          body:JSON.stringify({action:'deletePendingLuarKota',doc_nos:_toRelease,status:'RELEASED'})});
+        const _dRel = await _rRel.json();
+        if(_dRel.error) errors.push('PendingLuarKota-release: '+_dRel.error);
+        else{ synced++; console.log(`[v4.44] Released ${_dRel.updated||0} carry-over pending luar kota`); }
+      }
+    }catch(e){ errors.push('PendingLuarKota: '+e.message); }
+
+    // 4. Sync Settlement (jika ada data biaya)
     if(biayaData&&Object.keys(biayaData).length>0){
       const settlementRows=routes.map(r=>{
         const b=biayaData[r.id]||{}; if(!b.uang_jalan) return null;
@@ -1671,11 +1697,120 @@ async function startAnalysis(){
     // v4.43: Pre-populate auto-triggered vendor + conflict items
     vendorItems = [...(autoVendor||[])];
     conflictItems = [...(autoConflict||[])];
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // v4.44 — LUAR KOTA CONSOLIDATION (multi-hari)
+    // DO luar kota kecil (di bawah threshold 1 kendaraan) di-defer ke besok.
+    // Carry-over dari GAS digabung dengan DO hari ini sebelum evaluasi threshold.
+    // ─────────────────────────────────────────────────────────────────────────
+    luarKotaPending = []; // reset
+    const _releasedDocNos = []; // carry-over yang threshold-nya sudah terpenuhi
+
+    // Load carry-over pending dari GAS (hari sebelumnya)
+    const _gsUrl = document.getElementById('gs-id').value.trim();
+    let _gasCarryOver = [];
+    if(_gsUrl && _gsUrl.startsWith('https://script.google.com/') && gsConnected){
+      try{
+        setLoad('Memuat pending luar kota dari kemarin...');
+        const _gudang = (document.getElementById('gudang-filter-label') ||
+                         document.querySelector('.gudang-badge'))?.textContent?.replace('GUDANG ','').trim() || '';
+        const _pendResp = await fetch(_gsUrl+'?action=getPendingLuarKota'+(
+          _gudang ? '&gudang='+encodeURIComponent(_gudang) : ''), {redirect:'follow'});
+        const _pendData = await _pendResp.json();
+        _gasCarryOver = (_pendData.items || []);
+        if(_gasCarryOver.length > 0)
+          console.log(`%c[v4.44] Loaded ${_gasCarryOver.length} carry-over pending luar kota dari GAS`, 'color:#f97316;font-weight:bold');
+      }catch(e){
+        console.warn('[v4.44] Gagal load pending luar kota dari GAS:', e.message);
+      }
+    }
+
+    // Identifikasi doc_no carry-over untuk lookup cepat
+    const _carryOverDocNos = new Set(_gasCarryOver.map(i=>i.doc_no));
+
+    // Group: luar kota items dari SAP hari ini (belum di-vendor-assign)
+    // plus carry-over dari GAS (hari sebelumnya)
+    const _minVol = CFG.luar_kota_min_vol_m3 || 8.0;
+    const _minWt  = CFG.luar_kota_min_wt_kg  || 6000;
+
+    // 1. Pisahkan: luar kota kecil (vendor_fallback=true, luar_kota=true)
+    //    yang BELUM di-assign ke vendor (belum di autoVendor)
+    const _autoVendorDocNos = new Set((autoVendor||[]).map(i=>i.doc_no));
+    const _luarKotaToday = active.filter(i =>
+      i.luar_kota && !_autoVendorDocNos.has(i.doc_no)
+    );
+    // Sisanya (bukan luar kota, atau sudah di vendor) tetap masuk routing biasa
+    const _activeNonLuarKota = active.filter(i =>
+      !i.luar_kota || _autoVendorDocNos.has(i.doc_no)
+    );
+
+    // 2. Group by (gudang × luar_kota_area)
+    const _areaGroups = {};
+    [..._luarKotaToday, ..._gasCarryOver].forEach(item => {
+      const key = (item.wh_cons||item.gudang||'') + '|' + (item.luar_kota_area||'');
+      if(!_areaGroups[key]) _areaGroups[key] = { area: item.luar_kota_area, wh: item.wh_cons||('GUDANG '+(item.gudang||'')), items:[], totalVol:0, totalWt:0 };
+      _areaGroups[key].items.push(item);
+      _areaGroups[key].totalVol += Number(item.total_vol)||0;
+      _areaGroups[key].totalWt  += Number(item.total_wt)||0;
+    });
+
+    // 3. Evaluasi threshold per area
+    const _activeFromRelease = [];
+    Object.values(_areaGroups).forEach(grp => {
+      const volPct  = grp.totalVol / _minVol;
+      const wtPct   = grp.totalWt  / _minWt;
+      const pct100  = Math.round(Math.max(volPct, wtPct) * 100);
+      const met     = grp.totalVol >= _minVol || grp.totalWt >= _minWt;
+
+      if(met){
+        // Threshold terpenuhi → semua item release ke active (akan ke vendor)
+        grp.items.forEach(item => {
+          const normalized = {
+            ...item,
+            is_released_from_pending: _carryOverDocNos.has(item.doc_no),
+            vendor_reason: (item.vendor_reason||'') + (
+              _carryOverDocNos.has(item.doc_no) ? ' [carry-over — released]' : ' [threshold terpenuhi]'
+            )
+          };
+          _activeFromRelease.push(normalized);
+          if(_carryOverDocNos.has(item.doc_no)) _releasedDocNos.push(item.doc_no);
+        });
+        console.log(`%c[v4.44] RELEASE ${grp.area}: ${grp.items.length} item, ${grp.totalVol.toFixed(2)}m³ >= ${_minVol}m³ threshold`, 'color:#22c55e;font-weight:bold');
+      } else {
+        // Threshold belum terpenuhi → defer ke luarKotaPending
+        grp.items.forEach(item => {
+          const daysOld = item.days_pending || 0;
+          luarKotaPending.push({
+            ...item,
+            wh_cons           : grp.wh,
+            luar_kota_area    : grp.area,
+            pending_pct       : pct100,
+            pending_current_m3: +grp.totalVol.toFixed(3),
+            pending_threshold_m3: _minVol,
+            pending_reason    : `Akumulasi ${grp.area}: ${grp.totalVol.toFixed(2)}/${_minVol}m³ (${pct100}%)`,
+            days_pending      : daysOld,
+            is_pending_carryover: _carryOverDocNos.has(item.doc_no),
+          });
+        });
+        console.log(`%c[v4.44] DEFER ${grp.area}: ${grp.items.length} item, ${grp.totalVol.toFixed(2)}/${_minVol}m³ (${pct100}%) — ditunda besok`, 'color:#f59e0b;font-weight:bold');
+      }
+    });
+
+    // 4. Merge active final: non-luar-kota + luar-kota yang released
+    const _activeFinal = [..._activeNonLuarKota, ..._activeFromRelease];
+    // Simpan referensi untuk sync ke GAS
+    window.__pendingLuarKotaToSave   = luarKotaPending.filter(i => !i.is_pending_carryover);
+    window.__pendingCarryOverToUpdate = luarKotaPending.filter(i =>  i.is_pending_carryover);
+    window.__releasedDocNosToGAS     = _releasedDocNos;
+    // ─────────────────────────────────────────────────────────────────────────
+    // END v4.44 luar kota consolidation
+    // ─────────────────────────────────────────────────────────────────────────
+
     setLoad('Geocoding alamat...');
     hideLoad();
-    await geocodeAll(active);
+    await geocodeAll(_activeFinal);
     showLoad('Menjalankan routing...');await sleep(30);
-    const{rts,vendor:routingVendor,pendingTomorrow}=buildRoutes(active);
+    const{rts,vendor:routingVendor,pendingTomorrow}=buildRoutes(_activeFinal);
     routes=rts;
     // Merge: auto-trigger vendor + routing overflow vendor
     vendorItems = [...vendorItems, ...(routingVendor||[])];
@@ -7464,6 +7599,14 @@ function renderLuarKotaPending(){
           <div style="height:100%;background:${pct>=95?'var(--green)':pct>=75?'var(--amber)':'var(--red)'};width:${Math.min(pct,100)}%"></div>
         </div>
         <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">${r.pending_current_m3||'?'}/${r.pending_threshold_m3||'?'}m³ (${pct}%)</span>
+      </td>
+      <td>
+        ${r.days_pending > 3
+          ? `<span style="background:#dc2626;color:#fff;border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700">⚠ ${r.days_pending}h</span>`
+          : r.days_pending > 0
+            ? `<span style="background:#f59e0b;color:#fff;border-radius:4px;padding:1px 5px;font-size:9px">${r.days_pending}h</span>`
+            : '<span style="font-size:9px;color:var(--muted)">baru</span>'}
+        ${r.is_pending_carryover ? '<span style="font-size:8px;color:var(--orange)"> ↩carry</span>' : ''}
       </td>
       <td style="color:var(--muted);font-size:9px">${(r.pending_reason||'').slice(0,80)}</td>
     </tr>`;
