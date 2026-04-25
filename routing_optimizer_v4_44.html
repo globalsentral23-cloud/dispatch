@@ -665,7 +665,7 @@ body.dispatch-active .dispatch-bar{display:flex}
             <thead><tr>
               <th>DO No</th><th>Gudang</th><th>Customer</th><th>Area Tujuan</th>
               <th>Tujuan</th><th>QTY</th><th>Volume (m³)</th>
-              <th>Status Volume</th><th>Keterangan</th>
+              <th>Status Volume</th><th>Hari</th><th>Keterangan</th><th>Aksi</th>
             </tr></thead>
             <tbody id="tbody-luarkota"></tbody>
           </table>
@@ -5715,6 +5715,9 @@ function renderVendorGroup(group, wh){
               <option value="">— Pindah —</option>
               ${internalOpts?`<optgroup label="Kendaraan Internal (sisa)">${internalOpts}</optgroup>`:''}
               ${vendorOpts?`<optgroup label="Vendor Lain">${vendorOpts}</optgroup>`:''}
+              <optgroup label="──────────────">
+                <option value="PENDING_BESOK">📅 Pending Besok</option>
+              </optgroup>
             </select>`;
             return `<tr>
               <td style="font-family:var(--mono);font-size:9px">${r.doc_no}</td>
@@ -6685,7 +6688,13 @@ function openEdit(id){
         <div class="edit-meta">DO: ${g.doc_no} · ${g.customer.slice(0,25)} · ${g.qty} DUS</div>
         <div class="edit-meta" style="color:var(--dim)">${g.kirim.slice(0,50)}</div>
       </div>
-      ${opts?`<select class="move-sel" onchange="moveItems('${g.doc_no}',this.value)"><option value="">— Pindah ke —</option>${opts}</select>`:''}
+      ${opts||true?`<select class="move-sel" onchange="moveItems('${g.doc_no}',this.value,${id})">
+        <option value="">— Pindah ke —</option>
+        ${opts}
+        <optgroup label="──────────────">
+          <option value="PENDING_BESOK">📅 Pending Besok</option>
+        </optgroup>
+      </select>`:''}
       <button class="rm-btn" onclick="removeItems('${g.doc_no}')">×</button>
     </div>`).join('');
   document.getElementById('edit-modal').classList.add('show');
@@ -6696,15 +6705,37 @@ function removeItems(docNo){
   r.items=r.items.filter(i=>i.doc_no!==docNo);
   recalc(r);openEdit(editRouteId);
 }
-function moveItems(docNo,targetId){
+function moveItems(docNo,targetId,srcRouteId){
   if(!targetId) return;
-  const src=routes.find(x=>x.id===editRouteId);
+  const routeId = srcRouteId || editRouteId;
+  // v4.44: Pindah ke Pending Besok
+  if(targetId === 'PENDING_BESOK'){
+    const src=routes.find(x=>x.id===routeId);
+    if(!src) return;
+    const mv=src.items.filter(i=>i.doc_no===docNo);
+    if(!mv.length) return;
+    const sample=mv[0];
+    const totalVol=mv.reduce((a,i)=>a+(i.total_vol||0),0);
+    const totalWt=mv.reduce((a,i)=>a+(i.total_wt||0),0);
+    const totalQty=mv.reduce((a,i)=>a+(i.qty||0),0);
+    if(!confirm(`Pindahkan DO ${docNo} (${sample.customer}) ke Pending Besok?
+
+Volume: ${totalVol.toFixed(3)} m³
+DO ini akan di-defer dan dikonsolidasi dengan hari berikutnya.`)) return;
+    src.items=src.items.filter(i=>i.doc_no!==docNo);
+    recalc(src);
+    _addToPendingBesok(mv, 'routing-manual');
+    document.getElementById('edit-modal').classList.remove('show');
+    renderRouting();renderKPI();renderLuarKotaPending();
+    return;
+  }
+  const src=routes.find(x=>x.id===routeId);
   const tgt=routes.find(x=>x.id==targetId);
   if(!tgt) return;
   const mv=src.items.filter(i=>i.doc_no===docNo);
   src.items=src.items.filter(i=>i.doc_no!==docNo);
   tgt.items.push(...mv);
-  recalc(src);recalc(tgt);openEdit(editRouteId);
+  recalc(src);recalc(tgt);openEdit(routeId);
 }
 function recalc(r){
   r.total_vol=r.items.reduce((a,i)=>a+i.total_vol,0);
@@ -7550,6 +7581,109 @@ function printSJVendor(vendorKodeEncoded){
   w.document.close();
 }
 
+// ─────────────────────────────────────────────────────────────────
+// v4.44 — PENDING BESOK: shared helper pindah + batalkan
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * Tambah items ke luarKotaPending + auto-save ke GAS.
+ * source: 'vendor-manual' | 'routing-manual' | 'auto'
+ */
+async function _addToPendingBesok(items, source){
+  const _minVol = CFG.luar_kota_min_vol_m3 || 8.0;
+  items.forEach(item => {
+    // Hitung total per area setelah penambahan
+    const area = item.luar_kota_area || extractLuarKotaArea(item.kirim||'') || 'UNKNOWN';
+    const existing = luarKotaPending.filter(p => p.luar_kota_area === area);
+    const existVol = existing.reduce((a,p)=>a+(p.total_vol||0),0);
+    const newVol = existVol + (item.total_vol||0);
+    const pct = Math.round(newVol / _minVol * 100);
+    luarKotaPending.push({
+      ...item,
+      luar_kota      : true,
+      luar_kota_area : area,
+      pending_pct    : pct,
+      pending_current_m3  : +newVol.toFixed(3),
+      pending_threshold_m3: _minVol,
+      pending_reason : `Pindah manual (${source}) — ${area}: ${newVol.toFixed(2)}/${_minVol}m³`,
+      days_pending   : 0,
+      is_manual      : true,
+    });
+    // Simpan referensi untuk sync
+    if(!window.__pendingLuarKotaToSave) window.__pendingLuarKotaToSave=[];
+    window.__pendingLuarKotaToSave.push(item);
+  });
+  // Auto-save ke GAS
+  const gsUrl = document.getElementById('gs-id')?.value.trim();
+  if(gsUrl && gsUrl.startsWith('https://script.google.com/') && gsConnected){
+    try{
+      const payload = items.map(i=>({
+        doc_no        : i.doc_no,
+        gudang        : (i.wh_cons||'').replace('GUDANG ',''),
+        customer      : i.customer,
+        kirim         : i.kirim,
+        luar_kota_area: i.luar_kota_area || extractLuarKotaArea(i.kirim||'') || 'UNKNOWN',
+        qty           : i.qty||0,
+        total_vol     : i.total_vol||0,
+        total_wt      : i.total_wt||0,
+        stock_name    : i.stock_name||'',
+        shade         : i.shade||'',
+        size          : i.size||'',
+        catatan       : `Pindah manual (${source})`
+      }));
+      const r = await fetch(gsUrl,{method:'POST',
+        headers:{'Content-Type':'text/plain'},redirect:'follow',
+        body:JSON.stringify({action:'savePendingLuarKota',items:payload})});
+      const d = await r.json();
+      console.log(`[v4.44] Auto-save pending besok: ${d.inserted||0} inserted, ${d.updated||0} updated`);
+    }catch(e){
+      console.warn('[v4.44] Gagal auto-save pending besok:', e.message);
+    }
+  }
+}
+
+/** Helper: ekstrak area luar kota dari alamat */
+function extractLuarKotaArea(alamat){
+  const a = alamat.toUpperCase();
+  const areas = ['BANDUNG','CIMAHI','CIKAMPEK','KARAWANG','CILEGON','CIANJUR',
+                 'SUKABUMI','PURWAKARTA','SUBANG','GARUT'];
+  return areas.find(x => a.includes(x)) || '';
+}
+
+/**
+ * Batalkan / kembalikan DO dari Pending Besok.
+ * DO dikembalikan ke vendorItems (DO Unplot) + di-CANCELED di GAS.
+ */
+async function batalkanPendingBesok(docNo){
+  const idx = luarKotaPending.findIndex(p=>p.doc_no===docNo);
+  if(idx < 0){ alert('DO tidak ditemukan di Pending Besok'); return; }
+  const item = luarKotaPending[idx];
+  if(!confirm(`Batalkan pending DO ${docNo} (${item.customer})?
+
+DO akan dikembalikan ke DO Unplot.`)) return;
+  luarKotaPending.splice(idx,1);
+  // Kembalikan ke vendorItems sebagai unplot
+  vendorItems.push({
+    ...item,
+    vendor_reason: (item.vendor_reason||'')+ ' [dikembalikan dari pending]',
+    is_pending_carryover: false,
+  });
+  // Mark CANCELED di GAS
+  const gsUrl = document.getElementById('gs-id')?.value.trim();
+  if(gsUrl && gsUrl.startsWith('https://script.google.com/') && gsConnected){
+    try{
+      const r = await fetch(gsUrl,{method:'POST',
+        headers:{'Content-Type':'text/plain'},redirect:'follow',
+        body:JSON.stringify({action:'deletePendingLuarKota',doc_nos:[docNo],status:'CANCELED'})});
+      const d = await r.json();
+      console.log(`[v4.44] Canceled pending besok DO ${docNo}: ${d.updated||0} updated`);
+    }catch(e){
+      console.warn('[v4.44] Gagal cancel pending besok di GAS:', e.message);
+    }
+  }
+  renderVendor();renderKPI();renderLuarKotaPending();
+}
+
 function renderLuarKotaPending(){
   const cnt=luarKotaPending.length;
   const cntLowUtil = (pendingTomorrowItems||[]).length;
@@ -7609,6 +7743,12 @@ function renderLuarKotaPending(){
         ${r.is_pending_carryover ? '<span style="font-size:8px;color:var(--orange)"> ↩carry</span>' : ''}
       </td>
       <td style="color:var(--muted);font-size:9px">${(r.pending_reason||'').slice(0,80)}</td>
+      <td>
+        <button onclick="batalkanPendingBesok('${r.doc_no}')"
+          style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:4px;
+                 padding:2px 8px;font-size:9px;cursor:pointer;font-weight:600"
+          title="Batalkan dan kembalikan ke DO Unplot">↩ Batal</button>
+      </td>
     </tr>`;
   }).join('');
 
@@ -7829,6 +7969,20 @@ function reassignDO(itemIdx,assignStr){
       if(idx>=0) vendorItems.splice(idx,1);
       renderRouting();renderKPI();renderBiaya();
     }
+
+  } else if(assignStr === 'PENDING_BESOK'){
+    // v4.44: Pindah manual ke Pending Besok dari vendor tab
+    const totalVol=item.total_vol||0;
+    const totalWt=item.total_wt||0;
+    if(!confirm(`Pindahkan DO ${item.doc_no} (${item.customer}) ke Pending Besok?
+
+Volume: ${totalVol.toFixed(3)} m³
+DO ini akan di-defer dan dikonsolidasi dengan hari berikutnya.`)) return;
+    const idx=vendorItems.indexOf(item);
+    if(idx>=0) vendorItems.splice(idx,1);
+    _addToPendingBesok([item], 'vendor-manual');
+    renderVendor();renderKPI();renderLuarKotaPending();
+    return;
 
   } else if(assignStr.startsWith('IDLE:')){
     const parts=assignStr.replace('IDLE:','').split('|');
