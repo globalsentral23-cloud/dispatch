@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.44</title>
+<title>Routing Optimizer v4.45</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -469,7 +469,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.44</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.45</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -529,7 +529,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.44</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.45</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -652,9 +652,12 @@ body.dispatch-active .dispatch-bar{display:flex}
         <button onclick="downloadLuarKotaPending()" style="padding:6px 16px;border-radius:8px;background:var(--navy);border:none;color:#fff;font-size:12px;font-weight:600;cursor:pointer">⬇ Download List DO</button>
         <span style="font-size:11px;color:var(--muted)">DO yang ditunda untuk plot besok (kapasitas belum cukup, atau util kendaraan rendah)</span>
       </div>
-      <div id="luar-kota-summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
+      <!-- Auto-defer summary cards -->
+      <div id="luar-kota-summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px"></div>
+      <!-- Manual defer summary cards -->
+      <div id="luar-kota-summary-manual" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
 
-      <!-- SEKSI 1: Luar Kota Pending -->
+      <!-- SEKSI 1: Pending Besok (Auto + Manual) -->
       <div id="luarkota-section" style="margin-bottom:20px">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
           <div style="width:12px;height:12px;border-radius:2px;background:#f59e0b;flex-shrink:0"></div>
@@ -663,9 +666,9 @@ body.dispatch-active .dispatch-bar{display:flex}
         <div class="tbl-wrap">
           <table class="info-tbl">
             <thead><tr>
-              <th>DO No</th><th>Gudang</th><th>Customer</th><th>Area Tujuan</th>
+              <th>DO No</th><th>Gudang</th><th>Customer</th><th>Kota / Area</th>
               <th>Tujuan</th><th>QTY</th><th>Volume (m³)</th>
-              <th>Status Volume</th><th>Hari</th><th>Keterangan</th><th>Aksi</th>
+              <th>Status Volume</th><th>Jenis</th><th>Hari</th><th>Keterangan</th><th>Aksi</th>
             </tr></thead>
             <tbody id="tbody-luarkota"></tbody>
           </table>
@@ -1345,7 +1348,7 @@ async function syncToGSheets(){
       if(_toSave.length > 0){
         const _rSave = await fetch(gsUrl,{method:'POST',
           headers:{'Content-Type':'text/plain'},redirect:'follow',
-          body:JSON.stringify({action:'savePendingLuarKota',items:_toSave})});
+          body:JSON.stringify({action:'savePendingBesok',items:_toSave})});
         const _dSave = await _rSave.json();
         if(_dSave.error) errors.push('PendingLuarKota-save: '+_dSave.error);
         else{ synced++; console.log(`[v4.44] Saved ${_dSave.inserted||0} new + ${_dSave.updated||0} updated pending luar kota`); }
@@ -1354,7 +1357,7 @@ async function syncToGSheets(){
       if(_toRelease.length > 0){
         const _rRel = await fetch(gsUrl,{method:'POST',
           headers:{'Content-Type':'text/plain'},redirect:'follow',
-          body:JSON.stringify({action:'deletePendingLuarKota',doc_nos:_toRelease,status:'RELEASED'})});
+          body:JSON.stringify({action:'deletePendingBesok',doc_nos:_toRelease,status:'RELEASED'})});
         const _dRel = await _rRel.json();
         if(_dRel.error) errors.push('PendingLuarKota-release: '+_dRel.error);
         else{ synced++; console.log(`[v4.44] Released ${_dRel.updated||0} carry-over pending luar kota`); }
@@ -1714,12 +1717,12 @@ async function startAnalysis(){
         setLoad('Memuat pending luar kota dari kemarin...');
         const _gudang = (document.getElementById('gudang-filter-label') ||
                          document.querySelector('.gudang-badge'))?.textContent?.replace('GUDANG ','').trim() || '';
-        const _pendResp = await fetch(_gsUrl+'?action=getPendingLuarKota'+(
+        const _pendResp = await fetch(_gsUrl+'?action=getPendingBesok'+(
           _gudang ? '&gudang='+encodeURIComponent(_gudang) : ''), {redirect:'follow'});
         const _pendData = await _pendResp.json();
         _gasCarryOver = (_pendData.items || []);
         if(_gasCarryOver.length > 0)
-          console.log(`%c[v4.44] Loaded ${_gasCarryOver.length} carry-over pending luar kota dari GAS`, 'color:#f97316;font-weight:bold');
+          console.log(`%c[v4.45] Loaded ${_gasCarryOver.length} carry-over pending besok dari GAS (auto: ${_gasCarryOver.filter(i=>i.defer_type==='auto').length}, manual: ${_gasCarryOver.filter(i=>i.defer_type==='manual').length})`, 'color:#f97316;font-weight:bold');
       }catch(e){
         console.warn('[v4.44] Gagal load pending luar kota dari GAS:', e.message);
       }
@@ -1729,6 +1732,14 @@ async function startAnalysis(){
     const _carryOverDocNos = new Set(_gasCarryOver.map(i=>i.doc_no));
     const _minVol = CFG.luar_kota_min_vol_m3 || 8.0;
     const _minWt  = CFG.luar_kota_min_wt_kg  || 6000;
+
+    // v4.45: Split carry-over by defer_type
+    // - manual → langsung masuk active routing (dispatcher decide lagi)
+    // - auto   → masuk threshold evaluation (konsolidasi luar kota)
+    const _carryOverManual = _gasCarryOver.filter(i => i.defer_type === 'manual');
+    const _carryOverAuto   = _gasCarryOver.filter(i => i.defer_type !== 'manual');
+    if(_carryOverManual.length > 0)
+      console.log(`%c[v4.45] Manual carry-over ${_carryOverManual.length} item → masuk active routing`, 'color:#3b82f6;font-weight:bold');
 
     // 1. FIX: Pisahkan luar_kota dari AUTOVENDOR (bukan active!)
     //    processData menaruh DO luar kota di vendor[] via vendor.push(enrichedItem) line ~2469
@@ -1742,9 +1753,10 @@ async function startAnalysis(){
 
     console.log(`%c[v4.44] Luar kota hari ini: ${_luarKotaToday.length} item (${_luarKotaFromVendor.length} dari autoVendor, ${_luarKotaFromActive.length} dari active)`, 'color:#f97316');
 
-    // 2. Group by (gudang × luar_kota_area) — gabung dengan carry-over GAS
+    // 2. Group by (gudang × luar_kota_area) — gabung hanya dengan carry-over AUTO
+    //    Manual carry-over sudah masuk _carryOverManual (di-inject ke active bawah)
     const _areaGroups = {};
-    [..._luarKotaToday, ..._gasCarryOver].forEach(item => {
+    [..._luarKotaToday, ..._carryOverAuto].forEach(item => {
       const key = (item.wh_cons||('GUDANG '+(item.gudang||''))) + '|' + (item.luar_kota_area||'UNKNOWN');
       if(!_areaGroups[key]) _areaGroups[key] = {
         area: item.luar_kota_area, wh: item.wh_cons||('GUDANG '+(item.gudang||'')),
@@ -1783,6 +1795,8 @@ async function startAnalysis(){
             ...item,
             wh_cons              : grp.wh,
             luar_kota_area       : grp.area,
+            kota_tujuan          : grp.area,
+            defer_type           : 'auto',
             pending_pct          : pct100,
             pending_current_m3   : +grp.totalVol.toFixed(3),
             pending_threshold_m3 : _minVol,
@@ -1796,7 +1810,13 @@ async function startAnalysis(){
     });
 
     // 4. Rebuild arrays (deferred items DIKELUARKAN)
-    const _activeFinal = [..._activeNonLuarKota, ..._activeFromRelease];
+    // Manual carry-over masuk active langsung (dispatcher decide hari ini)
+    const _manualCarryOverActive = _carryOverManual.map(i=>({
+      ...i, is_carry_over:true, carry_over_days: i.days_pending||0,
+      priority: Math.max(i.priority||0, 1), // slight priority boost
+      vendor_reason: i.vendor_reason || ('Manual defer carry-over dari '+i.last_update_date),
+    }));
+    const _activeFinal = [..._activeNonLuarKota, ..._activeFromRelease, ..._manualCarryOverActive];
     // vendorItems = non-luar-kota autoVendor + luar-kota yang released (ke Pegasus)
     vendorItems = [..._autoVendorNonLuarKota, ..._vendorFromRelease];
     // Simpan referensi untuk sync ke GAS saat klik Sync
@@ -7592,23 +7612,31 @@ function printSJVendor(vendorKodeEncoded){
  */
 async function _addToPendingBesok(items, source){
   const _minVol = CFG.luar_kota_min_vol_m3 || 8.0;
+  const _deferType = (source === 'auto') ? 'auto' : 'manual';
   items.forEach(item => {
-    // Hitung total per area setelah penambahan
-    const area = item.luar_kota_area || extractLuarKotaArea(item.kirim||'') || 'UNKNOWN';
-    const existing = luarKotaPending.filter(p => p.luar_kota_area === area);
+    // Kota dari item atau ekstrak dari alamat
+    const kota = item.kota_tujuan
+      || item.luar_kota_area
+      || extractKotaFromAlamat(item.kirim||'');
+    // Progress bar hanya relevan untuk auto-defer
+    const existing = luarKotaPending.filter(p => p.kota_tujuan === kota && p.defer_type === 'auto');
     const existVol = existing.reduce((a,p)=>a+(p.total_vol||0),0);
     const newVol = existVol + (item.total_vol||0);
-    const pct = Math.round(newVol / _minVol * 100);
+    const pct = _deferType === 'auto' ? Math.round(newVol / _minVol * 100) : 0;
     luarKotaPending.push({
       ...item,
-      luar_kota      : true,
-      luar_kota_area : area,
-      pending_pct    : pct,
+      luar_kota           : _deferType === 'auto',
+      luar_kota_area      : _deferType === 'auto' ? kota : '',
+      kota_tujuan         : kota,
+      defer_type          : _deferType,
+      pending_pct         : pct,
       pending_current_m3  : +newVol.toFixed(3),
       pending_threshold_m3: _minVol,
-      pending_reason : `Pindah manual (${source}) — ${area}: ${newVol.toFixed(2)}/${_minVol}m³`,
-      days_pending   : 0,
-      is_manual      : true,
+      pending_reason      : _deferType === 'auto'
+        ? `Auto-defer ${kota}: ${newVol.toFixed(2)}/${_minVol}m³ (${pct}%)`
+        : `Manual defer oleh dispatcher`,
+      days_pending        : 0,
+      is_manual           : _deferType === 'manual',
     });
     // Simpan referensi untuk sync
     if(!window.__pendingLuarKotaToSave) window.__pendingLuarKotaToSave=[];
@@ -7623,18 +7651,19 @@ async function _addToPendingBesok(items, source){
         gudang        : (i.wh_cons||'').replace('GUDANG ',''),
         customer      : i.customer,
         kirim         : i.kirim,
-        luar_kota_area: i.luar_kota_area || extractLuarKotaArea(i.kirim||'') || 'UNKNOWN',
+        kota_tujuan   : i.kota_tujuan || extractKotaFromAlamat(i.kirim||'') || i.luar_kota_area || '',
         qty           : i.qty||0,
         total_vol     : i.total_vol||0,
         total_wt      : i.total_wt||0,
         stock_name    : i.stock_name||'',
         shade         : i.shade||'',
         size          : i.size||'',
-        catatan       : `Pindah manual (${source})`
+        catatan       : `Pindah manual (${source})`,
+        defer_type    : source === 'auto' ? 'auto' : 'manual'
       }));
       const r = await fetch(gsUrl,{method:'POST',
         headers:{'Content-Type':'text/plain'},redirect:'follow',
-        body:JSON.stringify({action:'savePendingLuarKota',items:payload})});
+        body:JSON.stringify({action:'savePendingBesok',items:payload})});
       const d = await r.json();
       console.log(`[v4.44] Auto-save pending besok: ${d.inserted||0} inserted, ${d.updated||0} updated`);
     }catch(e){
@@ -7643,13 +7672,25 @@ async function _addToPendingBesok(items, source){
   }
 }
 
-/** Helper: ekstrak area luar kota dari alamat */
-function extractLuarKotaArea(alamat){
-  const a = alamat.toUpperCase();
-  const areas = ['BANDUNG','CIMAHI','CIKAMPEK','KARAWANG','CILEGON','CIANJUR',
-                 'SUKABUMI','PURWAKARTA','SUBANG','GARUT'];
-  return areas.find(x => a.includes(x)) || '';
+/** Helper: ekstrak kota dari alamat (general — bukan hanya luar kota) */
+function extractKotaFromAlamat(alamat){
+  const a = String(alamat||'').toUpperCase();
+  // Prioritas 1: luar kota area yang sudah dikenal
+  const luarKota = ['BANDUNG','CIMAHI','CIKAMPEK','KARAWANG','CILEGON','CIANJUR',
+                    'SUKABUMI','PURWAKARTA','SUBANG','GARUT'];
+  const found = luarKota.find(x => a.includes(x));
+  if(found) return found;
+  // Prioritas 2: kota Jabodetabek dari alamat
+  const jabo = ['JAKARTA','BOGOR','DEPOK','TANGERANG','BEKASI','SERPONG','CIPUTAT',
+                'CIBINONG','CITAYAM','PARUNG','GUNUNG SINDUR','CILEUNGSI'];
+  const foundJabo = jabo.find(x => a.includes(x));
+  if(foundJabo) return foundJabo;
+  // Prioritas 3: kata terakhir setelah koma terakhir
+  const parts = a.split(',').map(s=>s.trim()).filter(Boolean);
+  return parts[parts.length-1] || '';
 }
+// backward compat alias
+function extractLuarKotaArea(alamat){ return extractKotaFromAlamat(alamat); }
 
 /**
  * Batalkan / kembalikan DO dari Pending Besok.
@@ -7675,7 +7716,7 @@ DO akan dikembalikan ke DO Unplot.`)) return;
     try{
       const r = await fetch(gsUrl,{method:'POST',
         headers:{'Content-Type':'text/plain'},redirect:'follow',
-        body:JSON.stringify({action:'deletePendingLuarKota',doc_nos:[docNo],status:'CANCELED'})});
+        body:JSON.stringify({action:'deletePendingBesok',doc_nos:[docNo],status:'CANCELED'})});
       const d = await r.json();
       console.log(`[v4.44] Canceled pending besok DO ${docNo}: ${d.updated||0} updated`);
     }catch(e){
@@ -7686,7 +7727,9 @@ DO akan dikembalikan ke DO Unplot.`)) return;
 }
 
 function renderLuarKotaPending(){
-  const cnt=luarKotaPending.length;
+  const pendingAuto   = luarKotaPending.filter(r => r.defer_type === 'auto');
+  const pendingManual = luarKotaPending.filter(r => r.defer_type !== 'auto');
+  const cnt = luarKotaPending.length;
   const cntLowUtil = (pendingTomorrowItems||[]).length;
   document.getElementById('cnt-luarkota').textContent=cnt;
   const cntLU = document.getElementById('cnt-lowutil');
@@ -7695,45 +7738,76 @@ function renderLuarKotaPending(){
   const totalPending = cnt + cntLowUtil;
   if(btn) btn.textContent='Pending Besok'+(totalPending>0?' ('+totalPending+')':'');
 
-  // Summary cards per area
+  // ── SECTION 1: Summary cards auto-defer per area (progress bar)
   const byArea={};
-  luarKotaPending.forEach(r=>{
-    const key=r.wh_cons+'|'+r.luar_kota_area;
-    if(!byArea[key]) byArea[key]={area:r.luar_kota_area,wh:r.wh_cons,items:[],vol:0,pct:r.pending_pct,threshold:r.pending_threshold_m3};
+  pendingAuto.forEach(r=>{
+    const key=r.wh_cons+'|'+(r.luar_kota_area||r.kota_tujuan||'');
+    if(!byArea[key]) byArea[key]={area:r.luar_kota_area||r.kota_tujuan,wh:r.wh_cons,items:[],vol:0,threshold:r.pending_threshold_m3||8};
     byArea[key].items.push(r);
     byArea[key].vol+=r.total_vol||0;
   });
   const summDiv=document.getElementById('luar-kota-summary');
   summDiv.innerHTML=Object.values(byArea).map(g=>{
-    const pct=Math.round(g.vol/parseFloat(g.threshold)*100);
+    const pct=Math.min(Math.round(g.vol/parseFloat(g.threshold)*100),100);
     const color=pct>=75?'var(--amber-l)':'var(--red-l)';
     const fc=pct>=75?'var(--amber)':'var(--red)';
     return `<div style="background:${color};border-radius:8px;padding:8px 14px;border:1px solid ${fc}">
-      <div style="font-weight:700;font-size:12px;color:${fc}">${g.area}</div>
+      <div style="font-weight:700;font-size:12px;color:${fc}">🔄 ${g.area}</div>
       <div style="font-size:11px;color:var(--muted)">${g.wh.replace('GUDANG ','')}</div>
       <div style="font-family:var(--mono);font-size:13px;font-weight:700;margin-top:2px">${g.vol.toFixed(2)}/${g.threshold}m³</div>
-      <div style="font-size:10px;color:${fc}">${pct}% dari threshold 95%</div>
-      <div style="font-size:10px;color:var(--muted)">${g.items.length} item</div>
+      <div style="background:#e2e8f0;border-radius:3px;height:5px;margin:4px 0;overflow:hidden">
+        <div style="height:100%;background:${fc};width:${pct}%"></div>
+      </div>
+      <div style="font-size:10px;color:${fc}">${pct}% — ${g.items.length} item</div>
     </div>`;
   }).join('');
 
-  // Table Luar Kota
-  document.getElementById('tbody-luarkota').innerHTML=luarKotaPending.map(r=>{
+  // ── SECTION 2: Manual defer summary cards (no progress bar)
+  const byKotaManual={};
+  pendingManual.forEach(r=>{
+    const kota = r.kota_tujuan || r.kota || r.zona || '—';
+    if(!byKotaManual[kota]) byKotaManual[kota]={kota,items:[],vol:0};
+    byKotaManual[kota].items.push(r);
+    byKotaManual[kota].vol+=r.total_vol||0;
+  });
+  const summManualDiv = document.getElementById('luar-kota-summary-manual');
+  if(summManualDiv){
+    summManualDiv.innerHTML = pendingManual.length === 0 ? '' :
+      Object.values(byKotaManual).map(g=>`
+        <div style="background:#eff6ff;border-radius:8px;padding:8px 14px;border:1px solid #93c5fd">
+          <div style="font-weight:700;font-size:12px;color:#1d4ed8">📌 ${g.kota}</div>
+          <div style="font-family:var(--mono);font-size:13px;font-weight:700;margin-top:2px">${g.vol.toFixed(2)}m³</div>
+          <div style="font-size:10px;color:#3b82f6">Manual — ${g.items.length} item — masuk routing besok</div>
+        </div>`).join('');
+  }
+
+  // ── TABLE: Gabung auto + manual, sorted (auto dulu)
+  const allPending = [...pendingAuto, ...pendingManual];
+  document.getElementById('tbody-luarkota').innerHTML=allPending.map(r=>{
     const pct=r.pending_pct||0;
     const rowBg=pct>=75?'fffbeb':'fff5f5';
     return `<tr style="background:#${rowBg}">
       <td style="font-family:var(--mono);font-size:10px">${r.doc_no}</td>
       <td>${r.wh_cons}</td>
       <td>${r.customer.slice(0,28)}</td>
-      <td style="font-weight:600;color:var(--orange)">${r.luar_kota_area||'—'}</td>
+      <td style="font-weight:600;color:${r.defer_type==='auto'?'var(--orange)':'#1d4ed8'}">${r.kota_tujuan||r.luar_kota_area||'—'}</td>
       <td style="color:var(--muted);max-width:180px;font-size:10px">${r.kirim.slice(0,55)}</td>
       <td style="font-family:var(--mono);font-weight:600">${r.qty}</td>
       <td style="font-family:var(--mono);font-size:10px">${(r.total_vol||0).toFixed(3)}</td>
       <td>
-        <div style="background:#e2e8f0;border-radius:4px;height:6px;width:80px;overflow:hidden;margin-bottom:2px">
-          <div style="height:100%;background:${pct>=95?'var(--green)':pct>=75?'var(--amber)':'var(--red)'};width:${Math.min(pct,100)}%"></div>
-        </div>
-        <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">${r.pending_current_m3||'?'}/${r.pending_threshold_m3||'?'}m³ (${pct}%)</span>
+        ${r.defer_type === 'auto' ? `
+          <div style="background:#e2e8f0;border-radius:4px;height:6px;width:80px;overflow:hidden;margin-bottom:2px">
+            <div style="height:100%;background:${pct>=95?'var(--green)':pct>=75?'var(--amber)':'var(--red)'};width:${Math.min(pct,100)}%"></div>
+          </div>
+          <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">${r.pending_current_m3||'?'}/${r.pending_threshold_m3||'?'}m³ (${pct}%)</span>
+        ` : `<span style="font-size:9px;color:#3b82f6">—</span>`}
+      </td>
+      <td>
+        <span style="border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;
+          background:${r.defer_type==='auto'?'#fef3c7':'#dbeafe'};
+          color:${r.defer_type==='auto'?'#b45309':'#1d4ed8'}">
+          ${r.defer_type==='auto'?'🔄 auto':'📌 manual'}
+        </span>
       </td>
       <td>
         ${r.days_pending > 3
