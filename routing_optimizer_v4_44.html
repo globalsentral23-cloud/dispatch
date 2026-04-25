@@ -4775,7 +4775,7 @@ function showApp(){
   document.getElementById('upload-screen').style.display='none';
   document.getElementById('app-screen').style.display='block';
   document.getElementById('tb-date').textContent=doDate||'—';
-  vendorState=[];luarKotaPending=[];
+  vendorState=[]; // luarKotaPending TIDAK di-reset di sini (v4.45: populated sebelum showApp)
   renderKPI();renderRouting();renderTransfer();renderSkipped();renderDeferred();renderVendor();renderLuarKotaPending();renderKonflik();renderBiaya();
   // Terapkan filter gudang sesuai user setelah render
   setTimeout(()=>applyGudangFilterLock(), 100);
