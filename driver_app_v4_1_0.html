@@ -1,0 +1,3361 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>GST Logistics — Driver App v4.1</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<style>
+:root{
+  --nav:#0b1f3a;--accent:#2563eb;--bg:#f4f7fb;--border:#dbe3f0;
+  --text-main:#0f172a;--text-muted:#64748b;
+  --green:#16a34a;--red:#dc2626;--amber:#d97706;--notif-red:#ef4444;
+}
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',sans-serif;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
+.driver-app{max-width:500px;margin:0 auto;min-height:100vh;background:#fff;box-shadow:0 0 30px rgba(15,23,42,.08)}
+
+/* HEADER */
+.driver-header{background:var(--nav);color:#fff;display:flex;justify-content:space-between;align-items:center;padding:12px 18px;position:sticky;top:0;z-index:100}
+.driver-header h2{font-size:17px;font-weight:700;margin-bottom:2px}
+.driver-header .plat{font-size:11px;opacity:.8}
+.hdr-right{display:flex;align-items:center;gap:8px}
+.settings-btn{background:none;border:none;color:#6ee7b7;font-size:18px;cursor:pointer;padding:4px 8px;border-radius:6px}
+.settings-btn:active{background:rgba(255,255,255,.1)}
+.notif-btn{position:relative;background:none;border:none;color:#93c5fd;font-size:18px;cursor:pointer;padding:4px 8px;border-radius:6px}
+.notif-btn:active{background:rgba(255,255,255,.1)}
+.notif-badge{position:absolute;top:0;right:0;background:var(--notif-red);color:#fff;font-size:9px;font-weight:700;min-width:16px;height:16px;border-radius:8px;display:none;align-items:center;justify-content:center;padding:0 3px}
+
+/* OFFLINE NOTICE */
+.offline-notice{background:#fef2f2;border-bottom:2px solid #fecaca;color:#b91c1c;font-size:11px;padding:6px 14px;text-align:center;display:none}
+
+/* STATUS BAR */
+.status-bar{background:#1e3a5f;color:#93c5fd;font-size:11px;padding:5px 18px;display:flex;justify-content:space-between;align-items:center}
+.gps-dot{width:7px;height:7px;border-radius:50%;background:#64748b;display:inline-block;margin-right:5px}
+.gps-dot.active{background:#22c55e;animation:blink 1.5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* KM BAR */
+.km-bar{background:#1e3a5f;padding:7px 18px;display:flex;gap:16px;font-size:11px;color:#93c5fd}
+.km-val{font-size:14px;font-weight:700;color:#fff;font-family:monospace}
+
+/* POLLING INDICATOR */
+.poll-bar{background:#0f2d4e;color:#64748b;font-size:10px;padding:3px 18px;display:flex;justify-content:space-between;align-items:center}
+.poll-dot{width:5px;height:5px;border-radius:50%;background:#22c55e;display:inline-block;margin-right:4px;animation:blink 2s infinite}
+
+/* SECTION */
+.section-pad{padding:14px 14px 0}
+.section-title{font-size:13px;font-weight:700;color:#334155;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.refresh-btn{background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;padding:2px 6px;border-radius:4px;font-weight:600}
+.refresh-btn:active{background:#eff6ff}
+
+/* CARDS */
+.do-card{background:#fff;border-radius:12px;border:1px solid var(--border);margin-bottom:10px;box-shadow:0 2px 8px rgba(37,99,235,.05);overflow:hidden;transition:border-color .3s}
+.do-card.changed{border-color:#f59e0b;animation:card-pulse .6s 3}
+@keyframes card-pulse{0%,100%{box-shadow:0 2px 8px rgba(37,99,235,.05)}50%{box-shadow:0 0 16px rgba(245,158,11,.4)}}
+.do-card-head{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start}
+.do-no{font-size:14px;font-weight:700;color:var(--text-main)}
+.do-sub{font-size:10px;color:var(--text-muted);margin-top:1px}
+.do-badge{font-size:10px;padding:3px 10px;border-radius:20px;font-weight:600;white-space:nowrap}
+.badge-baru{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}
+.badge-process{background:#ecfdf5;color:#15803d;border:1px solid #86efac}
+.badge-selesai{background:#f0fdf4;color:#15803d}
+.badge-gagal{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
+
+/* BARCODE */
+.barcode-wrap{padding:10px 14px;text-align:center;border-bottom:1px solid var(--border);cursor:pointer}
+.barcode-lines{display:flex;gap:2px;height:42px;align-items:flex-end;justify-content:center;margin-bottom:3px}
+.barcode-lines span{background:#0f172a;width:2px;display:inline-block}
+.barcode-num{font-size:11px;font-family:monospace;color:var(--text-muted);letter-spacing:2px}
+
+/* DO DETAIL */
+.do-detail{padding:10px 14px}
+.detail-section{margin-bottom:10px}
+.detail-label{font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:5px;margin-bottom:4px}
+.detail-value{font-size:13px;font-weight:600;color:var(--text-main)}
+.detail-value.addr{font-size:12px;font-weight:400;color:#334155;line-height:1.5}
+.detail-row{display:flex;justify-content:space-between;align-items:center;margin-top:3px}
+.qty-chip{background:#eff6ff;color:#1d4ed8;border-radius:8px;padding:3px 10px;font-size:12px;font-weight:700}
+.btn-maps{display:flex;align-items:center;gap:6px;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:12px;font-weight:600;cursor:pointer;width:100%;margin-top:7px;justify-content:center}
+
+/* ACTION BUTTONS */
+.action-row{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--border)}
+.btn-start{flex:1;background:var(--accent);color:#fff;border:none;border-radius:8px;padding:11px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px}
+.btn-batal{flex:1;background:#fff;color:#64748b;border:1px solid var(--border);border-radius:8px;padding:11px;font-size:12px;font-weight:600;cursor:pointer}
+.btn-selesai{flex:1;background:var(--green);color:#fff;border:none;border-radius:8px;padding:11px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px}
+.btn-gagal{flex:1;background:#1e293b;color:#fff;border:none;border-radius:8px;padding:11px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px}
+
+/* BOTTOM NAV */
+.bottom-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:500px;background:#fff;border-top:1px solid var(--border);display:grid;grid-template-columns:repeat(4,1fr);z-index:200}
+.nav-btn{padding:10px 4px 8px;text-align:center;border:none;background:none;cursor:pointer;color:var(--text-muted);font-size:9px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:2px;transition:color .2s;position:relative}
+.nav-btn i{font-size:19px}
+.nav-btn.active{color:var(--accent)}
+.nav-btn.danger{color:#ef4444}
+.nav-notif-badge{position:absolute;top:6px;right:14px;background:var(--notif-red);color:#fff;font-size:8px;font-weight:700;min-width:14px;height:14px;border-radius:7px;display:none;align-items:center;justify-content:center;padding:0 2px}
+
+/* EMPTY STATE */
+.empty-state{text-align:center;padding:50px 20px;color:#cbd5e1}
+.empty-state i{font-size:38px;margin-bottom:10px;display:block}
+.empty-state p{font-size:13px}
+
+/* NOTIFICATION TAB */
+.notif-item{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.notif-item.unread{background:#fffbeb}
+.notif-item.unread::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--amber);flex-shrink:0;margin-top:6px}
+.notif-item.read::before{content:'';width:6px;height:6px;border-radius:50%;background:transparent;flex-shrink:0;margin-top:6px}
+.notif-icon{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.notif-icon.new{background:#dbeafe;color:#1d4ed8}
+.notif-icon.change{background:#fef9c3;color:#a16207}
+.notif-icon.alert{background:#fee2e2;color:#b91c1c}
+.notif-body{flex:1}
+.notif-title{font-size:12px;font-weight:700;color:var(--text-main);margin-bottom:2px}
+.notif-msg{font-size:11px;color:var(--text-muted);line-height:1.5}
+.notif-time{font-size:10px;color:#94a3b8;margin-top:2px}
+.notif-actions-bar{padding:8px 14px;display:flex;gap:8px;border-bottom:1px solid var(--border)}
+.notif-clear-btn{background:none;border:1px solid var(--border);color:var(--text-muted);font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer}
+
+/* HISTORY TAB */
+.history-date-row{display:flex;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border);align-items:center}
+.history-date-input{flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-main)}
+.history-date-input:focus{outline:none;border-color:var(--accent)}
+.history-go-btn{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer}
+.history-summary{padding:10px 14px;background:#f8fafc;border-bottom:1px solid var(--border);font-size:12px;color:var(--text-muted)}
+.history-do-item{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.history-do-no{font-size:12px;font-weight:700;color:var(--text-main)}
+.history-do-cust{font-size:11px;color:var(--text-muted)}
+.history-do-status{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
+.hs-selesai{background:#f0fdf4;color:#15803d}
+.hs-gagal{background:#fef2f2;color:#b91c1c}
+.hs-baru{background:#eff6ff;color:#1d4ed8}
+.hs-process{background:#ecfdf5;color:#15803d;border:1px solid #86efac}
+
+/* SETTINGS MODAL */
+.settings-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:flex-end;justify-content:center}
+.settings-overlay.show{display:flex}
+.settings-box{background:#fff;border-radius:20px 20px 0 0;padding:20px 18px 36px;width:100%;max-width:500px}
+.settings-title{font-size:16px;font-weight:700;color:var(--text-main);margin-bottom:4px}
+.settings-sub{font-size:12px;color:var(--text-muted);margin-bottom:16px}
+.settings-close{float:right;background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;margin-top:-2px}
+.settings-field{margin-bottom:12px}
+.settings-label{display:block;font-size:11px;font-weight:600;color:#334155;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.settings-input{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-main)}
+.settings-input:focus{outline:none;border-color:var(--accent)}
+.btn-save-settings{width:100%;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px}
+.change-log{background:#f8fafc;border-radius:8px;padding:10px 12px;margin-top:8px;font-size:11px;color:#64748b;line-height:1.6}
+
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;justify-content:center;align-items:flex-end}
+.modal-overlay.show{display:flex}
+.modal-box{background:#fff;border-radius:20px 20px 0 0;padding:18px 16px 30px;width:100%;max-width:500px;max-height:92vh;overflow-y:auto}
+.modal-title{font-size:16px;font-weight:700;color:var(--text-main);margin-bottom:3px}
+.modal-sub{font-size:12px;color:var(--text-muted);margin-bottom:14px}
+.modal-close{float:right;background:none;border:none;font-size:22px;cursor:pointer;color:#64748b;line-height:1;margin-top:-2px}
+
+/* FORM */
+.form-group{margin-bottom:13px}
+.form-label{display:block;font-size:12px;font-weight:700;color:#334155;margin-bottom:5px}
+.form-label .req{color:var(--red)}
+.form-input{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-main);background:#fff}
+.form-input:focus{outline:none;border-color:var(--accent)}
+.form-select{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-main);background:#fff;appearance:none;cursor:pointer}
+.form-select:focus{outline:none;border-color:var(--accent)}
+
+/* QTY */
+.qty-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+.qty-box{background:var(--bg);border-radius:10px;padding:10px 6px;text-align:center;border:1.5px solid var(--border)}
+.qty-box-label{font-size:9px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:5px}
+.qty-val{font-size:20px;font-weight:800;font-family:monospace;color:var(--text-main)}
+.qty-val.terima{color:var(--green)}.qty-val.rusak{color:var(--red)}
+.qty-ctrl{display:flex;gap:5px;justify-content:center;margin-top:5px}
+.qty-btn{width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border);background:#fff;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-main)}
+.qty-btn:active{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+/* PHOTO CAPTURE */
+.photo-guide-wrap{position:relative;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;overflow:hidden;cursor:pointer}
+.photo-guide-wrap.has-photo{border-color:var(--green);background:#f0fdf4}
+.photo-guide-inner{padding:18px;text-align:center;position:relative;min-height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.photo-guide-corner{position:absolute;width:14px;height:14px;border-color:var(--accent);border-style:solid}
+.photo-guide-corner.tl{top:10px;left:10px;border-width:2px 0 0 2px}
+.photo-guide-corner.tr{top:10px;right:10px;border-width:2px 2px 0 0}
+.photo-guide-corner.bl{bottom:10px;left:10px;border-width:0 0 2px 2px}
+.photo-guide-corner.br{bottom:10px;right:10px;border-width:0 2px 2px 0}
+.photo-guide-text{font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5}
+.photo-guide-icon{font-size:26px;color:#94a3b8;margin-bottom:3px}
+.photo-preview{width:100%;height:150px;object-fit:cover;display:block}
+.photo-wrap input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+
+/* TITIP SJ */
+.titip-extra{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;margin-top:8px;display:none}
+.titip-extra.show{display:block}
+
+/* STRUK GRID */
+.struk-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:8px}
+.struk-item{text-align:center}
+.struk-btn{width:100%;aspect-ratio:1;border-radius:10px;border:2px dashed #cbd5e1;background:#f8fafc;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;color:var(--text-muted);position:relative;overflow:hidden}
+.struk-btn.done{border-color:var(--green);background:#f0fdf4;color:var(--green)}
+.struk-btn i{font-size:20px}
+.struk-btn img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.struk-btn input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.struk-lbl{font-size:11px;font-weight:600;color:var(--text-muted);margin-top:4px}
+
+/* SUBMIT */
+.btn-submit{width:100%;padding:13px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:7px}
+.btn-submit.green{background:var(--green);color:#fff}
+.btn-submit.red{background:var(--red);color:#fff}
+.btn-back{width:100%;padding:9px;border:none;background:none;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;margin-top:6px}
+.btn-submit:disabled{opacity:.6;cursor:not-allowed}
+
+/* ── BULK SELECT ── */
+.bulk-bar{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;
+  padding:10px 14px;margin-bottom:10px;display:none;align-items:center;gap:10px}
+.bulk-bar.show{display:flex}
+.bulk-count{font-size:12px;font-weight:700;color:#1d4ed8;flex:1}
+.bulk-btn{background:#16a34a;color:#fff;border:none;border-radius:8px;
+  padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer}
+.do-checkbox{width:20px;height:20px;cursor:pointer;accent-color:#2563eb}
+
+/* ALERTS */
+.alert{padding:9px 12px;border-radius:8px;font-size:11px;margin:8px 0;line-height:1.5}
+.alert-warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e}
+.alert-ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d}
+.alert-err{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c}
+.alert-info{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
+
+/* EXTRA GAGAL */
+.extra-gagal-field{display:none;margin-bottom:12px}
+.extra-gagal-field.show{display:block}
+
+/* SUBMIT OVERLAY */
+.submit-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+.submit-overlay.show{display:flex}
+.submit-overlay .spin{font-size:36px;color:#fff;animation:spin 1s linear infinite}
+.submit-overlay .msg{color:#fff;font-size:14px;font-weight:600}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── CAMERA OVERLAY ── */
+.camera-overlay{display:none;position:fixed;inset:0;background:#000;z-index:99999;
+  flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0px)}
+.camera-overlay.show{display:flex}
+.camera-video{width:100%;flex:1;object-fit:cover;background:#000;
+  max-height:calc(100vh - 140px)} /* Sisakan ruang untuk tombol shutter */
+.camera-frame{position:absolute;inset:0;pointer-events:none}
+.camera-guide{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:88%;aspect-ratio:1.414/1;border:2px solid rgba(255,255,255,.7);border-radius:4px}
+.camera-guide::before,.camera-guide::after{content:'';position:absolute;
+  width:22px;height:22px;border-color:#3b82f6;border-style:solid}
+.camera-guide::before{top:-2px;left:-2px;border-width:3px 0 0 3px}
+.camera-guide::after{bottom:-2px;right:-2px;border-width:0 3px 3px 0}
+/* Extra corners via box-shadow trick */
+.camera-guide-tr{position:absolute;top:-2px;right:-2px;width:22px;height:22px;
+  border-top:3px solid #3b82f6;border-right:3px solid #3b82f6}
+.camera-guide-bl{position:absolute;bottom:-2px;left:-2px;width:22px;height:22px;
+  border-bottom:3px solid #3b82f6;border-left:3px solid #3b82f6}
+.camera-label{position:absolute;top:calc(50% - (88vw/1.414/2) - 28px);left:50%;
+  transform:translateX(-50%);color:#fff;font-size:11px;font-weight:600;
+  background:rgba(0,0,0,.5);padding:3px 10px;border-radius:10px;white-space:nowrap}
+.camera-bottom{background:#000;padding:16px 20px;
+  padding-bottom:max(20px, env(safe-area-inset-bottom,20px));
+  display:flex;align-items:center;justify-content:space-between;
+  min-height:100px;flex-shrink:0} /* flex-shrink:0 = tidak tergencet video */
+.camera-shutter{width:64px;height:64px;border-radius:50%;background:#fff;
+  border:4px solid #3b82f6;cursor:pointer;display:flex;align-items:center;
+  justify-content:center;font-size:24px;box-shadow:0 0 0 3px rgba(59,130,246,.3)}
+.camera-shutter:active{transform:scale(.9)}
+.camera-cancel{color:#fff;background:rgba(255,255,255,.15);border:none;
+  border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer}
+.camera-retake{color:#3b82f6;background:rgba(59,130,246,.15);border:none;
+  border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;display:none}
+.camera-preview-wrap{display:none;position:absolute;inset:0;background:#000;
+  flex-direction:column;align-items:center;justify-content:center}
+.camera-preview-wrap.show{display:flex}
+.camera-preview-img{width:100%;max-height:70vh;object-fit:contain}
+.camera-preview-actions{display:flex;gap:12px;padding:16px;width:100%;
+  padding-bottom:max(16px, env(safe-area-inset-bottom,16px))}
+.camera-use-btn{flex:1;background:#16a34a;color:#fff;border:none;border-radius:10px;
+  padding:13px;font-size:14px;font-weight:700;cursor:pointer}
+.camera-retake-btn{flex:1;background:#1e293b;color:#fff;border:none;border-radius:10px;
+  padding:13px;font-size:14px;font-weight:600;cursor:pointer}
+.btn-muat{background:#d97706;color:#fff;border:none;border-radius:10px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;width:100%;margin-top:6px}
+.badge-muat{background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+</style>
+</head>
+<body>
+<div class="driver-app">
+
+  <!-- HEADER -->
+  <div class="driver-header">
+    <div>
+      <h2 id="hdr-name">Memuat...</h2>
+      <div class="plat"><i class="fas fa-truck"></i> <span id="hdr-plat">—</span></div>
+    </div>
+    <div class="hdr-right">
+      <button class="notif-btn" onclick="switchTab('notif')" title="Notifikasi">
+        <i class="fas fa-bell"></i>
+        <div class="notif-badge" id="hdr-notif-badge">0</div>
+      </button>
+      <button class="settings-btn" onclick="openSettings()" title="Pengaturan">
+        <i class="fas fa-cog"></i>
+      </button>
+      <img src="https://globalsentral.id/z/data/Logo.avif" alt="GST"
+        style="height:56px;width:auto;object-fit:contain"
+        onerror="this.style.display='none'">
+    </div>
+  </div>
+
+  <!-- OFFLINE NOTICE -->
+  <div class="offline-notice" id="offline-notice">
+    <i class="fas fa-wifi-slash"></i> Offline — data akan terkirim saat sinyal ada
+  </div>
+
+  <!-- STATUS BAR -->
+  <div class="status-bar">
+    <span><span class="gps-dot" id="gps-dot"></span><span id="gps-txt">GPS tidak aktif</span></span>
+    <span id="date-txt">—</span>
+  </div>
+
+  <!-- KM BAR -->
+  <div class="km-bar" id="km-bar" style="display:none">
+    <div><div class="km-val" id="km-val">0.0</div><div>km tercatat</div></div>
+    <div><div class="km-val" id="wakelock-val" style="font-size:10px;color:#86efac">●</div><div>layar aktif</div></div>
+    <div id="dur-muat-wrap" style="display:none"><div class="km-val" id="dur-muat-val" style="font-size:10px;color:#fcd34d">—</div><div>muat mnt</div></div>
+    <div><div class="km-val" id="dur-val">0 mnt</div><div>durasi</div></div>
+    <div><div class="km-val"><span id="stop-done">0</span>/<span id="stop-total">0</span></div><div>stop selesai</div></div>
+  </div>
+
+  <!-- POLL BAR -->
+  <div class="poll-bar" id="poll-bar" style="display:none">
+    <span><span class="poll-dot"></span>Auto-refresh aktif</span>
+    <span id="last-poll-txt">—</span>
+  </div>
+
+  <!-- ─── TAB: TUGAS ─── -->
+  <div id="tab-tugas" class="section-pad">
+    <div class="section-title">
+      Tugas Aktif
+      <button class="refresh-btn" onclick="loadTasks(true)"><i class="fas fa-sync-alt"></i> Refresh</button>
+    </div>
+    <!-- Bulk complete bar -->
+    <div class="bulk-bar" id="bulk-bar">
+      <span class="bulk-count" id="bulk-count">0 DO dipilih</span>
+      <button class="bulk-btn" onclick="openBulkSelesai()">
+        <i class="fas fa-check-circle"></i> Selesai Semua
+      </button>
+    </div>
+    <div id="task-list">
+      <div class="empty-state">
+        <i class="fas fa-spinner fa-spin"></i>
+        <p>Memuat tugas...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── TAB: NOTIF ─── -->
+  <div id="tab-notif" style="display:none">
+    <div class="section-pad" style="padding-bottom:0">
+      <div class="section-title" style="margin-bottom:0">
+        <i class="fas fa-bell" style="color:var(--amber)"></i> Notifikasi
+      </div>
+    </div>
+    <div class="notif-actions-bar">
+      <button class="notif-clear-btn" onclick="markAllRead()">
+        <i class="fas fa-check-double"></i> Tandai semua terbaca
+      </button>
+      <button class="notif-clear-btn" onclick="clearAllNotif()">
+        <i class="fas fa-trash"></i> Hapus semua
+      </button>
+    </div>
+    <div id="notif-list"></div>
+  </div>
+
+  <!-- ─── TAB: RIWAYAT ─── -->
+  <div id="tab-riwayat" style="display:none">
+    <div class="section-pad" style="padding-bottom:0">
+      <div class="section-title" style="margin-bottom:10px">
+        <i class="fas fa-history" style="color:#7c3aed"></i> Riwayat Pengiriman
+      </div>
+    </div>
+    <div class="history-date-row">
+      <input type="date" class="history-date-input" id="history-date" value="">
+      <button class="history-go-btn" onclick="loadHistory()">
+        <i class="fas fa-search"></i> Lihat
+      </button>
+    </div>
+    <div id="history-content">
+      <div class="empty-state" style="padding:40px 20px">
+        <i class="fas fa-calendar-alt"></i>
+        <p>Pilih tanggal untuk melihat riwayat</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <div class="bottom-nav">
+    <button class="nav-btn active" id="nav-tugas" onclick="switchTab('tugas')">
+      <i class="fas fa-home"></i>Tugas
+    </button>
+    <button class="nav-btn" id="nav-notif" onclick="switchTab('notif')" style="position:relative">
+      <i class="fas fa-bell"></i>Notif
+      <div class="nav-notif-badge" id="nav-notif-badge">0</div>
+    </button>
+    <button class="nav-btn" id="nav-riwayat" onclick="switchTab('riwayat')">
+      <i class="fas fa-history"></i>Riwayat
+    </button>
+    <button class="nav-btn danger" onclick="confirmLogout()">
+      <i class="fas fa-power-off"></i>Logout
+    </button>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="settings-overlay" id="settings-overlay">
+  <div class="settings-box">
+    <button class="settings-close" onclick="closeSettings()">×</button>
+    <div class="settings-title">⚙ Pengaturan Driver</div>
+    <div class="settings-sub">v3.2 · GlobalSentral Transport</div>
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:11px;color:#92400e;line-height:1.7">
+      <strong>⚡ Tips GPS tidak mati saat layar terkunci:</strong><br>
+      Pengaturan → Aplikasi → Chrome → Baterai → <strong>"Tidak ada batasan"</strong><br>
+      Pengaturan → Baterai → Optimasi baterai → Chrome → <strong>"Jangan optimalkan"</strong>
+    </div>
+    <div class="settings-field">
+      <label class="settings-label">Nomor Plat Kendaraan</label>
+      <input class="settings-input" id="s-plat" type="text" placeholder="Contoh: B9648MJ"
+        style="font-family:monospace;text-transform:uppercase">
+    </div>
+    <div class="settings-field">
+      <label class="settings-label">Nama Driver</label>
+      <input class="settings-input" id="s-driver" type="text" placeholder="Nama lengkap driver">
+    </div>
+    <div class="settings-field">
+      <label class="settings-label">Gudang</label>
+      <select class="settings-input" id="s-gudang">
+        <option value="">— pilih gudang —</option>
+        <option value="DAAN MOGOT">Daan Mogot</option>
+        <option value="DOYONG">Doyong</option>
+        <option value="CIKUDA">Cikuda</option>
+      </select>
+    </div>
+    <div class="settings-field">
+      <label class="settings-label">URL Apps Script (dari Admin)</label>
+      <input class="settings-input" id="s-gas" type="url"
+        placeholder="https://script.google.com/macros/s/.../exec"
+        style="font-size:11px;font-family:monospace">
+    </div>
+    <div class="change-log" id="s-changelog" style="display:none">
+      <strong>Perubahan terakhir:</strong><br>
+      <span id="s-changelog-txt">—</span>
+    </div>
+    <button class="btn-save-settings" onclick="saveSettings()">
+      <i class="fas fa-save"></i> Simpan Perubahan
+    </button>
+
+    <!-- v4.0: Logout button -->
+    <button onclick="doLogout()" style="width:100%;margin-top:10px;padding:12px;background:#fee2e2;color:#b91c1c;border:1.5px solid #fecaca;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">
+      <i class="fas fa-sign-out-alt"></i> Logout
+    </button>
+    <p id="auth-info" style="font-size:10px;color:var(--text-muted);text-align:center;margin-top:8px;line-height:1.5"></p>
+  </div>
+</div>
+
+<!-- MODAL: SELESAI -->
+<div class="modal-overlay" id="m-selesai">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('m-selesai')">×</button>
+    <div class="modal-title">Laporan Selesai</div>
+    <div class="modal-sub" id="m-selesai-info">—</div>
+
+    <div class="form-group">
+      <label class="form-label">Kondisi Barang</label>
+      <div class="qty-row">
+        <div class="qty-box">
+          <div class="qty-box-label">Dikirim</div>
+          <div class="qty-val" id="qty-kirim">0</div>
+        </div>
+        <div class="qty-box">
+          <div class="qty-box-label">Diterima</div>
+          <div class="qty-val terima" id="qty-terima-disp">0</div>
+          <div class="qty-ctrl">
+            <button class="qty-btn" onclick="adjQty('terima',-1)">−</button>
+            <button class="qty-btn" onclick="adjQty('terima',1)">+</button>
+          </div>
+        </div>
+        <div class="qty-box">
+          <div class="qty-box-label">Rusak</div>
+          <div class="qty-val rusak" id="qty-rusak-disp">0</div>
+          <div class="qty-ctrl">
+            <button class="qty-btn" onclick="adjQty('rusak',-1)">−</button>
+            <button class="qty-btn" onclick="adjQty('rusak',1)">+</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">1. Foto Bukti Kirim / DO <span class="req">*wajib</span></label>
+      <div class="photo-guide-wrap" id="wrap-foto-do" onclick="openCamera('do')"
+        style="cursor:pointer;position:relative;width:100%;padding-top:70.7%;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;overflow:hidden">
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
+          <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
+          <div class="photo-guide-icon" id="icon-foto-do"><i class="fas fa-camera" style="font-size:28px;color:#94a3b8"></i></div>
+          <div id="txt-foto-do" style="font-size:11px;color:#64748b;margin-top:6px;text-align:center;padding:0 20px">
+            Tap untuk ambil foto DO
+          </div>
+        </div>
+        <img id="prev-foto-do" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none">
+      </div>
+      <canvas id="canvas-foto-do" style="display:none"></canvas>
+      <canvas id="canvas-foto-do" style="display:none"></canvas>
+    </div>
+
+    <div class="form-group" id="group-foto-rusak" style="display:none">
+      <label class="form-label">Foto Barang Rusak <span class="req">*wajib jika ada kerusakan</span></label>
+      <div class="photo-guide-wrap" id="wrap-foto-rusak" onclick="openCamera('rusak')"
+        style="cursor:pointer;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;min-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden">
+        <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
+        <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
+        <div class="photo-guide-icon" id="icon-foto-rusak"><i class="fas fa-camera" style="font-size:26px;color:#94a3b8"></i></div>
+        <div id="txt-foto-rusak" style="font-size:11px;color:#64748b;margin-top:6px">Tap untuk foto kerusakan</div>
+        <img id="prev-foto-rusak" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none">
+      </div>
+      <canvas id="canvas-foto-rusak" style="display:none"></canvas>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">2. Catatan Penerima</label>
+      <textarea class="form-input" id="catatan-selesai" rows="2"
+        placeholder="Contoh: Diterima oleh Bpk. Budi, SPG toko..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">3. Titip Surat Jalan Asli?</label>
+      <select class="form-select" id="titip-sj" onchange="toggleTitipSJ(this.value)">
+        <option value="Tidak">Tidak (Dibawa Kembali)</option>
+        <option value="Ya">Ya, Dititip di Lokasi</option>
+      </select>
+      <div class="titip-extra" id="titip-extra">
+        <div class="form-group" style="margin-bottom:8px">
+          <label class="form-label">Nama Penerima SJ <span class="req">*wajib</span></label>
+          <input type="text" class="form-input" id="nama-spg" placeholder="Nama SPG / Staff">
+        </div>
+        <div class="form-group" style="margin-bottom:8px">
+          <label class="form-label">Jabatan</label>
+          <select class="form-select" id="jabatan-spg">
+            <option>SPG</option><option>Staff Toko</option><option>Kasir</option>
+            <option>Kepala Toko</option><option>Lainnya</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Foto SJ yang Dititip <span class="req">*wajib</span></label>
+          <div class="photo-guide-wrap" id="wrap-foto-sj" onclick="openCamera('sj')"
+            style="cursor:pointer;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;min-height:90px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden">
+            <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
+            <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
+            <div class="photo-guide-icon" id="icon-foto-sj"><i class="fas fa-camera" style="font-size:24px;color:#94a3b8"></i></div>
+            <div id="txt-foto-sj" style="font-size:11px;color:#64748b;margin-top:6px">Tap untuk foto SJ</div>
+            <img id="prev-foto-sj" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none">
+          </div>
+          <canvas id="canvas-foto-sj" style="display:none"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn-submit green" id="btn-submit-selesai" onclick="submitSelesai()">
+      <i class="fas fa-check-circle"></i> Kirim Laporan
+    </button>
+    <button class="btn-back" onclick="closeModal('m-selesai')">Kembali</button>
+  </div>
+</div>
+
+<!-- MODAL: GAGAL -->
+<div class="modal-overlay" id="m-gagal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal('m-gagal')">×</button>
+    <div class="modal-title" style="color:#b91c1c">Laporan Gagal Kirim</div>
+    <div class="modal-sub">Pastikan foto dan alasan sudah sesuai sebelum mengirim.</div>
+
+    <div class="form-group">
+      <label class="form-label">1. Foto Bukti Gagal Kirim <span class="req">*wajib</span></label>
+      <div class="photo-guide-wrap" id="wrap-foto-gagal" onclick="openCamera('gagal')"
+        style="cursor:pointer;background:#f8fafc;border:2px dashed #cbd5e1;border-radius:10px;min-height:110px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden">
+        <div class="photo-guide-corner tl"></div><div class="photo-guide-corner tr"></div>
+        <div class="photo-guide-corner bl"></div><div class="photo-guide-corner br"></div>
+        <div class="photo-guide-icon" id="icon-foto-gagal"><i class="fas fa-camera" style="font-size:26px;color:#94a3b8"></i></div>
+        <div id="txt-foto-gagal" style="font-size:11px;color:#64748b;margin-top:6px">Tap untuk foto bukti gagal</div>
+        <img id="prev-foto-gagal" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none">
+      </div>
+      <canvas id="canvas-foto-gagal" style="display:none"></canvas>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">2. Alasan Gagal Kirim <span class="req">*wajib</span></label>
+      <select class="form-select" id="alasan-gagal" onchange="onAlasanChange(this.value)">
+        <option value="">-- Pilih Alasan --</option>
+        <option>Titip Gudang Lain</option><option>Toko Tutup</option>
+        <option>CS Minta Reschedule</option><option>CS Minta Cancel</option>
+        <option>Kendaraan Rusak</option><option>Bencana Alam/Banjir</option>
+        <option>Akses Jalan Ditutup</option><option>Waktu Tidak Cukup</option>
+        <option>Ganjil/Genap</option><option>Lain-lain</option>
+      </select>
+    </div>
+
+    <div id="extra-titip-gudang" class="extra-gagal-field">
+      <label class="form-label">Nama Gudang yang Dititip</label>
+      <input type="text" class="form-input" id="nama-gudang-titip" placeholder="Nama gudang / ekspedisi">
+    </div>
+    <div id="extra-reschedule" class="extra-gagal-field">
+      <label class="form-label">Tanggal Reschedule</label>
+      <input type="date" class="form-input" id="tgl-reschedule">
+    </div>
+    <div id="extra-cancel" class="extra-gagal-field">
+      <label class="form-label">Nama Sales yang Cancel</label>
+      <input type="text" class="form-input" id="nama-sales-cancel" placeholder="Nama sales">
+    </div>
+    <div id="extra-lainlain" class="extra-gagal-field">
+      <label class="form-label">Keterangan <span class="req">*wajib</span></label>
+      <textarea class="form-input" id="ket-lainlain" rows="2" placeholder="Jelaskan alasan gagal..."></textarea>
+    </div>
+
+    <div id="alert-musibah" class="alert alert-err" style="display:none">
+      <i class="fas fa-exclamation-triangle"></i>
+      <strong>ALERT URGENT!</strong> Laporan musibah akan langsung dikirim ke dispatcher.
+      Hubungi dispatcher setelah submit!
+    </div>
+
+    <button class="btn-submit red" id="btn-submit-gagal" onclick="submitGagal()">
+      <i class="fas fa-paper-plane"></i> Kirim Laporan
+    </button>
+    <button class="btn-back" onclick="closeModal('m-gagal')">Kembali</button>
+  </div>
+</div>
+
+<!-- MODAL: STRUK -->
+<div class="modal-overlay" id="m-struk">
+  <div class="modal-box" style="max-height:90vh;overflow-y:auto">
+    <button class="modal-close" onclick="closeModal('m-struk')">×</button>
+    <div class="modal-title">📋 Struk Perjalanan</div>
+    <div class="modal-sub">Isi semua pengeluaran. Yang tidak ada boleh dilewati.</div>
+
+    <!-- ── TOL ─────────────────────────────────────────────── -->
+    <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="font-size:18px">🛣</span>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#0b1f3a">Tol</div>
+          <div style="font-size:10px;color:#64748b">Foto semua struk tol dalam 1 frame</div>
+        </div>
+      </div>
+      <!-- Foto tol -->
+      <div class="struk-btn" id="struk-btn-tol" style="width:100%;height:90px;margin-bottom:10px;border-radius:10px;border:2px dashed #cbd5e1;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;font-size:12px;color:#64748b;position:relative;overflow:hidden">
+        <i class="fas fa-camera" style="font-size:20px"></i>
+        <span>Foto semua struk tol</span>
+        <input type="file" accept="image/*" capture="environment" onchange="captureStruk('tol',this)"
+          style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
+      </div>
+      <!-- Input nominal tol -->
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:#64748b;white-space:nowrap">Total Tol</span>
+        <div style="display:flex;align-items:center;flex:1;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:0 10px">
+          <span style="font-size:12px;color:#94a3b8;margin-right:4px">Rp</span>
+          <input id="nominal-tol" type="number" min="0" step="500" placeholder="0"
+            style="flex:1;border:none;outline:none;font-size:14px;font-weight:600;color:#0b1f3a;padding:9px 0"
+            oninput="updateTotalStruk()">
+        </div>
+      </div>
+      <div style="font-size:10px;color:#94a3b8;margin-top:4px">
+        💡 Tol bisa banyak struk — kumpulkan lalu foto sekaligus dalam 1 gambar
+      </div>
+    </div>
+
+    <!-- ── PARKIR ────────────────────────────────────────────── -->
+    <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="font-size:18px">🅿️</span>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#0b1f3a">Parkir</div>
+          <div style="font-size:10px;color:#64748b">Foto karcis/struk parkir</div>
+        </div>
+      </div>
+      <div class="struk-btn" id="struk-btn-parkir" style="width:100%;height:90px;margin-bottom:10px;border-radius:10px;border:2px dashed #cbd5e1;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;font-size:12px;color:#64748b;position:relative;overflow:hidden">
+        <i class="fas fa-camera" style="font-size:20px"></i>
+        <span>Foto struk parkir</span>
+        <input type="file" accept="image/*" capture="environment" onchange="captureStruk('parkir',this)"
+          style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:#64748b;white-space:nowrap">Total Parkir</span>
+        <div style="display:flex;align-items:center;flex:1;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:0 10px">
+          <span style="font-size:12px;color:#94a3b8;margin-right:4px">Rp</span>
+          <input id="nominal-parkir" type="number" min="0" step="500" placeholder="0"
+            style="flex:1;border:none;outline:none;font-size:14px;font-weight:600;color:#0b1f3a;padding:9px 0"
+            oninput="updateTotalStruk()">
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SOLAR / BENSIN ────────────────────────────────────── -->
+    <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="font-size:18px">⛽</span>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#0b1f3a">Solar / Bensin</div>
+          <div style="font-size:10px;color:#64748b">Foto struk SPBU</div>
+        </div>
+      </div>
+      <div class="struk-btn" id="struk-btn-bensin" style="width:100%;height:90px;margin-bottom:10px;border-radius:10px;border:2px dashed #cbd5e1;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;font-size:12px;color:#64748b;position:relative;overflow:hidden">
+        <i class="fas fa-camera" style="font-size:20px"></i>
+        <span>Foto struk SPBU</span>
+        <input type="file" accept="image/*" capture="environment" onchange="captureStruk('bensin',this)"
+          style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:#64748b;white-space:nowrap">Nominal Solar</span>
+        <div style="display:flex;align-items:center;flex:1;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:0 10px">
+          <span style="font-size:12px;color:#94a3b8;margin-right:4px">Rp</span>
+          <input id="nominal-bensin" type="number" min="0" step="1000" placeholder="0"
+            style="flex:1;border:none;outline:none;font-size:14px;font-weight:600;color:#0b1f3a;padding:9px 0"
+            oninput="updateTotalStruk()">
+        </div>
+      </div>
+    </div>
+
+    <!-- ── MAKAN / LAIN-LAIN ─────────────────────────────────── -->
+    <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="font-size:18px">🍱</span>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#0b1f3a">Makan & Lain-lain</div>
+          <div style="font-size:10px;color:#64748b">Uang makan, retribusi, dll</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:#64748b;white-space:nowrap">Nominal</span>
+        <div style="display:flex;align-items:center;flex:1;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:0 10px">
+          <span style="font-size:12px;color:#94a3b8;margin-right:4px">Rp</span>
+          <input id="nominal-makan" type="number" min="0" step="1000" placeholder="0"
+            style="flex:1;border:none;outline:none;font-size:14px;font-weight:600;color:#0b1f3a;padding:9px 0"
+            oninput="updateTotalStruk()">
+        </div>
+      </div>
+      <input id="ket-makan" type="text" placeholder="Keterangan (opsional)"
+        style="width:100%;margin-top:8px;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:12px;box-sizing:border-box">
+    </div>
+
+    <!-- ── TOTAL ─────────────────────────────────────────────── -->
+    <div style="background:#0b1f3a;border-radius:12px;padding:14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:13px;font-weight:700;color:#93c5fd">Total Pengeluaran</div>
+      <div id="total-struk-display" style="font-size:18px;font-weight:800;color:#fff">Rp 0</div>
+    </div>
+
+    <button class="btn-submit green" onclick="submitStruk()" style="margin-top:4px;width:100%">
+      <i class="fas fa-flag-checkered"></i> Selesai Perjalanan
+    </button>
+    <button class="btn-back" onclick="closeModal('m-struk')" style="width:100%;margin-top:8px">Kembali</button>
+  </div>
+</div>
+
+<!-- SUBMIT OVERLAY -->
+<div class="submit-overlay" id="submit-overlay">
+  <i class="fas fa-circle-notch spin"></i>
+  <div class="msg" id="submit-overlay-msg">Mengirim laporan...</div>
+</div>
+
+<script>
+// ── VERSION CHECK — paksa reload jika ada versi baru di cache ────────────────
+const CURRENT_BUILD = 'v3914-20260414';
+(function(){
+  const prev = localStorage.getItem('gst_build');
+  if (prev && prev !== CURRENT_BUILD) {
+    localStorage.setItem('gst_build', CURRENT_BUILD);
+    if ('caches' in window) caches.keys().then(ks => ks.forEach(k => caches.delete(k)));
+    setTimeout(() => window.location.reload(true), 200);
+  } else {
+    localStorage.setItem('gst_build', CURRENT_BUILD);
+  }
+})();
+
+// ═══════════════════════════════════════════════════════
+// CONSTANTS & STATE
+// ═══════════════════════════════════════════════════════
+const GSHEET_ID_KEY  = 'gs_url';
+const APP_VERSION    = 'v4.1.0';
+const POLL_INTERVAL  = 60 * 1000;   // 60 detik
+const MAX_NOTIF      = 50;
+
+// Runtime GAS URL
+const _gasParam = new URLSearchParams(location.search).get('gas');
+// GAS URL hardcoded - update ini jika deploy Apps Script baru
+const _FIXED_GAS_URL = 'https://script.google.com/macros/s/AKfycbzWW4NJXYEZxcG5jiygObB6sitBmuQFi0m22C9vH2Wp2vnchw3lGv99I9E1mJ5uPXChNA/exec';
+let   GAS_URL   = _gasParam || _FIXED_GAS_URL;
+// Selalu update localStorage ke URL terbaru
+localStorage.setItem('gps_gas_url', GAS_URL);
+if (_gasParam) console.log('[GAS] URL dari WA Blast parameter');
+else console.log('[GAS] URL dari hardcoded default');
+
+// Driver state (from URL or localStorage)
+const driverState = {
+  plat  : new URLSearchParams(location.search).get('plat')   || localStorage.getItem('drv_plat')   || '',
+  driver: new URLSearchParams(location.search).get('driver') || localStorage.getItem('drv_driver') || '',
+  gudang: new URLSearchParams(location.search).get('gudang') || localStorage.getItem('drv_gudang') || '',
+  date  : new URLSearchParams(location.search).get('date')   || today(),
+};
+
+if (driverState.plat)   localStorage.setItem('drv_plat',   driverState.plat);
+if (driverState.driver) localStorage.setItem('drv_driver', driverState.driver);
+if (driverState.gudang) localStorage.setItem('drv_gudang', driverState.gudang);
+
+// App state
+let currentTab    = 'tugas';
+let currentTasks  = [];
+let lastTasksSnap = {};   // snapshot for change detection {doc_no: status}
+let pollTimer     = null;
+let notifications = JSON.parse(localStorage.getItem('notif_list') || '[]');
+let unreadCount   = notifications.filter(n => !n.read).length;
+let offlineQueue  = JSON.parse(localStorage.getItem('offline_q') || '[]');
+let stopsDone     = 0;
+const submittingDOs = new Set(); // track DO yang sedang diproses — cegah double submit
+
+// v4.1 — Muat 2-step + Start Jalan optimistic UI
+let muatPhase        = 'idle'; // 'idle' | 'loading' | 'done'
+let muatTimerInterval = null;
+let muatStartTime    = null;   // Date.now() saat mulai muat
+let muatStartLabel   = null;   // jam string, e.g. "07:30:00"
+let _startJalanLock  = false;  // prevent double tap
+
+let tripState = {
+  started: false, start_time: null, km_total: 0,
+  last_pos: null, pos_hist: [], gps_watch: null, gps_timer: null,
+};
+
+let modalCtx = {
+  doc_no:'', qty_kirim:0, qty_terima:0, qty_rusak:0,
+  foto_do:null, foto_rusak:null, foto_sj:null, foto_gagal:null,
+  gps_coords:'', gps_address:'',
+};
+
+let strukPhotos = { tol:null, parkir:null, bensin:null };
+let wakeLock = null;  // Wake Lock API — cegah layar mati saat trip
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+window.onload = async function() {
+  document.getElementById('hdr-name').textContent = driverState.driver || 'Driver';
+  document.getElementById('hdr-plat').textContent = driverState.plat   || '—';
+  document.getElementById('date-txt').textContent = driverState.date;
+
+  // Set default history date to today
+  const historyDateInput = document.getElementById('history-date');
+  if (historyDateInput) {
+    const [d,m,y] = (driverState.date||today()).split('/');
+    historyDateInput.value = y && m && d ? `${y}-${m}-${d}` : new Date().toISOString().slice(0,10);
+  }
+
+  // v4.0: Cek AUTH dulu — kalau belum login atau token expired, tampilkan login screen
+  if (!AUTH.isLoggedIn()) {
+    showLoginScreen();
+    return;
+  }
+
+  if (!driverState.plat) { showLoginScreen(); return; }
+
+  // v4.1: Restore muat phase dari localStorage (supaya tidak reset saat refresh)
+  _restoreMuatPhase();
+
+  // Request notification permission
+  requestNotifPermission();
+
+  checkOnline();
+  setInterval(checkOnline, 15000);
+
+  await loadTasks(false);
+  startPolling();
+  startGPSWatch();
+  setInterval(updateKMDisplay, 5000);
+  setInterval(flushOfflineQueue, 30000);
+
+  renderNotifBadge();
+};
+
+// ═══════════════════════════════════════════════════════
+// TAB MANAGEMENT
+// ═══════════════════════════════════════════════════════
+function switchTab(tab) {
+  currentTab = tab;
+  ['tugas','notif','riwayat'].forEach(t => {
+    const el = document.getElementById('tab-'+t);
+    if (el) el.style.display = t === tab ? 'block' : 'none';
+    const nav = document.getElementById('nav-'+t);
+    if (nav) nav.classList.toggle('active', t === tab);
+  });
+  if (tab === 'notif') { markAllRead(); renderNotifList(); }
+  if (tab === 'riwayat') renderHistoryContent(null);
+}
+
+// ═══════════════════════════════════════════════════════
+// SETUP FORM (jika belum ada plat)
+// ═══════════════════════════════════════════════════════
+function showSetupForm() {
+  const savedUrl = GAS_URL || localStorage.getItem('gps_gas_url') || '';
+  document.getElementById('tab-tugas').innerHTML = `
+    <div style="padding:8px">
+      <div style="background:#fff;border-radius:12px;border:1px solid var(--border);padding:20px;box-shadow:0 2px 8px rgba(37,99,235,.06)">
+        <h3 style="font-size:15px;font-weight:700;margin-bottom:4px">Setup Awal Driver App</h3>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Isi sekali saja — data disimpan di HP.</p>
+        <div style="margin-bottom:12px">
+          <label style="font-size:11px;font-weight:600;color:#334155;display:block;margin-bottom:4px">Nomor Plat Kendaraan</label>
+          <input id="setup-plat" type="text" placeholder="Contoh: B9648MJ"
+            style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:monospace;text-transform:uppercase"
+            value="${driverState.plat||''}">
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:11px;font-weight:600;color:#334155;display:block;margin-bottom:4px">Nama Driver</label>
+          <input id="setup-driver" type="text" placeholder="Nama lengkap"
+            style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px"
+            value="${driverState.driver||''}">
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="font-size:11px;font-weight:600;color:#334155;display:block;margin-bottom:4px">URL Apps Script (dari admin)</label>
+          <input id="setup-gas" type="url" placeholder="https://script.google.com/macros/s/.../exec"
+            style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:11px;font-family:monospace"
+            value="${savedUrl}">
+        </div>
+        <button onclick="saveSetup()"
+          style="width:100%;padding:13px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">
+          ✓ Simpan &amp; Mulai
+        </button>
+      </div>
+    </div>`;
+}
+
+function saveSetup() {
+  const plat   = document.getElementById('setup-plat')?.value.trim().toUpperCase();
+  const driver = document.getElementById('setup-driver')?.value.trim();
+  const gas    = document.getElementById('setup-gas')?.value.trim();
+  if (!plat)   { alert('Nomor plat wajib diisi'); return; }
+  if (!driver) { alert('Nama driver wajib diisi'); return; }
+  if (!gas || !gas.startsWith('https://script.google.com')) {
+    alert('URL Apps Script tidak valid'); return; }
+  localStorage.setItem('drv_plat', plat);
+  localStorage.setItem('drv_driver', driver);
+  localStorage.setItem('gps_gas_url', gas);
+  localStorage.setItem(GSHEET_ID_KEY, gas);
+  location.reload();
+}
+
+// ═══════════════════════════════════════════════════════
+// GPS TRACKING
+// ═══════════════════════════════════════════════════════
+window.onNativeGPS = function(lat, lng, km) {
+  tripState.last_pos = {lat, lng};
+  tripState.km_total = km;
+  modalCtx.gps_coords = lat.toFixed(6)+','+lng.toFixed(6);
+  updateKMDisplay();
+};
+
+function isNativeApp() { return typeof window.NativeGPS !== 'undefined'; }
+
+function startGPSWatch() {
+  if (isNativeApp()) {
+    const gasUrl = GAS_URL || localStorage.getItem('gps_gas_url') || '';
+    window.NativeGPS.startGPS(driverState.plat, driverState.driver, gasUrl);
+    setGPSDot(true, 'GPS Native Aktif');
+    return;
+  }
+  if (!navigator.geolocation) return;
+  tripState.gps_watch = navigator.geolocation.watchPosition(onGPSUpdate, onGPSError,
+    { enableHighAccuracy:true, timeout:30000, maximumAge:5000 });
+  tripState.gps_timer = setInterval(sendGPSUpdate, 3*60*1000);
+}
+
+function onGPSUpdate(pos) {
+  const {latitude:lat, longitude:lng} = pos.coords;
+  setGPSDot(true, 'GPS aktif');
+  if (tripState.started && tripState.last_pos) {
+    const d = haversineKm(tripState.last_pos.lat, tripState.last_pos.lng, lat, lng);
+    if (d > 0.01 && d < 5) tripState.km_total += d;
+  }
+  tripState.last_pos = {lat, lng};
+  if (tripState.pos_hist.length > 100) tripState.pos_hist.shift();
+  tripState.pos_hist.push({lat, lng, t:Date.now()});
+  modalCtx.gps_coords = lat.toFixed(6)+','+lng.toFixed(6);
+}
+
+function onGPSError() { setGPSDot(false, 'GPS lemah'); }
+
+function setGPSDot(active, txt) {
+  document.getElementById('gps-dot').className = 'gps-dot'+(active?' active':'');
+  document.getElementById('gps-txt').textContent = txt;
+}
+
+async function sendGPSUpdate() {
+  if (!tripState.started || !tripState.last_pos) return;
+  await gasGet('updateGPS', {
+    plat:driverState.plat, date:driverState.date,
+    lat:tripState.last_pos.lat, lng:tripState.last_pos.lng,
+    km_total:tripState.km_total.toFixed(1),
+  });
+}
+
+function updateKMDisplay() {
+  if (!tripState.started) return;
+  document.getElementById('km-val').textContent  = tripState.km_total.toFixed(1);
+  const elMin = Math.floor((Date.now() - tripState.start_time)/60000);
+  document.getElementById('dur-val').textContent = elMin + ' mnt';
+  document.getElementById('stop-done').textContent = stopsDone;
+  // Update wake lock indicator
+  const wlEl = document.getElementById('wakelock-val');
+  if (wlEl) wlEl.textContent = wakeLock ? '● ON' : '○ OFF';
+  if (wlEl) wlEl.style.color = wakeLock ? '#86efac' : '#fca5a5';
+  // Tampilkan durasi muat
+  const muatIso = localStorage.getItem('_muat_done_ts_'+driverState.plat);
+  const jalanTs = tripState.start_time;
+  const durWrap = document.getElementById('dur-muat-wrap');
+  const durVal  = document.getElementById('dur-muat-val');
+  if (muatIso && jalanTs && durWrap && durVal) {
+    const durMnt = Math.round((jalanTs - new Date(muatIso).getTime()) / 60000);
+    if (durMnt >= 0 && durMnt < 600) {
+      durWrap.style.display = '';
+      durVal.textContent    = durMnt + ' mnt';
+    }
+  }
+  // Auto re-acquire jika lepas
+  if (!wakeLock && tripState.started) requestWakeLock();
+}
+
+// ═══════════════════════════════════════════════════════
+// TASK LOADING & RENDERING
+// ═══════════════════════════════════════════════════════
+
+async function warmupAndLoad() {
+  if (!GAS_URL && !localStorage.getItem('gps_gas_url')) {
+    await loadTasks(false);
+    return;
+  }
+  // Tampilkan pesan warmup
+  const taskEl = document.getElementById('task-list');
+  if (taskEl) taskEl.innerHTML =
+    '<div class="empty-state">' +
+    '<i class="fas fa-server" style="font-size:28px;color:#2563eb;margin-bottom:8px"></i>' +
+    '<p style="color:#2563eb;font-weight:600;margin-bottom:4px">Menghubungkan ke server...</p>' +
+    '<p style="font-size:11px;color:#64748b;max-width:260px;text-align:center;line-height:1.5">' +
+    'Normal 15–30 detik saat pertama dibuka.<br>Pastikan internet aktif dan tunggu.</p>' +
+    '<div style="width:200px;height:5px;background:#e2e8f0;border-radius:4px;margin-top:12px;overflow:hidden">' +
+    '<div id="warmup-bar" style="width:0%;height:100%;background:#2563eb;border-radius:4px;transition:width 0.5s"></div>' +
+    '</div>' +
+    '<div id="warmup-eta" style="font-size:10px;color:#94a3b8;margin-top:6px">Estimasi: 15–30 detik</div>' +
+    '</div>';
+
+  // Animasi progress bar selama warmup
+  let pct = 0;
+  const barEl = () => document.getElementById('warmup-bar');
+  let secs = 0;
+  const barTimer = setInterval(() => {
+    pct = Math.min(pct + 3, 90);
+    secs++;
+    const b = barEl();
+    if (b) b.style.width = pct + '%';
+    const eta = document.getElementById('warmup-eta');
+    if (eta) eta.textContent = secs < 10
+      ? 'Menunggu server... (' + secs + 's)'
+      : secs < 25 ? 'Hampir selesai... (' + secs + 's)'
+      : 'Segera selesai... (' + secs + 's)';
+  }, 900);
+
+  // Ping untuk wake up Apps Script
+  await gasGet('ping', {}, 35000);
+  await sleep(500);
+
+  clearInterval(barTimer);
+  const b = barEl();
+  if (b) b.style.width = '100%';
+  await sleep(300);
+
+  // Load tugas setelah server warm
+  await loadTasks(true);
+}
+
+let _loadRetryCount = 0;
+async function loadTasks(showSpinner = true) {
+  if (showSpinner) {
+    document.getElementById('task-list').innerHTML =
+      '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Memuat tugas...</p></div>';
+  }
+
+  const data = await gasGet('getDriverTasks', {
+    plat: driverState.plat, date: driverState.date
+  }, 15000); // timeout 15 detik
+
+  // Update poll indicator
+  document.getElementById('poll-bar').style.display = GAS_URL ? 'flex' : 'none';
+  document.getElementById('last-poll-txt').textContent =
+    'Update: ' + new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+
+  // Handle timeout — tampilkan pesan jelas + tombol retry
+  if (data && data.error === 'timeout') {
+    _loadRetryCount++;
+    const retryMsg = _loadRetryCount <= 2
+      ? 'Server lambat merespons. Mencoba ulang... ('+_loadRetryCount+'/2)'
+      : 'Server tidak merespons. Pastikan internet aktif lalu tap Refresh.';
+    document.getElementById('task-list').innerHTML =
+      '<div class="empty-state" style="gap:12px">'+
+      '<i class="fas fa-wifi" style="font-size:32px;color:#f59e0b"></i>'+
+      '<p style="color:#92400e;font-weight:600">Koneksi Lambat</p>'+
+      '<p style="font-size:12px;color:#64748b">'+retryMsg+'</p>'+
+      (_loadRetryCount <= 2
+        ? '<button onclick="loadTasks(true)" style="padding:8px 20px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;margin-top:4px">↺ Coba Lagi</button>'
+        : '<button onclick="loadTasks(true)" style="padding:8px 20px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;margin-top:4px">↺ Refresh</button>')+
+      '</div>';
+    // Auto-retry sekali jika masih di bawah 2x
+    if (_loadRetryCount <= 1) {
+      await sleep(5000);
+      return loadTasks(true);
+    }
+    return;
+  }
+
+  _loadRetryCount = 0; // reset counter kalau berhasil
+
+  if (!data || data.error || !data.tasks || !data.tasks.length) {
+    currentTasks = [];
+    const noDataMsg = !GAS_URL
+      ? '⚠ GAS URL belum dikonfigurasi — buka Settings'
+      : (data && data.error && data.error !== 'timeout')
+        ? '⚠ Error: ' + (data.message || data.error)
+        : 'Tidak ada tugas aktif hari ini\n(Mungkin dispatcher belum sync)';
+    document.getElementById('task-list').innerHTML =
+      '<div class="empty-state"><i class="fas fa-inbox"></i><p style="white-space:pre-line">'+
+      noDataMsg+'</p>'+
+      '<button onclick="loadTasks(true)" style="padding:7px 18px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;margin-top:8px">↺ Refresh</button>'+
+      '</div>';
+    document.getElementById('stop-total').textContent = 0;
+    return;
+  }
+
+  // Detect changes vs snapshot
+  if (Object.keys(lastTasksSnap).length > 0) {
+    detectChanges(data.tasks);
+  }
+
+  // Update snapshot
+  data.tasks.forEach(t => { lastTasksSnap[t.doc_no] = t.status; });
+  currentTasks = data.tasks;
+
+  // Update stop counter
+  const allTasks = data.tasks;
+  stopsDone = allTasks.filter(t => t.status==='Selesai'||t.status==='Gagal Kirim'||t.status==='Batal').length;
+  document.getElementById('stop-total').textContent = allTasks.length;
+  document.getElementById('stop-done').textContent  = stopsDone;
+
+  // KM bar
+  const hasActive = allTasks.some(t => t.status==='On Process');
+  document.getElementById('km-bar').style.display = hasActive ? 'flex' : 'none';
+  if (hasActive && !tripState.started) {
+    tripState.started = true;
+    tripState.start_time = Date.now();
+  }
+
+  // ── Merge status dari localStorage (optimistic update) ──────────────────
+  // muatPhase='loading'/'done' → status di server mungkin masih 'Baru', pakai lokal
+  const muatKey = `muat_${driverState.plat}_${driverState.date}`;
+  const muatLocal = JSON.parse(localStorage.getItem(muatKey)||'{}');
+  allTasks.forEach(t => {
+    // Jika phase done/loading dan server masih 'Baru' → tampilkan Muat Kargo
+    if (muatLocal[t.doc_no] && (t.status === 'Baru' || t.status === 'New')) {
+      t.status = muatLocal[t.doc_no].status || 'Muat Kargo';
+      t.jam_update = muatLocal[t.doc_no].jam;
+    }
+    // Jika lastTasksSnap='On Process' tapi GAS return 'Baru' → optimistic override
+    if (lastTasksSnap[t.doc_no] === 'On Process' && (t.status === 'Baru' || t.status === 'Muat Kargo')) {
+      t.status = 'On Process';
+    }
+  });
+
+  // ── Render: Global Muat Button + DO cards ─────────────────────────────────
+  // Hitung apakah semua DO aktif (Baru/Muat Kargo) sudah selesai
+  const activeDOs = allTasks.filter(t => t.status==='Baru'||t.status==='Muat Kargo'||t.status==='On Process');
+
+  // Global Muat Button HTML — v4.1: 3-phase (idle → loading → done)
+  let globalMuatHTML = '';
+  const baruDOs = activeDOs.filter(t => t.status==='Baru'||t.status==='New');
+  const muatDOs = activeDOs.filter(t => t.status==='Muat Kargo');
+
+  if (activeDOs.length > 0 && !activeDOs.every(t => t.status==='On Process')) {
+    if (muatPhase === 'loading') {
+      // ── PHASE LOADING: timer + Selesai Muat ──
+      if (!muatTimerInterval && muatStartTime) {
+        muatTimerInterval = setInterval(updateMuatTimer, 1000);
+      }
+      globalMuatHTML = `
+        <div style="margin:0 0 12px 0;background:#fef3c7;border:2px solid #f59e0b;
+          border-radius:14px;padding:16px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <span style="font-size:26px">📦</span>
+            <div>
+              <div style="font-size:13px;font-weight:800;color:#92400e">Sedang Memuat Kargo</div>
+              <div style="font-size:11px;color:#b45309">Mulai: ${muatStartLabel||'--:--'} · ${baruDOs.length||muatDOs.length} DO</div>
+            </div>
+          </div>
+          <div style="text-align:center;margin:6px 0 12px">
+            <div style="font-size:36px;font-weight:900;color:#d97706;letter-spacing:2px"
+              id="muat-elapsed-timer">00:00</div>
+            <div style="font-size:10px;color:#92400e">Waktu muat berlangsung</div>
+          </div>
+          <button onclick="selesaiMuatAll()"
+            style="width:100%;padding:14px;background:#15803d;color:#fff;border:none;
+              border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;
+              display:flex;align-items:center;justify-content:center;gap:8px;
+              box-shadow:0 4px 12px rgba(21,128,61,.35)">
+            <i class="fas fa-check-circle"></i> Selesai Muat
+          </button>
+        </div>`;
+    } else if (muatPhase === 'done') {
+      // ── PHASE DONE: START JALAN semua DO ──
+      const allProcDOs = activeDOs.filter(t => t.status==='On Process');
+      const readyCount = activeDOs.filter(t => t.status!=='On Process').length;
+      globalMuatHTML = `
+        <div style="margin:0 0 12px 0;background:#f0fdf4;border:2px solid #22c55e;
+          border-radius:14px;padding:16px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+            <span style="font-size:26px">✅</span>
+            <div>
+              <div style="font-size:13px;font-weight:800;color:#166534">Muat Kargo Selesai</div>
+              <div style="font-size:11px;color:#16a34a">${readyCount} DO siap berangkat</div>
+            </div>
+          </div>
+          <button onclick="startJalanAll()"
+            style="width:100%;padding:16px;background:#16a34a;color:#fff;border:none;
+              border-radius:10px;font-size:16px;font-weight:900;cursor:pointer;
+              display:flex;align-items:center;justify-content:center;gap:10px;
+              box-shadow:0 4px 14px rgba(22,163,74,.4)">
+            <i class="fas fa-truck"></i> START JALAN — ${readyCount} DO
+          </button>
+        </div>`;
+    } else {
+      // ── PHASE IDLE: Mulai Muat ──
+      globalMuatHTML = `
+        <button onclick="startMuatAll()"
+          style="width:100%;padding:16px;margin-bottom:12px;
+            background:#d97706;color:#fff;border:none;border-radius:12px;
+            font-size:15px;font-weight:800;cursor:pointer;
+            display:flex;align-items:center;justify-content:center;gap:10px;
+            box-shadow:0 4px 12px rgba(217,119,6,.35)">
+          <span style="font-size:20px">📦</span>
+          Mulai Muat Kargo
+          <span style="font-size:11px;font-weight:400;opacity:.85">(${activeDOs.length} DO)</span>
+        </button>`;
+    }
+  }
+
+  // ── Summary bar: tampil jika semua DO sudah selesai/gagal ─────────────────
+  const doneTasks  = allTasks.filter(t => t.status==='Selesai'||t.status==='Done');
+  const failTasks  = allTasks.filter(t => t.status==='Gagal Kirim');
+  const activeDO2  = allTasks.filter(t =>
+    t.status==='Baru' || t.status==='New' ||
+    t.status==='Muat Kargo' || t.status==='On Process');
+  // allDone: hanya jika ada DO dan semua sudah terminal (selesai/gagal/batal)
+  // Jika ada DO baru masuk → allDone = false → summary hilang
+  const allDone    = allTasks.length > 0 && activeDO2.length === 0 &&
+    (doneTasks.length + failTasks.length) > 0;
+
+  let summaryHTML = '';
+  if (allDone) {
+    const selesaiCount = doneTasks.length;
+    const gagalCount   = failTasks.length;
+    const allSuccess   = gagalCount === 0;
+    summaryHTML = `
+      <div style="margin-bottom:14px;padding:16px;border-radius:14px;text-align:center;
+        background:${allSuccess?'#f0fdf4':'#fffbeb'};
+        border:2px solid ${allSuccess?'#16a34a':'#d97706'}">
+        <div style="font-size:28px;margin-bottom:6px">${allSuccess?'🎉':'✅'}</div>
+        <div style="font-size:15px;font-weight:800;color:${allSuccess?'#15803d':'#92400e'}">
+          ${allSuccess?'Semua DO Selesai!':'Tugas Selesai'}
+        </div>
+        <div style="font-size:12px;color:#64748b;margin-top:4px">
+          ✓ ${selesaiCount} DO berhasil dikirim
+          ${gagalCount>0?`&nbsp;·&nbsp;✗ ${gagalCount} DO gagal`:''}
+        </div>
+        ${gagalCount>0?`
+          <div style="font-size:11px;color:#d97706;margin-top:6px">
+            DO gagal akan masuk carry over besok
+          </div>`:''
+        }
+        <button onclick="doEndTrip()"
+          style="margin-top:12px;padding:12px 32px;background:#0b1f3a;color:#fff;
+            border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;
+            width:100%">
+          🏁 Selesai — Kembali ke Gudang
+        </button>
+      </div>`;
+  }
+
+  document.getElementById('task-list').innerHTML = summaryHTML + globalMuatHTML + allTasks.map(t => buildCard(t)).join('');
+
+  // Jika ada DO baru masuk saat semua sudah selesai → scroll ke atas otomatis
+  if (activeDO2.length > 0 && !summaryHTML) {
+    setTimeout(() => {
+      const firstNew = document.querySelector('.do-card');
+      if (firstNew) firstNew.scrollIntoView({behavior:'smooth', block:'start'});
+    }, 200);
+  }
+}
+
+function buildCard(t) {
+  const isNew  = t.status==='Baru'||t.status==='New';
+  const isProc = t.status==='On Process';
+  const isDone = t.status==='Selesai'||t.status==='Done';
+  const isFail = t.status==='Gagal Kirim';
+  const isBatal= t.status==='Batal';
+
+  const badge = isNew  ? '<span class="do-badge badge-baru" style="animation:pulse 1.5s infinite">★ Baru</span>'
+              : isProc ? '<span class="do-badge badge-process">🚚 On Process</span>'
+              : isDone ? '<span class="do-badge badge-selesai">✓ Selesai</span>'
+              : isFail ? '<span class="do-badge badge-gagal">✗ Gagal</span>'
+              : isBatal? '<span class="do-badge" style="background:#f1f5f9;color:#64748b">Batal</span>'
+              : `<span class="do-badge">${t.status||'—'}</span>`;
+
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.alamat||'')}`;
+
+  // v4.1: isMuat status DO — START JALAN sudah global (di atas semua DO)
+  // Tidak ada per-DO start button, semuanya dihandle startJalanAll()
+  const isMuat = t.status === 'Muat Kargo';
+
+  const actions = isMuat
+    ? '' // START JALAN sudah ada di global button (muatPhase=done)
+    : isNew
+    ? '' // Tombol muat ada di Global Muat Button (di atas semua DO)
+    : isProc
+    ? `<div class="action-row">
+        <button class="btn-selesai" onclick="openSelesai('${escHtml(t.doc_no)}',${t.qty||0},'${escHtml(t.customer||'')}')">
+          <i class="fas fa-check-circle"></i> SELESAI
+        </button>
+        <button class="btn-gagal" onclick="openGagal('${escHtml(t.doc_no)}')">
+          <i class="fas fa-exclamation-triangle"></i> GAGAL KIRIM
+        </button>
+       </div>`
+    : '';
+
+  const isChanged = false; // Could enhance with changedDOs set
+  return `
+  <div class="do-card" id="card-${t.doc_no}">
+    <div class="do-card-head">
+      <div style="display:flex;align-items:center;gap:10px">
+        ${isProc?`<input type="checkbox" class="do-checkbox" id="chk-${t.doc_no}"
+          onchange="toggleBulkSelect('${escHtml(t.doc_no)}')" title="Pilih untuk selesai bersama">`:''}
+        <div>
+          <div class="do-no">DO: ${t.doc_no||'—'}</div>
+          <div class="do-sub">${t.gudang||''}</div>
+        </div>
+      </div>
+      ${badge}
+    </div>
+    <div onclick="toggleDetail('${t.doc_no}')" style="padding:8px 14px;text-align:center;border-bottom:1px solid var(--border);cursor:pointer;color:var(--accent);font-size:12px;font-weight:600">
+      Detail &nbsp;<i class="fas fa-chevron-down"></i>
+      ${t.eta_est ? `<span style="float:left;font-size:10px;color:#64748b;font-weight:400">ETA: ${t.eta_est}</span>` : ''}
+    </div>
+    <div class="do-detail" id="detail-${t.doc_no}" style="display:none">
+      <div class="detail-section">
+        <div class="detail-label"><i class="fas fa-user"></i> Customer</div>
+        <div class="detail-value">${escHtml(t.customer||'—')}</div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-label"><i class="fas fa-map-marker-alt"></i> Alamat</div>
+        <div class="detail-value addr">${escHtml(t.alamat||'—')}</div>
+        <button class="btn-maps" onclick="window.open('${mapsUrl}','_blank')">
+          <i class="fas fa-map-marked-alt"></i> BUKA GOOGLE MAPS
+        </button>
+      </div>
+      <div class="detail-section">
+        <div class="detail-label"><i class="fas fa-boxes"></i> Produk</div>
+        <div class="detail-row">
+          <div class="detail-value">${escHtml(t.produk||'—')}</div>
+          <div class="qty-chip">${t.qty||0} DUS</div>
+        </div>
+      </div>
+      ${isDone||isFail||isBatal ? `
+      <div class="detail-section">
+        <div class="detail-label"><i class="fas fa-info-circle"></i> Status Terakhir</div>
+        <div class="detail-value" style="font-size:12px;color:var(--text-muted)">${escHtml(t.remark||t.status||'—')}</div>
+      </div>` : ''}
+      ${t.jam_update ? `<div style="font-size:10px;color:#94a3b8;margin-top:4px">Update: ${t.jam_update}</div>` : ''}
+    </div>
+    ${actions}
+  </div>`;
+}
+
+function toggleDetail(docNo) {
+  const el = document.getElementById('detail-'+docNo);
+  if (el) el.style.display = el.style.display==='none' ? 'block' : 'none';
+}
+
+// ═══════════════════════════════════════════════════════
+// AUTO POLLING & CHANGE DETECTION
+// ═══════════════════════════════════════════════════════
+function startPolling() {
+  if (!GAS_URL) return;
+  pollTimer = setInterval(async () => {
+    const data = await gasGet('getDriverTasks', {
+      plat: driverState.plat, date: driverState.date
+    });
+    if (!data || !data.tasks) return;
+
+    // Update poll time
+    document.getElementById('last-poll-txt').textContent =
+      'Update: ' + new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+
+    // Detect changes
+    detectChanges(data.tasks);
+
+    // Update snapshot & current
+    data.tasks.forEach(t => { lastTasksSnap[t.doc_no] = t.status; });
+    currentTasks = data.tasks;
+
+    // Re-render if on tugas tab
+    if (currentTab === 'tugas') {
+      stopsDone = data.tasks.filter(t=>t.status==='Selesai'||t.status==='Gagal Kirim'||t.status==='Batal').length;
+      document.getElementById('stop-total').textContent = data.tasks.length;
+      document.getElementById('stop-done').textContent  = stopsDone;
+      document.getElementById('task-list').innerHTML = data.tasks.map(t => buildCard(t)).join('');
+    }
+  }, POLL_INTERVAL);
+}
+
+function detectChanges(newTasks) {
+  const changedCards = [];
+
+  newTasks.forEach(t => {
+    const prevStatus = lastTasksSnap[t.doc_no];
+
+    if (prevStatus === undefined) {
+      // New DO added by dispatcher
+      addNotification({
+        type: 'new_do',
+        icon: 'new',
+        title: '📦 DO Baru Ditambahkan',
+        msg: `DO ${t.doc_no} — ${t.customer||'Customer'} · ${t.qty||0} DUS`,
+        doc_no: t.doc_no,
+      });
+    } else if (prevStatus !== t.status) {
+      // v4.1: Suppress false regression notif — jika kita set 'On Process' tapi
+      // GAS belum update (masih 'Baru'/'Muat Kargo'), JANGAN notif
+      const isRegressionFalse =
+        prevStatus === 'On Process' &&
+        (t.status === 'Baru' || t.status === 'New' || t.status === 'Muat Kargo');
+      if (isRegressionFalse) {
+        console.log(`[detectChanges] Suppress false regression: ${t.doc_no} ${prevStatus}→${t.status}`);
+        return; // skip notif
+      }
+
+      // Status changed by dispatcher
+      const isUrgent = t.status==='Batal'||t.status==='CS Minta Cancel';
+      addNotification({
+        type: 'status_change',
+        icon: isUrgent ? 'alert' : 'change',
+        title: `🔄 Status DO Berubah`,
+        msg: `DO ${t.doc_no} — ${prevStatus} → ${t.status}`,
+        doc_no: t.doc_no,
+      });
+      changedCards.push(t.doc_no);
+    }
+  });
+
+  // Animate changed cards
+  changedCards.forEach(docNo => {
+    const card = document.getElementById('card-'+docNo);
+    if (card) { card.classList.add('changed'); setTimeout(()=>card.classList.remove('changed'), 2000); }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// NOTIFICATIONS
+// ═══════════════════════════════════════════════════════
+function requestNotifPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+
+function addNotification(notif) {
+  notif.id   = Date.now() + Math.random();
+  notif.read = false;
+  notif.time = new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+  notifications.unshift(notif);
+  if (notifications.length > MAX_NOTIF) notifications = notifications.slice(0, MAX_NOTIF);
+  localStorage.setItem('notif_list', JSON.stringify(notifications));
+
+  unreadCount++;
+  renderNotifBadge();
+
+  // Browser push notification
+  if (Notification.permission === 'granted') {
+    try {
+      new Notification('GST Logistics ' + APP_VERSION, {
+        body: notif.title + '\n' + notif.msg,
+        icon: 'https://globalsentral.id/z/data/Logo.avif',
+        tag: notif.doc_no || 'gst-notif',
+        renotify: true,
+      });
+    } catch(e) {}
+  }
+
+  // Audio beep (Web Audio API — no external file needed)
+  playAlertBeep(notif.icon === 'alert');
+}
+
+function playAlertBeep(isUrgent = false) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const beeps = isUrgent ? [800,600,800] : [660];
+    beeps.forEach((freq, i) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0, ctx.currentTime + i*0.18);
+      gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + i*0.18 + 0.02);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + i*0.18 + 0.15);
+      osc.start(ctx.currentTime + i*0.18);
+      osc.stop(ctx.currentTime + i*0.18 + 0.18);
+    });
+  } catch(e) {}
+}
+
+function renderNotifBadge() {
+  const badge1 = document.getElementById('hdr-notif-badge');
+  const badge2 = document.getElementById('nav-notif-badge');
+  const show = unreadCount > 0;
+  const txt = unreadCount > 9 ? '9+' : String(unreadCount);
+  [badge1, badge2].forEach(b => {
+    if (!b) return;
+    b.textContent  = txt;
+    b.style.display = show ? 'flex' : 'none';
+  });
+}
+
+function renderNotifList() {
+  const el = document.getElementById('notif-list');
+  if (!notifications.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:40px 20px"><i class="fas fa-bell-slash"></i><p>Belum ada notifikasi</p></div>';
+    return;
+  }
+  el.innerHTML = notifications.map(n => `
+    <div class="notif-item ${n.read?'read':'unread'}" onclick="markRead('${n.id}')">
+      <div class="notif-icon ${n.icon||'change'}">
+        <i class="fas ${n.icon==='new'?'fa-plus-circle':n.icon==='alert'?'fa-exclamation-triangle':'fa-exchange-alt'}"></i>
+      </div>
+      <div class="notif-body">
+        <div class="notif-title">${escHtml(n.title||'')}</div>
+        <div class="notif-msg">${escHtml(n.msg||'')}</div>
+        <div class="notif-time">${n.time||''}</div>
+      </div>
+    </div>`).join('');
+}
+
+function markRead(id) {
+  const n = notifications.find(n => String(n.id) === String(id));
+  if (n && !n.read) {
+    n.read = true;
+    unreadCount = Math.max(0, unreadCount-1);
+    localStorage.setItem('notif_list', JSON.stringify(notifications));
+    renderNotifBadge();
+    renderNotifList();
+  }
+}
+
+function markAllRead() {
+  notifications.forEach(n => { n.read = true; });
+  unreadCount = 0;
+  localStorage.setItem('notif_list', JSON.stringify(notifications));
+  renderNotifBadge();
+}
+
+function clearAllNotif() {
+  if (!confirm('Hapus semua notifikasi?')) return;
+  notifications = [];
+  unreadCount = 0;
+  localStorage.setItem('notif_list', JSON.stringify(notifications));
+  renderNotifBadge();
+  renderNotifList();
+}
+
+// ═══════════════════════════════════════════════════════
+// HISTORY TAB
+// ═══════════════════════════════════════════════════════
+async function loadHistory() {
+  const input = document.getElementById('history-date');
+  if (!input.value) { alert('Pilih tanggal dulu'); return; }
+
+  // Convert yyyy-mm-dd → dd/mm/yyyy
+  const [y,m,d] = input.value.split('-');
+  const dateStr = `${d}/${m}/${y}`;
+
+  renderHistoryContent(null, 'loading');
+
+  // Check cache first
+  const cacheKey = `history_${input.value.replace(/-/g,'')}_${driverState.plat}`;
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) {
+    const data = JSON.parse(cached);
+    renderHistoryContent(data, dateStr);
+    return;
+  }
+
+  const data = await gasGet('getDriverTasks', { plat: driverState.plat, date: dateStr });
+
+  if (!data || data.error) {
+    renderHistoryContent([], dateStr);
+    return;
+  }
+
+  // Cache result
+  if (data.tasks && data.tasks.length) {
+    try { localStorage.setItem(cacheKey, JSON.stringify(data.tasks)); } catch(e) {}
+  }
+
+  renderHistoryContent(data.tasks || [], dateStr);
+}
+
+function renderHistoryContent(tasks, dateStr) {
+  const el = document.getElementById('history-content');
+  if (tasks === null && dateStr === undefined) {
+    el.innerHTML = '<div class="empty-state" style="padding:40px 20px"><i class="fas fa-calendar-alt"></i><p>Pilih tanggal untuk melihat riwayat</p></div>';
+    return;
+  }
+  if (tasks === null || dateStr === 'loading') {
+    el.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Memuat riwayat...</p></div>';
+    return;
+  }
+  if (!tasks || !tasks.length) {
+    el.innerHTML = `<div class="empty-state" style="padding:40px 20px"><i class="fas fa-inbox"></i><p>Tidak ada data untuk ${dateStr}</p></div>`;
+    return;
+  }
+
+  const done  = tasks.filter(t => t.status==='Selesai').length;
+  const gagal = tasks.filter(t => t.status==='Gagal Kirim').length;
+  const baru  = tasks.filter(t => t.status==='Baru'||t.status==='On Process').length;
+
+  el.innerHTML = `
+    <div class="history-summary">
+      📅 ${dateStr} &nbsp;·&nbsp; ${tasks.length} DO &nbsp;·&nbsp;
+      ✅ ${done} Selesai &nbsp;·&nbsp; ✗ ${gagal} Gagal &nbsp;·&nbsp; ⏳ ${baru} Proses
+    </div>
+    ${tasks.map(t => {
+      const st = t.status||'—';
+      const cls = st==='Selesai'?'hs-selesai':st==='Gagal Kirim'?'hs-gagal':
+                  st==='On Process'?'hs-process':'hs-baru';
+      return `
+      <div class="history-do-item">
+        <div>
+          <div class="history-do-no">DO: ${escHtml(t.doc_no||'—')}</div>
+          <div class="history-do-cust">${escHtml(t.customer||'—')} · ${t.qty||0} DUS</div>
+          ${t.jam_update ? `<div style="font-size:10px;color:#94a3b8">${t.jam_update}</div>` : ''}
+        </div>
+        <span class="history-do-status ${cls}">${st}</span>
+      </div>`;
+    }).join('')}`;
+}
+
+// ═══════════════════════════════════════════════════════
+// JOB ACTIONS
+// ═══════════════════════════════════════════════════════
+
+// ── MULAI MUAT KARGO ──────────────────────────────────────────────────────────
+
+
+// ── END TRIP: buka modal struk → submitStruk yang handle end trip ────────────
+async function doEndTrip() {
+  // v4.0: Fix — openStrukModal() tidak pernah didefinisikan, pakai openModal('m-struk')
+  openModal('m-struk');
+}
+
+// ── GLOBAL MUAT: satu tombol untuk semua DO ──────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// MUAT KARGO — 2-STEP FLOW (v4.1)
+// Phase idle  → startMuatAll()   → phase loading (timer jalan)
+// Phase loading → selesaiMuatAll() → phase done (START JALAN muncul)
+// Phase done → startJalanAll()   → semua DO 'On Process', reset phase
+// ═══════════════════════════════════════════════════════
+
+function _gasBg(payload) {
+  // Fire-and-forget POST ke GAS, tanpa await, tidak tampil ke user
+  try {
+    const url = GAS_URL || localStorage.getItem('gps_gas_url');
+    if (!url) return;
+    const tok = AUTH.getToken();
+    const body = tok ? { ...payload, token: tok } : payload;
+    fetch(url, {
+      method : 'POST',
+      mode   : 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body   : JSON.stringify(body),
+    }).catch(e => console.warn('[GAS-BG] error:', e));
+  } catch(e) { console.warn('[GAS-BG] error:', e); }
+}
+
+function _gasBgGet(action, params) {
+  // Fire-and-forget GET ke GAS
+  try {
+    const url = GAS_URL || localStorage.getItem('gps_gas_url');
+    if (!url) return;
+    const tok = AUTH.getToken();
+    const p   = tok ? { ...params, token: tok } : params;
+    const qs  = new URLSearchParams({ action, ...p }).toString();
+    fetch(`${url}?${qs}`, { mode: 'no-cors', redirect: 'follow' })
+      .catch(e => console.warn('[GAS-BG-GET] error:', e));
+  } catch(e) { console.warn('[GAS-BG-GET] error:', e); }
+}
+
+function _restoreMuatPhase() {
+  // Restore muat phase dari localStorage setelah refresh
+  const key = `muatphase_${driverState.plat}_${driverState.date}`;
+  const saved = JSON.parse(localStorage.getItem(key) || 'null');
+  if (!saved) { muatPhase = 'idle'; return; }
+  muatPhase = saved.phase || 'idle';
+  muatStartTime  = saved.startTime  || null;
+  muatStartLabel = saved.startLabel || null;
+  console.log('[Muat] Restored phase:', muatPhase);
+}
+
+function _saveMuatPhase() {
+  const key = `muatphase_${driverState.plat}_${driverState.date}`;
+  localStorage.setItem(key, JSON.stringify({
+    phase: muatPhase, startTime: muatStartTime, startLabel: muatStartLabel,
+  }));
+}
+
+function _clearMuatPhase() {
+  const key = `muatphase_${driverState.plat}_${driverState.date}`;
+  localStorage.removeItem(key);
+  muatPhase = 'idle';
+  muatStartTime = null;
+  muatStartLabel = null;
+  if (muatTimerInterval) { clearInterval(muatTimerInterval); muatTimerInterval = null; }
+}
+
+function updateMuatTimer() {
+  const el = document.getElementById('muat-elapsed-timer');
+  if (!el || !muatStartTime) return;
+  const elapsed = Math.floor((Date.now() - muatStartTime) / 1000);
+  const m = Math.floor(elapsed / 60).toString().padStart(2,'0');
+  const s = (elapsed % 60).toString().padStart(2,'0');
+  el.textContent = `${m}:${s}`;
+}
+
+function startMuatAll() {
+  // Phase idle → loading: mulai timer
+  const doNos = currentTasks
+    .filter(t => t.status==='Baru' || t.status==='New')
+    .map(t => t.doc_no);
+  if (doNos.length === 0) return;
+
+  const now       = new Date();
+  muatPhase       = 'loading';
+  muatStartTime   = now.getTime();
+  muatStartLabel  = now.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+
+  // Update currentTasks di memory (optimistic)
+  doNos.forEach(docNo => {
+    const idx = currentTasks.findIndex(t => t.doc_no === docNo);
+    if (idx >= 0) {
+      currentTasks[idx].status     = 'Muat Kargo';
+      currentTasks[idx].jam_update = muatStartLabel;
+    }
+    // Update lastTasksSnap agar tidak false-notif
+    lastTasksSnap[docNo] = 'Muat Kargo';
+  });
+
+  // Simpan localStorage (muat data + phase)
+  const muatKey = `muat_${driverState.plat}_${driverState.date}`;
+  let muatData  = JSON.parse(localStorage.getItem(muatKey)||'{}');
+  doNos.forEach(docNo => {
+    muatData[docNo] = { jam: muatStartLabel, iso: now.toISOString(), status: 'Muat Kargo' };
+  });
+  localStorage.setItem(muatKey, JSON.stringify(muatData));
+  _saveMuatPhase();
+
+  // Start interval timer
+  if (muatTimerInterval) clearInterval(muatTimerInterval);
+  muatTimerInterval = setInterval(updateMuatTimer, 1000);
+
+  // Re-render → tampilkan phase loading
+  loadTasks(false);
+}
+
+async function selesaiMuatAll() {
+  if (muatPhase !== 'loading') return;
+
+  // Stop timer
+  if (muatTimerInterval) { clearInterval(muatTimerInterval); muatTimerInterval = null; }
+
+  const now           = new Date();
+  const jamMuatSelesai = now.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const durasiMs      = muatStartTime ? (now.getTime() - muatStartTime) : 0;
+  const durasiMnt     = Math.round(durasiMs / 60000);
+
+  // Phase → done
+  muatPhase = 'done';
+  _saveMuatPhase();
+
+  // Ambil semua DO yang Muat Kargo
+  const doNos = currentTasks
+    .filter(t => t.status==='Muat Kargo')
+    .map(t => t.doc_no);
+
+  // Kirim ke GAS background (fire & forget POST)
+  _gasBg({
+    action          : 'submitMuatKargo',
+    doc_no          : doNos.join(','),
+    plat            : driverState.plat,
+    driver          : driverState.driver,
+    do_date         : driverState.date,
+    jam_muat_mulai  : muatStartLabel,
+    jam_muat        : jamMuatSelesai,
+    durasi_muat_mnt : durasiMnt,
+    lat             : tripState.last_pos?.lat || 0,
+    lng             : tripState.last_pos?.lng || 0,
+  });
+
+  // Update muatData localStorage dengan waktu selesai
+  const muatKey = `muat_${driverState.plat}_${driverState.date}`;
+  let muatData  = JSON.parse(localStorage.getItem(muatKey)||'{}');
+  doNos.forEach(docNo => {
+    if (muatData[docNo]) {
+      muatData[docNo].jam_selesai  = jamMuatSelesai;
+      muatData[docNo].durasi_mnt   = durasiMnt;
+    }
+  });
+  localStorage.setItem(muatKey, JSON.stringify(muatData));
+
+  // Re-render → tampilkan phase done (START JALAN button)
+  await loadTasks(false);
+}
+
+async function startJalanAll() {
+  if (_startJalanLock) return; // cegah double tap
+  if (muatPhase !== 'done') return;
+  _startJalanLock = true;
+
+  const now      = new Date();
+  const jamJalan = now.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+
+  // Ambil semua DO yang belum 'On Process' (Baru atau Muat Kargo)
+  const doNos = currentTasks
+    .filter(t => t.status==='Baru' || t.status==='New' || t.status==='Muat Kargo')
+    .map(t => t.doc_no);
+
+  if (doNos.length === 0) { _startJalanLock = false; return; }
+
+  // ── OPTIMISTIC UI: update semua DO → 'On Process' SEKARANG ──
+  doNos.forEach(docNo => {
+    const idx = currentTasks.findIndex(t => t.doc_no === docNo);
+    if (idx >= 0) {
+      currentTasks[idx].status     = 'On Process';
+      currentTasks[idx].jam_update = jamJalan;
+    }
+    // Update snapshot → cegah false notif "On Process → Baru"
+    lastTasksSnap[docNo] = 'On Process';
+  });
+
+  // Update trip state
+  tripState.started    = true;
+  tripState.start_time = Date.now();
+  document.getElementById('km-bar').style.display = 'flex';
+  requestWakeLock();
+
+  // Reset muat phase
+  _clearMuatPhase();
+  localStorage.removeItem(`muat_${driverState.plat}_${driverState.date}`);
+
+  // Re-render SEKARANG (tanpa tunggu GAS) — instant response
+  await loadTasks(false);
+
+  // ── GAS: kirim startJob bulk di background ──
+  const pos = tripState.last_pos || { lat:0, lng:0 };
+  _gasBgGet('startJob', {
+    plat   : driverState.plat,
+    driver : driverState.driver,
+    doc_no : doNos.join(','), // bulk — dihandle GAS v4.1
+    date   : driverState.date,
+    lat    : pos.lat,
+    lng    : pos.lng,
+  });
+
+  _startJalanLock = false;
+  console.log('[StartJalan] Done — GAS sync background:', doNos);
+}
+
+// Kept for backward compat (per-DO muat dari flow lama) — tidak dipakai di UI baru
+async function submitMuatKargoAll() {
+  // Redirect ke flow baru
+  if (muatPhase === 'idle') startMuatAll();
+}
+
+async function submitMuatKargo(docNo, customer) {
+  // Langsung execute tanpa confirm() — confirm bisa silent fail di Chrome Android
+  const now     = new Date();
+  const jamMuat = now.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const muatTs  = now.toISOString();
+
+  // ── Simpan status Muat Kargo ke localStorage agar persisten setelah refresh ──
+  const muatKey = `muat_${driverState.plat}_${driverState.date}`;
+  let muatData  = JSON.parse(localStorage.getItem(muatKey)||'{}');
+  muatData[docNo] = { jam: jamMuat, iso: muatTs, status: 'Muat Kargo' };
+  localStorage.setItem(muatKey, JSON.stringify(muatData));
+
+  // ── Update currentTasks di memory → status jadi Muat Kargo ──────────────────
+  const taskIdx = currentTasks.findIndex(t => t.doc_no === docNo);
+  if (taskIdx >= 0) {
+    currentTasks[taskIdx].status = 'Muat Kargo';
+    currentTasks[taskIdx].jam_update = jamMuat;
+  }
+
+  // ── Update UI langsung ───────────────────────────────────────────────────────
+  const card = document.getElementById('card-'+docNo);
+  if (card) {
+    const btn = card.querySelector('.btn-muat');
+    if (btn) {
+      btn.closest('div').innerHTML =
+        `<div style="padding:8px 14px;background:#fef3c7;border-radius:8px;margin:8px 14px;text-align:center">
+          <span style="font-size:12px;font-weight:700;color:#92400e">📦 Muat Kargo — ${jamMuat}</span>
+        </div>`;
+    }
+  }
+
+  // ── Kirim ke Apps Script (fire and forget) ───────────────────────────────────
+  const payload = {
+    action      : 'submitMuatKargo',
+    doc_no      : docNo,
+    plat        : driverState.plat,
+    driver      : driverState.driver,
+    do_date     : driverState.date,
+    jam_muat    : jamMuat,
+    jam_muat_iso: muatTs,
+    lat         : tripState.last_pos?.lat || 0,
+    lng         : tripState.last_pos?.lng || 0,
+  };
+  try {
+    const url = GAS_URL || localStorage.getItem('gps_gas_url');
+    if (url) {
+      // v4.0: inject token
+      const tok = AUTH.getToken();
+      const body = tok && !payload.token ? { ...payload, token: tok } : payload;
+      fetch(url, {
+        method : 'POST',
+        mode   : 'no-cors',
+        headers: { 'Content-Type': 'text/plain' },
+        body   : JSON.stringify(body),
+      }).catch(e => console.warn('[Muat] POST error:', e));
+    }
+  } catch(e) { console.warn('[Muat] error:', e); }
+
+  // ── Reload UI dari memory (bukan dari server) ────────────────────────────────
+  await sleep(500);
+  document.getElementById('task-list').innerHTML =
+    currentTasks.map(t => buildCard(t)).join('');
+}
+
+// startJob single-DO — DEPRECATED (sekarang pakai startJalanAll untuk semua DO)
+// Dipertahankan untuk backward compat jika ada caller lama
+async function startJob(docNo) {
+  console.warn('[startJob] Deprecated — use startJalanAll() instead');
+  // Redirect ke flow baru
+  await startJalanAll();
+}
+
+async function confirmBatal(docNo) {
+  if (!confirm('Batalkan DO '+docNo+'?')) return;
+  await gasGet('cancelJob', { plat:driverState.plat, doc_no:docNo, date:driverState.date });
+  lastTasksSnap[docNo] = 'Batal';
+  await loadTasks(false);
+}
+
+function openSelesai(docNo, qty, customer) {
+  // Cegah double tap
+  if (submittingDOs.has(docNo)) {
+    console.warn('[openSelesai] DO '+docNo+' sedang diproses, skip double tap');
+    return;
+  }
+  modalCtx = { doc_no:docNo, qty_kirim:qty, qty_terima:qty, qty_rusak:0,
+    foto_do:null, foto_rusak:null, foto_sj:null, gps_coords:modalCtx.gps_coords||'' };
+  document.getElementById('m-selesai-info').textContent = customer + ' · ' + qty + ' DUS';
+  document.getElementById('qty-kirim').textContent      = qty;
+  document.getElementById('qty-terima-disp').textContent = qty;
+  document.getElementById('qty-rusak-disp').textContent  = 0;
+  document.getElementById('group-foto-rusak').style.display = 'none';
+  document.getElementById('titip-sj').value  = 'Tidak';
+  document.getElementById('titip-extra').classList.remove('show');
+  document.getElementById('catatan-selesai').value = '';
+  ['do','rusak','sj'].forEach(k => {
+    const prev=document.getElementById('prev-foto-'+k);
+    const icon=document.getElementById('icon-foto-'+k);
+    const txt =document.getElementById('txt-foto-'+k);
+    const wrap=document.getElementById('wrap-foto-'+k);
+    if (prev){prev.style.display='none';prev.src='';}
+    if (wrap) wrap.classList.remove('has-photo');
+    if (icon) icon.innerHTML='<i class="fas fa-camera"></i>';
+    if (txt)  txt.textContent = k==='do'?'Letakkan DO dalam bingkai · nomor DO harus terbaca':
+              k==='rusak'?'Foto kerusakan dari dekat · pastikan jelas':'Foto SJ sebelum ditinggal';
+  });
+  document.getElementById('btn-submit-selesai').disabled = false;
+  openModal('m-selesai');
+}
+
+function openGagal(docNo) {
+  modalCtx.doc_no     = docNo;
+  modalCtx.foto_gagal = null;
+  document.getElementById('alasan-gagal').value = '';
+  document.getElementById('prev-foto-gagal').style.display='none';
+  document.getElementById('wrap-foto-gagal').classList.remove('has-photo');
+  document.getElementById('icon-foto-gagal').innerHTML='<i class="fas fa-camera"></i>';
+  document.getElementById('txt-foto-gagal').textContent='Foto kondisi lokasi / bukti gagal kirim';
+  ['titip-gudang','reschedule','cancel','lainlain'].forEach(k =>
+    document.getElementById('extra-'+k).classList.remove('show'));
+  document.getElementById('alert-musibah').style.display='none';
+  document.getElementById('btn-submit-gagal').disabled=false;
+  openModal('m-gagal');
+}
+
+function onAlasanChange(val) {
+  ['titip-gudang','reschedule','cancel','lainlain'].forEach(k =>
+    document.getElementById('extra-'+k).classList.remove('show'));
+  const musibah = val==='Kendaraan Rusak'||val==='Bencana Alam/Banjir';
+  document.getElementById('alert-musibah').style.display = musibah?'block':'none';
+  if (val==='Titip Gudang Lain')    document.getElementById('extra-titip-gudang').classList.add('show');
+  if (val==='CS Minta Reschedule')  document.getElementById('extra-reschedule').classList.add('show');
+  if (val==='CS Minta Cancel')      document.getElementById('extra-cancel').classList.add('show');
+  if (val==='Lain-lain')            document.getElementById('extra-lainlain').classList.add('show');
+}
+
+function adjQty(type, delta) {
+  const max = modalCtx.qty_kirim;
+  if (type==='terima') {
+    modalCtx.qty_terima = Math.max(0, Math.min(max, modalCtx.qty_terima+delta));
+    modalCtx.qty_rusak  = Math.max(0, max-modalCtx.qty_terima);
+  } else {
+    modalCtx.qty_rusak  = Math.max(0, Math.min(max, modalCtx.qty_rusak+delta));
+    modalCtx.qty_terima = Math.max(0, max-modalCtx.qty_rusak);
+  }
+  document.getElementById('qty-terima-disp').textContent = modalCtx.qty_terima;
+  document.getElementById('qty-rusak-disp').textContent  = modalCtx.qty_rusak;
+  document.getElementById('group-foto-rusak').style.display = modalCtx.qty_rusak>0?'block':'none';
+}
+
+function toggleTitipSJ(val) {
+  val==='Ya'
+    ? document.getElementById('titip-extra').classList.add('show')
+    : document.getElementById('titip-extra').classList.remove('show');
+}
+
+// ═══════════════════════════════════════════════════════
+// PHOTO CAPTURE + WATERMARK
+// ═══════════════════════════════════════════════════════
+async function capturePhoto(type, inputEl) {
+  const file = inputEl.files[0];
+  if (!file) return;
+
+  // Koordinat GPS — tidak tunggu reverse geocoding (lambat ~1-2 detik)
+  // Koordinat raw sudah cukup untuk watermark
+  const coords = modalCtx.gps_coords || (tripState.last_pos
+    ? tripState.last_pos.lat.toFixed(6)+','+tripState.last_pos.lng.toFixed(6) : '');
+  let gpsAddr = coords || 'Lokasi tidak tersedia';
+  // Geocoding async di background (tidak blocking)
+  if (coords) {
+    const [lat,lng] = coords.split(',');
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+      .then(r=>r.json()).then(d=>{if(d.display_name) gpsAddr=d.display_name.slice(0,80);})
+      .catch(()=>{});
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.getElementById('canvas-foto-'+type);
+      // Max 1000px width for balance of quality vs size
+      const maxW = 600; // C: kompres lebih kecil → transfer cepat // Dikurangi dari 1000 → proses lebih cepat
+      let w = img.width, h = img.height;
+      if (w > maxW) { h = h*(maxW/w); w = maxW; }
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+
+      // Brightness check
+      const imgData = ctx.getImageData(0, 0, w, Math.min(h,80));
+      const brightness = imgData.data.reduce((a,v,i)=>i%4!==3?a+v:a,0)/(imgData.data.length*3/4);
+      if (brightness < 28) {
+        alert('Foto terlalu gelap. Pastikan pencahayaan cukup, lalu ambil foto ulang.');
+        inputEl.value=''; return;
+      }
+
+      // Watermark
+      const now = new Date().toLocaleString('id-ID',{timeZone:'Asia/Jakarta'});
+      const lines = [
+        'Plat         : '+driverState.plat,
+        'Driver       : '+driverState.driver,
+        'Koordinat    : '+(coords||'-'),
+        'Alamat GPS   : '+gpsAddr,
+        'DO           : '+modalCtx.doc_no,
+        'Waktu Kamera : '+now,
+      ];
+      const pad=18, lh=17, textX=100, maxTW=w-textX-16;
+      ctx.font='11px Arial';
+      let totalH=0;
+      lines.forEach(l=>{ totalH+=getTextH(ctx,l,maxTW,lh); });
+      const logoH=50, boxH=Math.max(totalH,logoH)+pad;
+      const boxY=h-boxH;
+      const grad=ctx.createLinearGradient(0,boxY,0,h);
+      grad.addColorStop(0,'rgba(0,0,0,0.87)');
+      grad.addColorStop(1,'rgba(0,0,0,0.70)');
+      ctx.fillStyle=grad; ctx.fillRect(0,boxY,w,boxH);
+
+      const logo=new Image(); logo.crossOrigin='anonymous';
+      logo.src='https://globalsentral.id/z/data/Logo.avif';
+      const finalizeWM = () => {
+        ctx.fillStyle='#fff'; ctx.font='11px Arial';
+        let ty=boxY+20;
+        lines.forEach(l=>{ ty=drawWrappedText(ctx,l,textX,ty,maxTW,lh); });
+        const b64=canvas.toDataURL('image/jpeg',0.65); // C: quality → 0.65
+        setPhotoResult(type, b64);
+        inputEl.value='';
+      };
+      logo.onload=function(){
+        const lw=logo.width*(logoH/logo.height);
+        ctx.globalAlpha=0.88; ctx.drawImage(logo,14,boxY+(boxH-logoH)/2,lw,logoH); ctx.globalAlpha=1;
+        finalizeWM();
+      };
+      logo.onerror=finalizeWM;
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function setPhotoResult(type, b64) {
+  modalCtx['foto_'+type]=b64;
+  const prev=document.getElementById('prev-foto-'+type);
+  const wrap=document.getElementById('wrap-foto-'+type);
+  const icon=document.getElementById('icon-foto-'+type);
+  const txt =document.getElementById('txt-foto-'+type);
+  if (prev){prev.src=b64;prev.style.display='block';}
+  if (wrap) wrap.classList.add('has-photo');
+  if (icon) icon.innerHTML='<i class="fas fa-check-circle" style="color:var(--green)"></i>';
+  if (txt)  txt.textContent='✅ Foto berhasil diambil';
+}
+
+function updateTotalStruk() {
+  const tol    = parseInt(document.getElementById('nominal-tol')?.value)||0;
+  const parkir = parseInt(document.getElementById('nominal-parkir')?.value)||0;
+  const bensin = parseInt(document.getElementById('nominal-bensin')?.value)||0;
+  const makan  = parseInt(document.getElementById('nominal-makan')?.value)||0;
+  const total  = tol + parkir + bensin + makan;
+  const el = document.getElementById('total-struk-display');
+  if (el) el.textContent = 'Rp ' + total.toLocaleString('id-ID');
+}
+
+function captureStruk(type, inputEl) {
+  const file=inputEl.files[0]; if(!file)return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const img=new Image();
+    img.onload=function(){
+      const canvas=document.createElement('canvas');
+      const max=800; let w=img.width,h=img.height;
+      if(w>max){h=h*(max/w);w=max;}
+      canvas.width=w; canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      strukPhotos[type]=canvas.toDataURL('image/jpeg',0.75);
+      const btn=document.getElementById('struk-btn-'+type);
+      if(btn){
+        // Tampilkan thumbnail foto + checkmark + tombol ulang
+        btn.style.position='relative';
+        btn.innerHTML=`
+          <img src="${strukPhotos[type]}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:10px">
+          <div style="position:absolute;inset:0;background:rgba(0,0,0,.35);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px">
+            <i class="fas fa-check-circle" style="color:#4ade80;font-size:24px"></i>
+            <span style="color:#fff;font-size:10px;font-weight:600">Foto OK · Tap untuk ganti</span>
+          </div>
+          <input type="file" accept="image/*" capture="environment" onchange="captureStruk('${type}',this)"
+            style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">`;
+      }
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ═══════════════════════════════════════════════════════
+// SUBMIT — POST (no-cors) for photos → bypass URL length limit
+// ═══════════════════════════════════════════════════════
+async function submitSelesai() {
+  if (!modalCtx.foto_do) { alert('Foto DO wajib diambil dari kamera'); return; }
+  if (modalCtx.qty_rusak>0 && !modalCtx.foto_rusak) { alert('Ada barang rusak — foto kerusakan wajib'); return; }
+  const titipSJ = document.getElementById('titip-sj').value;
+  if (titipSJ==='Ya') {
+    if (!document.getElementById('nama-spg').value.trim()) { alert('Nama penerima SJ wajib diisi'); return; }
+    if (!modalCtx.foto_sj) { alert('Foto SJ yang dititip wajib diambil'); return; }
+  }
+
+  const btn = document.getElementById('btn-submit-selesai');
+  btn.disabled = true;
+
+  const payload = {
+    action      : 'submitSelesai',
+    plat        : driverState.plat,
+    driver      : driverState.driver,
+    doc_no      : modalCtx.doc_no,
+    date        : driverState.date,
+    qty_kirim   : modalCtx.qty_kirim,
+    qty_terima  : modalCtx.qty_terima,
+    qty_rusak   : modalCtx.qty_rusak,
+    catatan     : document.getElementById('catatan-selesai').value,
+    titip_sj    : titipSJ,
+    nama_spg    : document.getElementById('nama-spg').value,
+    jabatan_spg : document.getElementById('jabatan-spg').value,
+    gps_coords  : modalCtx.gps_coords,
+    foto_do     : modalCtx.foto_do,
+    foto_rusak  : modalCtx.qty_rusak>0 ? (modalCtx.foto_rusak||null) : null,
+    foto_sj     : titipSJ==='Ya' ? (modalCtx.foto_sj||null) : null,
+    timestamp   : new Date().toISOString(),
+  };
+
+  // ── FIRE AND FORGET: langsung lanjut, tidak tunggu response ──────────────
+  // Kirim di background — driver tidak perlu nunggu upload foto selesai
+  gasPost(payload); // no await
+
+  // Update UI langsung tanpa tunggu server
+  lastTasksSnap[modalCtx.doc_no] = 'Selesai';
+  stopsDone++;
+  btn.disabled = false;
+  closeModal('m-selesai');
+
+  // Notif langsung
+  addNotification({
+    type:'self', icon:'change',
+    title:'✅ Laporan Dikirim',
+    msg:`DO ${modalCtx.doc_no} — ${modalCtx.qty_terima} DUS · mengirim ke server...`,
+    doc_no: modalCtx.doc_no,
+  });
+
+  // Reload tugas langsung (optimistic — anggap sukses)
+  await loadTasks(false);
+  checkAllDone();
+}
+
+async function submitGagal() {
+  const alasan = document.getElementById('alasan-gagal').value;
+  if (!alasan) { alert('Alasan gagal kirim wajib dipilih'); return; }
+  if (!modalCtx.foto_gagal) { alert('Foto bukti wajib diambil dari kamera'); return; }
+  if (alasan==='Lain-lain' && !document.getElementById('ket-lainlain').value.trim()) {
+    alert('Keterangan wajib diisi untuk alasan Lain-lain'); return; }
+
+  const btn = document.getElementById('btn-submit-gagal');
+  btn.disabled = true;
+
+  const payload = {
+    action       : 'submitGagal',
+    plat         : driverState.plat,
+    driver       : driverState.driver,
+    doc_no       : modalCtx.doc_no,
+    date         : driverState.date,
+    alasan       : alasan,
+    keterangan   : document.getElementById('ket-lainlain').value||
+                   document.getElementById('nama-gudang-titip').value||
+                   document.getElementById('tgl-reschedule').value||
+                   document.getElementById('nama-sales-cancel').value||'',
+    gps_coords   : modalCtx.gps_coords,
+    foto_gagal   : modalCtx.foto_gagal,
+    timestamp    : new Date().toISOString(),
+    is_urgent    : alasan==='Kendaraan Rusak'||alasan==='Bencana Alam/Banjir'?'1':'0',
+  };
+
+  // ── FIRE AND FORGET ──────────────────────────────────────────────────────
+  gasPost(payload); // no await — tidak tunggu server
+
+  lastTasksSnap[modalCtx.doc_no] = 'Gagal Kirim';
+  btn.disabled = false;
+  closeModal('m-gagal');
+
+  addNotification({
+    type:'self', icon: payload.is_urgent==='1'?'alert':'change',
+    title: payload.is_urgent==='1'?'🚨 Alert Urgent Dikirim':'✅ Laporan Gagal Dikirim',
+    msg: `DO ${modalCtx.doc_no} — ${alasan} · mengirim ke server...`,
+    doc_no: modalCtx.doc_no,
+  });
+
+  await loadTasks(false);
+}
+
+async function submitStruk() {
+  // Langsung execute — confirm() bisa silent fail di Chrome Android
+
+  // Ambil nominal dari form
+  const nomTol    = parseInt(document.getElementById('nominal-tol')?.value)||0;
+  const nomParkir = parseInt(document.getElementById('nominal-parkir')?.value)||0;
+  const nomBensin = parseInt(document.getElementById('nominal-bensin')?.value)||0;
+  const nomMakan  = parseInt(document.getElementById('nominal-makan')?.value)||0;
+  const ketMakan  = document.getElementById('ket-makan')?.value||'';
+  const totalStruk = nomTol + nomParkir + nomBensin + nomMakan;
+
+  const payload = {
+    action        : 'submitStruk',
+    plat          : driverState.plat,
+    driver        : driverState.driver,
+    date          : driverState.date,
+    km_total      : tripState.km_total.toFixed(1),
+    foto_tol      : strukPhotos.tol    || null,
+    foto_parkir   : strukPhotos.parkir || null,
+    foto_bensin   : strukPhotos.bensin || null,
+    nominal_tol   : nomTol,
+    nominal_parkir: nomParkir,
+    nominal_bensin: nomBensin,
+    nominal_makan : nomMakan,
+    ket_makan     : ketMakan,
+    total_struk   : totalStruk,
+    timestamp     : new Date().toISOString(),
+  };
+
+  showSubmitOverlay('Menutup perjalanan...');
+  await gasPost(payload);
+  await gasGet('endTrip', {
+    plat:driverState.plat, date:driverState.date,
+    lat:tripState.last_pos?.lat||0, lng:tripState.last_pos?.lng||0,
+    km_total:tripState.km_total.toFixed(1),
+  });
+  hideSubmitOverlay();
+
+  closeModal('m-struk');
+  document.getElementById('km-bar').style.display='none';
+  tripState.started = false;
+  releaseWakeLock(); // Lepas wake lock setelah trip selesai
+
+  addNotification({
+    type:'self', icon:'change',
+    title:'🏁 Perjalanan Selesai',
+    msg:`Total ${tripState.km_total.toFixed(1)} km · ${stopsDone} stop diselesaikan`,
+  });
+
+  // Tampilkan layar selesai
+  document.getElementById('task-list').innerHTML = `
+    <div style="text-align:center;padding:48px 24px">
+      <div style="font-size:56px;margin-bottom:12px">🏁</div>
+      <div style="font-size:20px;font-weight:800;color:#0b1f3a">Perjalanan Selesai!</div>
+      <div style="font-size:13px;color:#64748b;margin-top:10px;line-height:1.6">
+        Total: ${tripState.km_total.toFixed(1)} km<br>
+        ${stopsDone} stop diselesaikan<br>
+        <span style="color:#16a34a">Data tersimpan ✓</span>
+      </div>
+      <div style="margin-top:20px;padding:14px;background:#f0fdf4;border-radius:10px;
+        font-size:12px;color:#15803d;font-weight:600">
+        Silakan serahkan dokumen SJ &amp; struk ke dispatcher
+      </div>
+    </div>`;
+}
+
+function checkAllDone() {
+  setTimeout(async()=>{
+    const data=await gasGet('getDriverTasks',{plat:driverState.plat,date:driverState.date});
+    if(data&&data.tasks){
+      const active=data.tasks.filter(t=>t.status==='Baru'||t.status==='On Process');
+      if(active.length===0) openModal('m-struk');
+    }
+  },1200);
+}
+
+// ═══════════════════════════════════════════════════════
+// AUTH LAYER v4.0 (Sprint 3 Token + Vendor PIN)
+// ═══════════════════════════════════════════════════════
+const AUTH = {
+  TOKEN_KEY   : 'auth_token',
+  EXPIRES_KEY : 'auth_expires',
+  MODE_KEY    : 'auth_mode',       // 'internal' | 'vendor'
+  VC_KEY      : 'auth_vendor_code',
+  VN_KEY      : 'auth_vendor_name',
+
+  getToken() {
+    const tok = localStorage.getItem(this.TOKEN_KEY);
+    const exp = localStorage.getItem(this.EXPIRES_KEY);
+    if (!tok || !exp) return null;
+    // Expire format dari backend: "yyyy-MM-dd 23:59:59"
+    const expIso = exp.replace(' ', 'T');
+    const expDate = new Date(expIso);
+    if (isNaN(expDate.getTime()) || new Date() > expDate) {
+      this.clear();
+      return null;
+    }
+    return tok;
+  },
+
+  save(mode, response) {
+    localStorage.setItem(this.TOKEN_KEY, response.token);
+    localStorage.setItem(this.EXPIRES_KEY, response.expires_at);
+    localStorage.setItem(this.MODE_KEY, mode);
+    if (mode === 'vendor') {
+      localStorage.setItem(this.VC_KEY, response.vendor_code || '');
+      localStorage.setItem(this.VN_KEY, response.vendor_name || '');
+    }
+  },
+
+  clear() {
+    [this.TOKEN_KEY, this.EXPIRES_KEY, this.MODE_KEY, this.VC_KEY, this.VN_KEY]
+      .forEach(k => localStorage.removeItem(k));
+  },
+
+  isLoggedIn() { return !!this.getToken(); },
+  getMode()    { return localStorage.getItem(this.MODE_KEY) || ''; },
+};
+
+// Login Internal: POST plat → dapat token
+async function doLoginInternal(plat) {
+  const url = GAS_URL || localStorage.getItem('gps_gas_url');
+  if (!url) return { error:'URL GAS tidak ada' };
+
+  const qs = new URLSearchParams({ action:'loginInternal', plat });
+  try {
+    const r = await fetch(`${url}?${qs}`, {redirect:'follow'});
+    return await r.json();
+  } catch(e) {
+    return { error:'Gagal koneksi: '+e.message };
+  }
+}
+
+// Login Vendor
+async function doLoginVendor(vendor_code, pin, plat, driver) {
+  const url = GAS_URL || localStorage.getItem('gps_gas_url');
+  if (!url) return { error:'URL GAS tidak ada' };
+
+  const qs = new URLSearchParams({
+    action:'loginVendor', vendor_code, pin, plat, driver
+  });
+  try {
+    const r = await fetch(`${url}?${qs}`, {redirect:'follow'});
+    return await r.json();
+  } catch(e) {
+    return { error:'Gagal koneksi: '+e.message };
+  }
+}
+
+function doLogout() {
+  // JANGAN pakai confirm() — silent fail di Chrome Android
+  // Pakai custom modal untuk konfirmasi
+  const overlay = document.createElement('div');
+  overlay.id = 'logout-confirm-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:22px;max-width:320px;width:100%;box-shadow:0 10px 30px rgba(0,0,0,.3)">
+      <div style="font-size:32px;text-align:center;margin-bottom:8px">🚪</div>
+      <h3 style="font-size:16px;font-weight:700;text-align:center;margin-bottom:6px">Logout Driver App?</h3>
+      <p style="font-size:12px;color:#64748b;text-align:center;margin-bottom:18px;line-height:1.5">
+        Session akan dihapus dan kembali ke layar login.
+      </p>
+      <div style="display:flex;gap:8px">
+        <button id="btn-logout-cancel" style="flex:1;padding:11px;background:#e2e8f0;color:#334155;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">
+          Batal
+        </button>
+        <button id="btn-logout-confirm" style="flex:1;padding:11px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">
+          Ya, Logout
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  document.getElementById('btn-logout-cancel').onclick = () => overlay.remove();
+  document.getElementById('btn-logout-confirm').onclick = () => {
+    // Ganti button jadi loading state
+    const btn = document.getElementById('btn-logout-confirm');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Logging out...';
+
+    // Clear semua state
+    try {
+      AUTH.clear();
+      localStorage.removeItem('drv_plat');
+      localStorage.removeItem('drv_driver');
+      localStorage.removeItem('drv_gudang');
+      // Stop polling + GPS untuk mencegah request sesudah clear
+      if (typeof isNativeApp === 'function' && isNativeApp() && window.NativeGPS?.isGPSRunning?.()) {
+        window.NativeGPS.stopGPS();
+      }
+      if (typeof pollTimer !== 'undefined' && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      if (typeof tripState !== 'undefined') {
+        if (tripState.gps_watch) navigator.geolocation.clearWatch(tripState.gps_watch);
+        if (tripState.gps_timer) clearInterval(tripState.gps_timer);
+      }
+    } catch(e) { console.warn('[Logout] cleanup error:', e); }
+
+    // Short delay untuk user melihat feedback, lalu reload
+    setTimeout(() => { location.reload(); }, 300);
+  };
+
+  // Tap outside untuk cancel
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+}
+
+// ═══════════════════════════════════════════════════════
+// LOGIN SCREEN UI v4.0
+// ═══════════════════════════════════════════════════════
+function showLoginScreen() {
+  const savedPlat = localStorage.getItem('drv_plat') || driverState.plat || '';
+  const savedDriver = localStorage.getItem('drv_driver') || driverState.driver || '';
+
+  document.getElementById('tab-tugas').innerHTML = `
+    <div style="padding:8px">
+      <div style="background:#fff;border-radius:12px;border:1px solid var(--border);padding:20px;box-shadow:0 2px 8px rgba(37,99,235,.06)">
+        <div style="text-align:center;margin-bottom:20px">
+          <div style="font-size:32px;margin-bottom:4px">🚚</div>
+          <h3 style="font-size:16px;font-weight:700;margin-bottom:2px">GST Driver App v4.0</h3>
+          <p style="font-size:11px;color:var(--text-muted)">Login untuk mulai bekerja</p>
+        </div>
+
+        <div id="login-tabs" style="display:flex;gap:6px;margin-bottom:16px;padding:3px;background:#f1f5f9;border-radius:10px">
+          <button onclick="switchLoginTab('internal')" id="ltab-internal"
+            style="flex:1;padding:10px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;background:#2563eb;color:#fff">
+            <i class="fas fa-truck"></i> Internal
+          </button>
+          <button onclick="switchLoginTab('vendor')" id="ltab-vendor"
+            style="flex:1;padding:10px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;background:transparent;color:#64748b">
+            <i class="fas fa-handshake"></i> Vendor
+          </button>
+        </div>
+
+        <!-- INTERNAL FORM -->
+        <div id="login-form-internal">
+          <div style="margin-bottom:12px">
+            <label style="font-size:11px;font-weight:600;color:#334155;display:block;margin-bottom:4px">Nomor Plat Kendaraan</label>
+            <input id="li-plat" type="text" placeholder="Contoh: B9648MJ"
+              style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:monospace;text-transform:uppercase"
+              value="${savedPlat}">
+          </div>
+          <button onclick="handleLoginInternal()" id="btn-login-internal"
+            style="width:100%;padding:13px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px">
+            <i class="fas fa-sign-in-alt"></i> LOGIN
+          </button>
+        </div>
+
+        <!-- VENDOR FORM (hidden default) -->
+        <div id="login-form-vendor" style="display:none">
+          <div style="margin-bottom:10px">
+            <label style="font-size:11px;font-weight:600;color:#334155;display:block;margin-bottom:4px">Kode Vendor</label>
+            <input id="lv-code" type="text" placeholder="Contoh: V001"
+              style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:monospace;text-transform:uppercase">
+          </div>
+          <div style="margin-bottom:10px">
+            <label style="font-size:11px;font-weight:600;color:#334155;display:block;margin-bottom:4px">PIN (4 digit)</label>
+            <input id="lv-pin" type="text" inputmode="numeric" maxlength="4" placeholder="• • • •"
+              style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:16px;letter-spacing:6px;text-align:center;font-family:monospace">
+          </div>
+          <div style="margin-bottom:10px">
+            <label style="font-size:11px;font-weight:600;color:#334155;display:block;margin-bottom:4px">Plat Kendaraan Hari Ini</label>
+            <input id="lv-plat" type="text" placeholder="Contoh: B9999XY"
+              style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;font-family:monospace;text-transform:uppercase">
+          </div>
+          <div style="margin-bottom:16px">
+            <label style="font-size:11px;font-weight:600;color:#334155;display:block;margin-bottom:4px">Nama Driver</label>
+            <input id="lv-driver" type="text" placeholder="Nama lengkap driver"
+              style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:14px"
+              value="${savedDriver}">
+          </div>
+          <button onclick="handleLoginVendor()" id="btn-login-vendor"
+            style="width:100%;padding:13px;background:#16a34a;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">
+            <i class="fas fa-sign-in-alt"></i> LOGIN VENDOR
+          </button>
+        </div>
+
+        <p style="font-size:10px;color:var(--text-muted);text-align:center;margin-top:14px;line-height:1.5">
+          Login hari ini berlaku sampai jam 23:59.<br>
+          Besok login ulang dengan plat yang sama.
+        </p>
+
+        <div id="login-err" style="display:none;margin-top:10px;padding:10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#b91c1c;font-size:12px;text-align:center"></div>
+      </div>
+    </div>`;
+}
+
+function switchLoginTab(mode) {
+  const tIn = document.getElementById('ltab-internal');
+  const tVn = document.getElementById('ltab-vendor');
+  const fIn = document.getElementById('login-form-internal');
+  const fVn = document.getElementById('login-form-vendor');
+  if (mode === 'internal') {
+    tIn.style.background='#2563eb'; tIn.style.color='#fff';
+    tVn.style.background='transparent'; tVn.style.color='#64748b';
+    fIn.style.display='block'; fVn.style.display='none';
+  } else {
+    tVn.style.background='#16a34a'; tVn.style.color='#fff';
+    tIn.style.background='transparent'; tIn.style.color='#64748b';
+    fVn.style.display='block'; fIn.style.display='none';
+  }
+  document.getElementById('login-err').style.display='none';
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('login-err');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+async function handleLoginInternal() {
+  const plat = document.getElementById('li-plat')?.value.trim().toUpperCase();
+  if (!plat) { showLoginError('Plat wajib diisi'); return; }
+
+  const btn = document.getElementById('btn-login-internal');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Login...';
+
+  const res = await doLoginInternal(plat);
+
+  if (res.error) {
+    showLoginError(res.error);
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> LOGIN';
+    return;
+  }
+
+  // Simpan auth + driver state
+  AUTH.save('internal', res);
+  localStorage.setItem('drv_plat',   res.plat   || plat);
+  localStorage.setItem('drv_driver', res.driver || '');
+  localStorage.setItem('drv_gudang', res.gudang || '');
+  driverState.plat   = res.plat   || plat;
+  driverState.driver = res.driver || '';
+  driverState.gudang = res.gudang || '';
+
+  location.reload(); // start fresh dengan state baru
+}
+
+async function handleLoginVendor() {
+  const code   = document.getElementById('lv-code')?.value.trim().toUpperCase();
+  const pin    = document.getElementById('lv-pin')?.value.trim();
+  const plat   = document.getElementById('lv-plat')?.value.trim().toUpperCase();
+  const driver = document.getElementById('lv-driver')?.value.trim();
+
+  if (!code)   { showLoginError('Kode vendor wajib'); return; }
+  if (!pin || pin.length !== 4) { showLoginError('PIN harus 4 digit'); return; }
+  if (!plat)   { showLoginError('Plat wajib'); return; }
+  if (!driver) { showLoginError('Nama driver wajib'); return; }
+
+  const btn = document.getElementById('btn-login-vendor');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Login...';
+
+  const res = await doLoginVendor(code, pin, plat, driver);
+
+  if (res.error) {
+    showLoginError(res.error);
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> LOGIN VENDOR';
+    return;
+  }
+
+  AUTH.save('vendor', res);
+  localStorage.setItem('drv_plat',   plat);
+  localStorage.setItem('drv_driver', driver);
+  driverState.plat   = plat;
+  driverState.driver = driver;
+
+  location.reload();
+}
+
+// ═══════════════════════════════════════════════════════
+// GAS COMMUNICATION
+// ═══════════════════════════════════════════════════════
+async function gasGet(action, params={}, timeoutMs=35000) {
+  const url = GAS_URL || localStorage.getItem('gps_gas_url');
+  if (!url) {
+    if (action === 'getDriverTasks') return await gvizFallback(params);
+    return null;
+  }
+  // v4.0: auto-inject token dari AUTH kalau ada (skip kalau endpoint public/auth)
+  const tok = AUTH.getToken();
+  if (tok && !params.token) params = { ...params, token: tok };
+
+  const qs   = new URLSearchParams({action, ...params});
+  const ctrl = new AbortController();
+  const tid  = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(`${url}?${qs}`, {redirect:'follow', signal:ctrl.signal});
+    clearTimeout(tid);
+    const j = await r.json();
+    // v4.0: kalau server block karena token invalid/expired, force re-login
+    if (j && j.blocked && String(j.error||'').includes('TOKEN')) {
+      console.warn('[gasGet] Token blocked by server, forcing re-login');
+      AUTH.clear();
+      location.reload();
+      return null;
+    }
+    return j;
+  } catch(e) {
+    clearTimeout(tid);
+    if (e.name === 'AbortError') {
+      console.warn('[gasGet] TIMEOUT:', action, timeoutMs+'ms');
+      if (action === 'getDriverTasks') {
+        console.log('[gasGet] Apps Script timeout — switching to direct Sheets fallback...');
+        return await gvizFallback(params);
+      }
+      return { error:'timeout', message:'Server tidak merespons ('+Math.round(timeoutMs/1000)+'s)' };
+    }
+    console.error('gasGet error:', action, e.message);
+    return null;
+  }
+}
+
+// ── GVIZ FALLBACK: Baca DO Status langsung dari Google Sheets ─────────────────
+// Aktif jika Apps Script timeout atau tidak ada GAS URL
+const _SS_FALLBACK = '1gvUU48LZkYyRCaNJ8ktPuvR_A1cNkL-B4Zk4yL9dLRA';
+async function gvizFallback(params) {
+  const ssId = _SS_FALLBACK || localStorage.getItem('gps_ss_id');
+  if (!ssId) { console.warn('[gviz] No Spreadsheet ID'); return null; }
+  try {
+    const plat = String(params.plat||'').trim().toUpperCase();
+    // Encode query: cari baris dimana kolom B (Plat) = plat
+    const tq  = encodeURIComponent("SELECT * WHERE B = '" + plat + "'");
+    const url = 'https://docs.google.com/spreadsheets/d/' + ssId +
+      '/gviz/tq?tqx=out:json&sheet=DO%20Status&tq=' + tq;
+    console.log('[gviz] Fetching direct from Sheets for plat:', plat);
+    const r   = await fetch(url, {redirect:'follow'});
+    const txt = await r.text();
+    // gviz returns: google.visualization.Query.setResponse({...})
+    const json = JSON.parse(txt.replace(/^[^(]+\(/, '').replace(/\);?$/, ''));
+    if (!json.table || !json.table.rows || !json.table.rows.length) {
+      return { status:'ok', tasks:[], count:0, source:'gviz_empty' };
+    }
+    const cols = (json.table.cols||[]).map(c => String(c.label||'').toLowerCase());
+    const ci = {
+      do_date : cols.findIndex(c=>c.includes('tanggal')||c==='a'),
+      plat    : cols.findIndex(c=>c==='plat'||c==='b'),
+      driver  : cols.findIndex(c=>c==='driver'||c==='c'),
+      gudang  : cols.findIndex(c=>c.includes('gudang')||c==='d'),
+      doc_no  : cols.findIndex(c=>c.includes('do no')||c==='e'),
+      customer: cols.findIndex(c=>c.includes('customer')||c==='f'),
+      alamat  : cols.findIndex(c=>c.includes('alamat')||c==='g'),
+      produk  : cols.findIndex(c=>c.includes('produk')||c==='h'),
+      qty     : cols.findIndex(c=>c.includes('qty')||c==='i'),
+      status  : cols.findIndex(c=>c==='status'||c==='j'),
+      jam_upd : cols.findIndex(c=>c.includes('jam')||c==='k'),
+    };
+    const normDate = d => String(d||'').replace(/\D/g,'');
+    const today = new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric'});
+    const todayNorm = normDate(today).slice(0,6);
+    const get = (row, i) => i >= 0 && row.c[i] ? String(row.c[i].v||'') : '';
+    const tasks = json.table.rows
+      .filter(row => normDate(get(row, ci.do_date)).slice(0,6) === todayNorm)
+      .map(row => ({
+        do_date   : get(row, ci.do_date),
+        plat      : get(row, ci.plat),
+        driver    : get(row, ci.driver),
+        gudang    : get(row, ci.gudang),
+        doc_no    : get(row, ci.doc_no),
+        customer  : get(row, ci.customer),
+        alamat    : get(row, ci.alamat),
+        produk    : get(row, ci.produk),
+        qty       : parseFloat(get(row, ci.qty))||0,
+        status    : get(row, ci.status)||'Baru',
+        jam_update: get(row, ci.jam_upd),
+        remark    : '',
+      }));
+    console.log('[gviz] ✅ ' + tasks.length + ' tugas hari ini via Sheets langsung');
+    return { status:'ok', tasks, count:tasks.length, source:'gviz_fallback' };
+  } catch(e) {
+    console.error('[gviz] Error:', e.message);
+    return null;
+  }
+}
+
+
+async function gasPost(payload) {
+  // Guard: cegah double submit untuk DO yang sama
+  const docNo = payload.doc_no;
+  if (docNo && submittingDOs.has(docNo)) {
+    console.warn('[gasPost] Blocked double submit for DO:', docNo);
+    return false;
+  }
+  if (docNo) submittingDOs.add(docNo);
+  const url = GAS_URL || localStorage.getItem('gps_gas_url');
+
+  // v4.0: auto-inject token
+  const tok = AUTH.getToken();
+  if (tok && !payload.token) payload = { ...payload, token: tok };
+
+  if (!navigator.onLine || !url) {
+    queueOffline(payload);
+    alert('⚠ Offline — laporan disimpan lokal dan akan dikirim saat sinyal ada.');
+    return false;
+  }
+
+  try {
+    // Kirim via POST no-cors (response opaque — tidak bisa dibaca, tapi data TERKIRIM)
+    await fetch(url, {
+      method  : 'POST',
+      mode    : 'no-cors',
+      headers : { 'Content-Type': 'text/plain' },
+      body    : JSON.stringify(payload),
+    });
+
+    // Verifikasi setelah 3 detik via GET
+    await sleep(3000);
+    const check = await gasGet('getDoStatus', { doc_no: payload.doc_no });
+    if (check && check.data) {
+      console.log('[gasPost] ✅ Verified:', check.data.status);
+      return true;
+    }
+    // Jika verifikasi gagal, tambahkan ke queue sebagai backup
+    console.warn('[gasPost] Verification inconclusive — status not returned');
+    if (docNo) setTimeout(() => submittingDOs.delete(docNo), 30000); // clear after 30s
+    return true; // Optimistic: data was sent via POST
+  } catch(e) {
+    console.error('gasPost error:', e);
+    queueOffline(payload);
+    alert('⚠ Gagal kirim — disimpan lokal dan akan dikirim ulang.');
+    return false;
+  }
+}
+
+function queueOffline(payload) {
+  offlineQueue.push({ ...payload, _queued_at: Date.now() });
+  localStorage.setItem('offline_q', JSON.stringify(offlineQueue));
+}
+
+async function flushOfflineQueue() {
+  if (!offlineQueue.length || !navigator.onLine) return;
+  const url = GAS_URL || localStorage.getItem('gps_gas_url');
+  if (!url) return;
+
+  const q = [...offlineQueue]; offlineQueue = [];
+  localStorage.setItem('offline_q', '[]');
+
+  // v4.0: inject token kalau ada
+  const tok = AUTH.getToken();
+
+  for (const p of q) {
+    try {
+      // Auto-inject token
+      const payload = tok && !p.token ? { ...p, token: tok } : p;
+      // Item dengan foto → POST; item tanpa foto → GET
+      const hasFoto = payload.foto_do || payload.foto_rusak || payload.foto_sj || payload.foto_gagal ||
+                      payload.foto_tol || payload.foto_parkir || payload.foto_bensin;
+      if (hasFoto) {
+        await fetch(url, {
+          method:'POST', mode:'no-cors',
+          headers:{'Content-Type':'text/plain'},
+          body:JSON.stringify(payload),
+        });
+      } else {
+        const qs = new URLSearchParams(payload);
+        await fetch(`${url}?${qs}`, {redirect:'follow'});
+      }
+    } catch(e) {
+      offlineQueue.push(p);
+    }
+  }
+  if (offlineQueue.length) localStorage.setItem('offline_q', JSON.stringify(offlineQueue));
+}
+
+// ═══════════════════════════════════════════════════════
+// SUBMIT OVERLAY
+// ═══════════════════════════════════════════════════════
+function showSubmitOverlay(msg) {
+  document.getElementById('submit-overlay-msg').textContent = msg || 'Mengirim...';
+  document.getElementById('submit-overlay').classList.add('show');
+}
+function hideSubmitOverlay() {
+  document.getElementById('submit-overlay').classList.remove('show');
+}
+
+// ═══════════════════════════════════════════════════════
+// SETTINGS
+// ═══════════════════════════════════════════════════════
+function openSettings() {
+  document.getElementById('s-plat').value   = driverState.plat   || '';
+  document.getElementById('s-driver').value = driverState.driver || '';
+  document.getElementById('s-gudang').value = driverState.gudang || '';
+  document.getElementById('s-gas').value    = GAS_URL || localStorage.getItem('gps_gas_url') || '';
+  const lastChange = localStorage.getItem('drv_last_change');
+  const cl = document.getElementById('s-changelog');
+  if (lastChange) {
+    cl.style.display='block';
+    document.getElementById('s-changelog-txt').textContent = lastChange;
+  } else { cl.style.display='none'; }
+
+  // v4.0: Tampilkan info login
+  const authEl = document.getElementById('auth-info');
+  if (authEl) {
+    const mode = AUTH.getMode();
+    const exp  = localStorage.getItem(AUTH.EXPIRES_KEY) || '';
+    if (mode === 'vendor') {
+      const vn = localStorage.getItem(AUTH.VN_KEY) || '';
+      const vc = localStorage.getItem(AUTH.VC_KEY) || '';
+      authEl.innerHTML = `🤝 Vendor: <b>${vn}</b> (${vc})<br>Token berlaku sampai ${exp}`;
+    } else if (mode === 'internal') {
+      authEl.innerHTML = `🚚 Internal Driver<br>Token berlaku sampai ${exp}`;
+    } else {
+      authEl.textContent = 'Belum login';
+    }
+  }
+
+  document.getElementById('settings-overlay').classList.add('show');
+}
+
+function closeSettings() { document.getElementById('settings-overlay').classList.remove('show'); }
+
+async function saveSettings() {
+  const newPlat   = document.getElementById('s-plat').value.trim().toUpperCase();
+  const newDriver = document.getElementById('s-driver').value.trim();
+  const newGudang = document.getElementById('s-gudang').value.trim();
+  const newGas    = document.getElementById('s-gas').value.trim();
+
+  if (!newPlat)   { alert('Nomor plat wajib diisi'); return; }
+  if (!newDriver) { alert('Nama driver wajib diisi'); return; }
+  if (newGas && !newGas.startsWith('https://script.google.com')) {
+    alert('URL Apps Script tidak valid'); return; }
+
+  const changes=[];
+  if (newPlat   !== driverState.plat)   changes.push(`Plat: ${driverState.plat||'—'} → ${newPlat}`);
+  if (newDriver !== driverState.driver) changes.push(`Driver: ${driverState.driver||'—'} → ${newDriver}`);
+  if (newGudang !== driverState.gudang) changes.push(`Gudang: ${driverState.gudang||'—'} → ${newGudang}`);
+  if (newGas    !== GAS_URL)            changes.push('URL GAS diperbarui');
+
+  if (!changes.length) { alert('Tidak ada perubahan'); closeSettings(); return; }
+
+  const changeStr=changes.join(' | ');
+  const now=new Date().toLocaleString('id-ID',{timeZone:'Asia/Jakarta'});
+  localStorage.setItem('drv_plat',   newPlat);
+  localStorage.setItem('drv_driver', newDriver);
+  if (newGudang) localStorage.setItem('drv_gudang', newGudang);
+  if (newGas) {
+    localStorage.setItem('gps_gas_url', newGas);
+    localStorage.setItem(GSHEET_ID_KEY, newGas);
+    GAS_URL = newGas;
+  }
+  localStorage.setItem('drv_last_change', `${now} — ${changeStr}`);
+
+  driverState.plat   = newPlat;
+  driverState.driver = newDriver;
+  if (newGudang) driverState.gudang = newGudang;
+  document.getElementById('hdr-name').textContent = newDriver;
+  document.getElementById('hdr-plat').textContent = newPlat;
+
+  // Kirim ke Audit Log
+  const gasUrl = newGas || GAS_URL || localStorage.getItem('gps_gas_url');
+  if (gasUrl) {
+    try {
+      const qs=new URLSearchParams({
+        action:'saveAuditLog', username:newPlat, nama:newDriver,
+        role:'driver', gudang:newGudang||driverState.gudang||'',
+        auditAction:'DRIVER_SETTINGS_CHANGE', detail:changeStr+' | '+now,
+      });
+      await fetch(`${gasUrl}?${qs}`,{redirect:'follow'});
+    } catch(e) {}
+  }
+
+  closeSettings();
+  alert(`✅ Pengaturan disimpan!\n\n${changeStr}`);
+  await loadTasks(false);
+}
+
+function confirmLogout() {
+  // v4.0: redirect ke doLogout yang pakai custom modal
+  // (confirm() silent-fail di Chrome Android)
+  doLogout();
+}
+
+// ═══════════════════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════════════════
+// ── WAKE LOCK API — cegah layar mati saat trip ───────────────────────────────
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) {
+    console.log('[WakeLock] Tidak didukung di browser ini');
+    return;
+  }
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => {
+      console.log('[WakeLock] Dilepas oleh sistem');
+      wakeLock = null;
+    });
+    console.log('[WakeLock] ✅ Aktif — layar tidak akan mati');
+    // Update status bar
+    const dot = document.getElementById('gps-txt');
+    if (dot) dot.textContent = 'GPS aktif · Layar terkunci';
+  } catch(e) {
+    console.log('[WakeLock] Gagal:', e.message);
+  }
+}
+
+async function releaseWakeLock() {
+  if (wakeLock) {
+    await wakeLock.release();
+    wakeLock = null;
+    console.log('[WakeLock] Dilepas');
+  }
+}
+
+// Re-acquire wake lock setelah tab kembali visible (misal balik dari WA)
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && tripState.started && !wakeLock) {
+    await requestWakeLock();
+  }
+});
+
+function openModal(id)  { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+function checkOnline() {
+  const offline = !navigator.onLine;
+  document.getElementById('offline-notice').style.display = offline ? 'block' : 'none';
+  if (!offline && offlineQueue.length) flushOfflineQueue();
+}
+
+function today() {
+  return new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric'});
+}
+
+function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
+
+function escHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function haversineKm(a,b,c,d){
+  const R=6371,dL=(c-a)*Math.PI/180,dN=(d-b)*Math.PI/180;
+  const x=Math.sin(dL/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dN/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+
+function getTextH(ctx,text,maxW,lh){
+  const words=text.split(' ');let line='',h=lh;
+  for(let n=0;n<words.length;n++){
+    const tl=line+words[n]+' ';
+    if(ctx.measureText(tl).width>maxW&&n>0){line=words[n]+' ';h+=lh;}else{line=tl;}
+  }
+  return h;
+}
+
+function drawWrappedText(ctx,text,x,y,maxW,lh){
+  const words=text.split(' ');let line='';
+  for(let n=0;n<words.length;n++){
+    const tl=line+words[n]+' ';
+    if(ctx.measureText(tl).width>maxW&&n>0){ctx.fillText(line,x,y);line=words[n]+' ';y+=lh;}
+    else{line=tl;}
+  }
+  ctx.fillText(line,x,y); return y+lh;
+}
+
+// ═══════════════════════════════════════════════════════
+// CAMERA API — getUserMedia (langsung buka kamera, no file picker)
+// ═══════════════════════════════════════════════════════
+let cameraStream   = null;
+let cameraType     = null; // 'do','rusak','sj','gagal'
+let capturedB64    = null;
+
+async function openCamera(type) {
+  cameraType  = type;
+  capturedB64 = null;
+
+  // Label per jenis foto
+  const labels = {
+    do    : '📄 Posisikan DO dalam bingkai',
+    rusak : '📦 Foto kerusakan barang',
+    sj    : '📋 Foto Surat Jalan',
+    gagal : '📍 Foto bukti gagal kirim',
+  };
+  const lbl = document.getElementById('camera-label');
+  if (lbl) lbl.textContent = labels[type] || '📷 Ambil foto';
+
+  // Reset preview
+  document.getElementById('camera-preview-wrap').classList.remove('show');
+  document.getElementById('camera-video').style.display = 'block';
+  document.querySelector('.camera-bottom').style.display = 'flex';
+
+  // Minta akses kamera belakang
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' }, // kamera belakang
+        width:  { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+      audio: false,
+    });
+    const video = document.getElementById('camera-video');
+    video.srcObject = cameraStream;
+    await video.play();
+    document.getElementById('camera-overlay').classList.add('show');
+  } catch(e) {
+    // Fallback ke file input jika getUserMedia tidak support
+    console.warn('[Camera] getUserMedia gagal:', e.message, '— fallback ke file input');
+    fallbackFileInput(type);
+  }
+}
+
+function fallbackFileInput(type) {
+  // Buat input file sementara sebagai fallback
+  const inp = document.createElement('input');
+  inp.type    = 'file';
+  inp.accept  = 'image/*';
+  inp.capture = 'environment';
+  inp.style.display = 'none';
+  inp.onchange = function() { capturePhoto(type, inp); document.body.removeChild(inp); };
+  document.body.appendChild(inp);
+  inp.click();
+}
+
+function captureFrame() {
+  const video  = document.getElementById('camera-video');
+  const canvas = document.getElementById('camera-canvas');
+
+  // Ambil frame dari video
+  const W = video.videoWidth  || 1280;
+  const H = video.videoHeight || 720;
+  canvas.width  = Math.min(W, 1000);
+  canvas.height = Math.round(H * (canvas.width / W));
+
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  capturedB64 = canvas.toDataURL('image/jpeg', 0.78);
+
+  // Tampilkan preview
+  document.getElementById('camera-preview-img').src = capturedB64;
+  document.getElementById('camera-preview-wrap').classList.add('show');
+  document.getElementById('camera-video').style.display = 'none';
+  document.querySelector('.camera-bottom').style.display = 'none';
+}
+
+function retakePhoto() {
+  capturedB64 = null;
+  document.getElementById('camera-preview-wrap').classList.remove('show');
+  document.getElementById('camera-video').style.display = 'block';
+  document.querySelector('.camera-bottom').style.display = 'flex';
+}
+
+async function usePhoto() {
+  if (!capturedB64) return;
+
+  // Proses watermark (non-blocking GPS geocode)
+  closeCamera();
+  await processAndSetPhoto(cameraType, capturedB64);
+}
+
+async function processAndSetPhoto(type, rawB64) {
+  // Koordinat GPS
+  const coords = modalCtx.gps_coords || (tripState.last_pos
+    ? tripState.last_pos.lat.toFixed(6)+','+tripState.last_pos.lng.toFixed(6) : '');
+
+  const canvas = document.getElementById('canvas-foto-'+type) || document.createElement('canvas');
+  const img    = new Image();
+  img.onload = function() {
+    const maxW = 600; // C: kompres lebih kecil → transfer cepat
+    let w = img.width, h = img.height;
+    if (w > maxW) { h = Math.round(h*(maxW/w)); w = maxW; }
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+
+    // Watermark
+    const now   = new Date().toLocaleString('id-ID',{timeZone:'Asia/Jakarta'});
+    const lines = [
+      'Plat         : '+driverState.plat,
+      'Driver       : '+driverState.driver,
+      'Koordinat    : '+(coords||'-'),
+      'DO           : '+modalCtx.doc_no,
+      'Waktu        : '+now,
+    ];
+    const pad=16,lh=16,textX=90,maxTW=w-textX-14;
+    ctx.font='11px Arial';
+    let totalH=0; lines.forEach(l=>{ totalH+=getTextH(ctx,l,maxTW,lh); });
+    const boxH=Math.max(totalH,44)+pad;
+    const boxY=h-boxH;
+    const grad=ctx.createLinearGradient(0,boxY,0,h);
+    grad.addColorStop(0,'rgba(0,0,0,.87)'); grad.addColorStop(1,'rgba(0,0,0,.7)');
+    ctx.fillStyle=grad; ctx.fillRect(0,boxY,w,boxH);
+
+    const logo=new Image(); logo.crossOrigin='anonymous';
+    logo.src='https://globalsentral.id/z/data/Logo.avif';
+    const done = () => {
+      ctx.fillStyle='#fff'; ctx.font='11px Arial';
+      let ty=boxY+18; lines.forEach(l=>{ ty=drawWrappedText(ctx,l,textX,ty,maxTW,lh); });
+      const b64=canvas.toDataURL('image/jpeg',0.65); // C: quality 0.75→0.65
+      setPhotoResult(type, b64);
+    };
+    logo.onload=function(){
+      const lh2=40,lw=logo.width*(lh2/logo.height);
+      ctx.globalAlpha=.85; ctx.drawImage(logo,12,boxY+(boxH-lh2)/2,lw,lh2); ctx.globalAlpha=1;
+      done();
+    };
+    logo.onerror=done;
+  };
+  img.src = rawB64;
+}
+
+function closeCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  document.getElementById('camera-overlay').classList.remove('show');
+  document.getElementById('camera-video').srcObject = null;
+}
+
+// ═══════════════════════════════════════════════════════
+// BULK SELESAI — 1 foto untuk beberapa DO sekaligus
+// ═══════════════════════════════════════════════════════
+let bulkSelected = new Set();
+
+function toggleBulkSelect(docNo) {
+  const chk = document.getElementById('chk-'+docNo);
+  if (chk && chk.checked) {
+    bulkSelected.add(docNo);
+  } else {
+    bulkSelected.delete(docNo);
+  }
+  renderBulkBar();
+}
+
+function renderBulkBar() {
+  const bar = document.getElementById('bulk-bar');
+  const cnt = document.getElementById('bulk-count');
+  if (bulkSelected.size > 0) {
+    bar.classList.add('show');
+    cnt.textContent = bulkSelected.size + ' DO dipilih';
+  } else {
+    bar.classList.remove('show');
+  }
+}
+
+function openBulkSelesai() {
+  if (bulkSelected.size === 0) return;
+  // Ambil DO pertama sebagai referensi QTY
+  const firstTask = currentTasks.find(t => bulkSelected.has(t.doc_no));
+  if (!firstTask) return;
+
+  // Hitung total QTY semua DO yang dipilih
+  const totalQty = currentTasks
+    .filter(t => bulkSelected.has(t.doc_no))
+    .reduce((a,t) => a + (t.qty||0), 0);
+
+  const customerList = currentTasks
+    .filter(t => bulkSelected.has(t.doc_no))
+    .map(t => t.customer).join(', ');
+
+  // Set modalCtx untuk bulk — doc_no = semua yang dipilih dipisah koma
+  modalCtx = {
+    doc_no      : Array.from(bulkSelected).join(','),
+    qty_kirim   : totalQty,
+    qty_terima  : totalQty,
+    qty_rusak   : 0,
+    foto_do     : null, foto_rusak:null, foto_sj:null,
+    gps_coords  : modalCtx.gps_coords||'',
+    is_bulk     : true,
+    bulk_docs   : Array.from(bulkSelected),
+  };
+
+  document.getElementById('m-selesai-info').textContent =
+    bulkSelected.size + ' DO · ' + totalQty + ' DUS total';
+  document.getElementById('qty-kirim').textContent      = totalQty;
+  document.getElementById('qty-terima-disp').textContent = totalQty;
+  document.getElementById('qty-rusak-disp').textContent  = 0;
+  document.getElementById('group-foto-rusak').style.display = 'none';
+  document.getElementById('titip-sj').value  = 'Tidak';
+  document.getElementById('titip-extra').classList.remove('show');
+  document.getElementById('catatan-selesai').value = '';
+  // Reset foto
+  ['do','rusak','sj'].forEach(k => {
+    const prev=document.getElementById('prev-foto-'+k);
+    const icon=document.getElementById('icon-foto-'+k);
+    const txt =document.getElementById('txt-foto-'+k);
+    const wrap=document.getElementById('wrap-foto-'+k);
+    if (prev){prev.style.display='none';prev.src='';}
+    if (wrap) wrap.classList.remove('has-photo');
+    if (icon) icon.innerHTML='<i class="fas fa-camera" style="font-size:28px;color:#94a3b8"></i>';
+    if (txt)  txt.textContent = k==='do'?'Tap untuk ambil foto DO':'Tap untuk ambil foto';
+  });
+  openModal('m-selesai');
+}
+
+// Override submitSelesai untuk handle bulk
+const _origSubmitSelesai = submitSelesai;
+submitSelesai = async function() {
+  if (!modalCtx.is_bulk || !modalCtx.bulk_docs || modalCtx.bulk_docs.length <= 1) {
+    return _origSubmitSelesai();
+  }
+  // Bulk submit — kirim 1 per 1 dengan foto yang sama
+  if (!modalCtx.foto_do) { alert('Foto DO wajib diambil'); return; }
+  const btn = document.getElementById('btn-submit-selesai');
+  btn.disabled = true;
+  showSubmitOverlay('Mengirim ' + modalCtx.bulk_docs.length + ' laporan...');
+
+  const titipSJ  = document.getElementById('titip-sj').value;
+  const catatan  = document.getElementById('catatan-selesai').value;
+  const taskList = currentTasks.filter(t => modalCtx.bulk_docs.includes(t.doc_no));
+
+  for (const task of taskList) {
+    const payload = {
+      action:'submitSelesai', plat:driverState.plat, driver:driverState.driver,
+      doc_no:task.doc_no, date:driverState.date,
+      qty_kirim:task.qty||0, qty_terima:task.qty||0, qty_rusak:0,
+      catatan:catatan, titip_sj:titipSJ,
+      nama_spg:'', jabatan_spg:'SPG',
+      gps_coords:modalCtx.gps_coords,
+      foto_do:modalCtx.foto_do,
+      timestamp:new Date().toISOString(),
+    };
+    await gasPost(payload);
+    // Update snapshot
+    lastTasksSnap[task.doc_no] = 'Selesai';
+  }
+
+  hideSubmitOverlay();
+  btn.disabled = false;
+  closeModal('m-selesai');
+  bulkSelected.clear();
+  renderBulkBar();
+  stopsDone += taskList.length;
+
+  addNotification({
+    type:'self', icon:'change',
+    title:'✅ ' + taskList.length + ' DO Selesai',
+    msg: taskList.map(t=>t.doc_no).join(', '),
+  });
+
+  await loadTasks(false);
+  checkAllDone();
+};
+
+// Close overlays on outside tap
+document.addEventListener('click', function(e) {
+  const overlay=document.getElementById('settings-overlay');
+  if (e.target===overlay) closeSettings();
+});
+</script>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- CAMERA OVERLAY — getUserMedia direct camera        -->
+<!-- ═══════════════════════════════════════════════════ -->
+<div class="camera-overlay" id="camera-overlay">
+  <!-- Live preview -->
+  <video id="camera-video" class="camera-video" autoplay playsinline muted></video>
+  <!-- Frame guide -->
+  <div class="camera-frame">
+    <div class="camera-guide">
+    <div class="camera-guide-tr"></div>
+    <div class="camera-guide-bl"></div>
+  </div>
+    <div class="camera-label" id="camera-label">📄 Posisikan dokumen dalam bingkai</div>
+  </div>
+  <!-- Controls -->
+  <div class="camera-bottom">
+    <button class="camera-cancel" onclick="closeCamera()">✕ Batal</button>
+    <button class="camera-shutter" onclick="captureFrame()">📷</button>
+    <div style="width:72px"></div>
+  </div>
+  <!-- Preview setelah ambil foto -->
+  <div class="camera-preview-wrap" id="camera-preview-wrap">
+    <img id="camera-preview-img" class="camera-preview-img">
+    <div class="camera-preview-actions">
+      <button class="camera-retake-btn" onclick="retakePhoto()">🔄 Ambil Ulang</button>
+      <button class="camera-use-btn" onclick="usePhoto()">✓ Gunakan Foto</button>
+    </div>
+  </div>
+  <canvas id="camera-canvas" style="display:none"></canvas>
+</div>
+
+</body>
+</html>  
