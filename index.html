@@ -6,7 +6,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>GST Logistics — Driver App v4.1</title>
+<title>GST Logistics — Driver App v4.2</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <style>
 :root{
@@ -781,7 +781,7 @@ const CURRENT_BUILD = 'v3914-20260414';
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v4.1.0';
+const APP_VERSION    = 'v4.2.0';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -1159,7 +1159,7 @@ async function loadTasks(showSpinner = true) {
   }
 
   // ── Merge status dari localStorage (optimistic update) ──────────────────
-  // muatPhase='loading'/'done' → status di server mungkin masih 'Baru', pakai lokal
+  const TERMINAL_ST = new Set(['Selesai','Done','Gagal Kirim','Batal']);
   const muatKey = `muat_${driverState.plat}_${driverState.date}`;
   const muatLocal = JSON.parse(localStorage.getItem(muatKey)||'{}');
   allTasks.forEach(t => {
@@ -1168,8 +1168,11 @@ async function loadTasks(showSpinner = true) {
       t.status = muatLocal[t.doc_no].status || 'Muat Kargo';
       t.jam_update = muatLocal[t.doc_no].jam;
     }
-    // Jika lastTasksSnap='On Process' tapi GAS return 'Baru' → optimistic override
-    if (lastTasksSnap[t.doc_no] === 'On Process' && (t.status === 'Baru' || t.status === 'Muat Kargo')) {
+    // Jika lastTasksSnap='On Process' tapi GAS return 'Baru'/'Muat Kargo'
+    // → optimistic override, TAPI jangan override kalau server sudah terminal
+    if (lastTasksSnap[t.doc_no] === 'On Process' &&
+        !TERMINAL_ST.has(t.status) &&
+        (t.status === 'Baru' || t.status === 'New' || t.status === 'Muat Kargo')) {
       t.status = 'On Process';
     }
   });
@@ -1178,12 +1181,15 @@ async function loadTasks(showSpinner = true) {
   // Hitung apakah semua DO aktif (Baru/Muat Kargo) sudah selesai
   const activeDOs = allTasks.filter(t => t.status==='Baru'||t.status==='Muat Kargo'||t.status==='On Process');
 
-  // Global Muat Button HTML — v4.1: 3-phase (idle → loading → done)
+  // Global Muat Button HTML — v4.2: 3-phase, hilang permanen setelah startJalan
   let globalMuatHTML = '';
+  const TERMINAL_ACT = new Set(['Selesai','Done','Gagal Kirim','Batal']);
   const baruDOs = activeDOs.filter(t => t.status==='Baru'||t.status==='New');
   const muatDOs = activeDOs.filter(t => t.status==='Muat Kargo');
+  // Semua DO sudah On Process atau terminal → tombol muat tidak perlu muncul
+  const anyNeedsMuat = activeDOs.some(t => t.status==='Baru'||t.status==='New'||t.status==='Muat Kargo');
 
-  if (activeDOs.length > 0 && !activeDOs.every(t => t.status==='On Process')) {
+  if (activeDOs.length > 0 && anyNeedsMuat && muatPhase !== 'sent') {
     if (muatPhase === 'loading') {
       // ── PHASE LOADING: timer + Selesai Muat ──
       if (!muatTimerInterval && muatStartTime) {
@@ -1329,7 +1335,7 @@ function buildCard(t) {
     ? '' // Tombol muat ada di Global Muat Button (di atas semua DO)
     : isProc
     ? `<div class="action-row">
-        <button class="btn-selesai" onclick="openSelesai('${escHtml(t.doc_no)}',${t.qty||0},'${escHtml(t.customer||'')}')">
+        <button class="btn-selesai" onclick="openSelesaiOrGrup('${escHtml(t.doc_no)}',${t.qty||0},'${escHtml(t.customer||'')}')">
           <i class="fas fa-check-circle"></i> SELESAI
         </button>
         <button class="btn-gagal" onclick="openGagal('${escHtml(t.doc_no)}')">
@@ -1439,14 +1445,15 @@ function detectChanges(newTasks) {
         doc_no: t.doc_no,
       });
     } else if (prevStatus !== t.status) {
-      // v4.1: Suppress false regression notif — jika kita set 'On Process' tapi
-      // GAS belum update (masih 'Baru'/'Muat Kargo'), JANGAN notif
-      const isRegressionFalse =
-        prevStatus === 'On Process' &&
-        (t.status === 'Baru' || t.status === 'New' || t.status === 'Muat Kargo');
-      if (isRegressionFalse) {
-        console.log(`[detectChanges] Suppress false regression: ${t.doc_no} ${prevStatus}→${t.status}`);
-        return; // skip notif
+      // v4.2: Suppress false regression — GAS belum sync, status lokal lebih maju
+      // Order status: Baru < Muat Kargo < On Process < Selesai/Gagal
+      const STATUS_ORDER = { 'Baru':0,'New':0,'Muat Kargo':1,'On Process':2,'Selesai':3,'Done':3,'Gagal Kirim':3,'Batal':3 };
+      const prevRank = STATUS_ORDER[prevStatus] ?? -1;
+      const currRank = STATUS_ORDER[t.status]   ?? -1;
+      // Jika status GAS LEBIH RENDAH dari snapshot lokal → regression palsu → skip
+      if (prevRank > currRank && currRank >= 0) {
+        console.log(`[detectChanges] Suppress regression: ${t.doc_no} ${prevStatus}(${prevRank})→${t.status}(${currRank})`);
+        return;
       }
 
       // Status changed by dispatcher
@@ -1674,7 +1681,203 @@ async function doEndTrip() {
 
 // ── GLOBAL MUAT: satu tombol untuk semua DO ──────────────────────────────────
 // ═══════════════════════════════════════════════════════
-// MUAT KARGO — 2-STEP FLOW (v4.1)
+// GRUP SELESAI — v4.2
+// Deteksi DO satu alamat → modal grup jika >1
+// ═══════════════════════════════════════════════════════
+
+function normalizeAlamat(s) {
+  return String(s||'').toLowerCase()
+    .replace(/[.,\-\/\\()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function detectGroup(docNo) {
+  // Cari semua DO On Process dengan alamat yang sama (normalized)
+  const thisDO = currentTasks.find(t => t.doc_no === docNo);
+  if (!thisDO) return [docNo];
+  const normThis = normalizeAlamat(thisDO.alamat);
+  if (!normThis) return [docNo]; // no alamat → single
+  const group = currentTasks.filter(t =>
+    t.status === 'On Process' &&
+    normalizeAlamat(t.alamat) === normThis
+  ).map(t => t.doc_no);
+  return group.length > 1 ? group : [docNo];
+}
+
+// Entry point dari button SELESAI — auto-detect grup
+function openSelesaiOrGrup(docNo, qty, customer) {
+  const group = detectGroup(docNo);
+  if (group.length > 1) {
+    openSelesaiGrup(group);
+  } else {
+    openSelesai(docNo, qty, customer);
+  }
+}
+
+// ── GRUP MODAL STATE ──────────────────────────────────
+let grupCtx = []; // array of { doc_no, qty_kirim, qty_terima, qty_rusak, foto_do, foto_rusak, customer, alamat }
+let grupActiveIdx = 0; // index DO yang sedang difoto
+
+function openSelesaiGrup(docNos) {
+  // Build grupCtx dari currentTasks
+  grupCtx = docNos.map(dn => {
+    const t = currentTasks.find(x => x.doc_no === dn) || {};
+    return {
+      doc_no   : dn,
+      qty_kirim: parseInt(t.qty)||0,
+      qty_terima: parseInt(t.qty)||0,
+      qty_rusak: 0,
+      foto_do  : null,
+      foto_rusak: null,
+      customer : t.customer || '',
+      alamat   : t.alamat   || '',
+    };
+  });
+  grupActiveIdx = 0;
+  renderGrupModal();
+  openModal('m-selesai-grup');
+}
+
+function renderGrupModal() {
+  const container = document.getElementById('grup-do-list');
+  if (!container) return;
+  container.innerHTML = grupCtx.map((g, idx) => `
+    <div style="border:2px solid ${idx===grupActiveIdx?'#2563eb':'#e2e8f0'};
+      border-radius:12px;padding:14px;margin-bottom:12px;background:#fff">
+      <div style="font-weight:800;font-size:13px;color:#0b1f3a">
+        DO: ${escHtml(g.doc_no)}
+      </div>
+      <div style="font-size:11px;color:#64748b;margin-bottom:10px">
+        ${escHtml(g.customer)} · Kirim: ${g.qty_kirim} DUS
+      </div>
+      <!-- Qty row -->
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <div style="flex:1;text-align:center;background:#f1f5f9;border-radius:8px;padding:8px">
+          <div style="font-size:10px;color:#64748b">Diterima</div>
+          <div style="font-size:20px;font-weight:900;color:#166534" id="g-terima-${idx}">${g.qty_terima}</div>
+          <div style="display:flex;gap:4px;justify-content:center;margin-top:4px">
+            <button class="qty-btn" onclick="adjGrupQty(${idx},'terima',-1)">−</button>
+            <button class="qty-btn" onclick="adjGrupQty(${idx},'terima',1)">+</button>
+          </div>
+        </div>
+        <div style="flex:1;text-align:center;background:#fff5f5;border-radius:8px;padding:8px">
+          <div style="font-size:10px;color:#64748b">Rusak</div>
+          <div style="font-size:20px;font-weight:900;color:#dc2626" id="g-rusak-${idx}">${g.qty_rusak}</div>
+          <div style="display:flex;gap:4px;justify-content:center;margin-top:4px">
+            <button class="qty-btn" onclick="adjGrupQty(${idx},'rusak',-1)">−</button>
+            <button class="qty-btn" onclick="adjGrupQty(${idx},'rusak',1)">+</button>
+          </div>
+        </div>
+      </div>
+      <!-- Foto row -->
+      <div style="display:flex;gap:8px">
+        <div style="flex:1" onclick="openCameraGrup(${idx},'do')">
+          <div style="border:2px dashed ${g.foto_do?'#16a34a':'#cbd5e1'};border-radius:8px;
+            padding:10px;text-align:center;cursor:pointer;background:${g.foto_do?'#f0fdf4':'#f8fafc'}">
+            ${g.foto_do
+              ? `<img src="${g.foto_do}" style="width:100%;height:60px;object-fit:cover;border-radius:4px">`
+              : `<i class="fas fa-camera" style="color:#94a3b8;font-size:18px"></i>
+                 <div style="font-size:10px;color:#64748b;margin-top:4px">Foto DO*</div>`}
+          </div>
+        </div>
+        <div style="flex:1" onclick="openCameraGrup(${idx},'rusak')">
+          <div style="border:2px dashed ${g.foto_rusak?'#dc2626':'#cbd5e1'};border-radius:8px;
+            padding:10px;text-align:center;cursor:pointer;background:${g.foto_rusak?'#fff5f5':'#f8fafc'}">
+            ${g.foto_rusak
+              ? `<img src="${g.foto_rusak}" style="width:100%;height:60px;object-fit:cover;border-radius:4px">`
+              : `<i class="fas fa-camera" style="color:#94a3b8;font-size:18px"></i>
+                 <div style="font-size:10px;color:#64748b;margin-top:4px">Foto Rusak</div>`}
+          </div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function adjGrupQty(idx, field, delta) {
+  const g = grupCtx[idx];
+  if (!g) return;
+  if (field === 'terima') {
+    g.qty_terima = Math.max(0, Math.min(g.qty_kirim, g.qty_terima + delta));
+    const el = document.getElementById(`g-terima-${idx}`);
+    if (el) el.textContent = g.qty_terima;
+  } else {
+    g.qty_rusak = Math.max(0, Math.min(g.qty_kirim, g.qty_rusak + delta));
+    const el = document.getElementById(`g-rusak-${idx}`);
+    if (el) el.textContent = g.qty_rusak;
+  }
+}
+
+function openCameraGrup(idx, type) {
+  grupActiveIdx = idx;
+  // Reuse existing camera modal — temporarily set mode
+  const cam = document.getElementById('camera-overlay');
+  if (!cam) return;
+  // Tag untuk callback
+  cam.dataset.grupIdx  = idx;
+  cam.dataset.grupType = type;
+  cam.dataset.mode     = 'grup';
+  openCamera('_grup_'); // trigger camera (will be intercepted in handleCameraCapture)
+}
+
+async function submitSelesaiGrup() {
+  // Validasi semua DO punya foto_do
+  for (let i = 0; i < grupCtx.length; i++) {
+    const g = grupCtx[i];
+    if (!g.foto_do) {
+      alert(`DO ${g.doc_no}: Foto DO wajib diambil`);
+      return;
+    }
+    if (g.qty_rusak > 0 && !g.foto_rusak) {
+      alert(`DO ${g.doc_no}: Ada barang rusak — foto kerusakan wajib`);
+      return;
+    }
+  }
+
+  const btn = document.getElementById('btn-submit-grup');
+  if (btn) btn.disabled = true;
+  const catatan = (document.getElementById('catatan-grup')||{}).value || '';
+  const gps     = modalCtx.gps_coords || '';
+
+  // Submit semua DO — data dulu (no await), foto background
+  grupCtx.forEach(g => {
+    const payload = {
+      action     : 'submitSelesai',
+      plat       : driverState.plat,
+      driver     : driverState.driver,
+      doc_no     : g.doc_no,
+      date       : driverState.date,
+      qty_kirim  : g.qty_kirim,
+      qty_terima : g.qty_terima,
+      qty_rusak  : g.qty_rusak,
+      catatan    : catatan,
+      titip_sj   : 'Tidak',
+      gps_coords : gps,
+      foto_do    : g.foto_do,
+      foto_rusak : g.qty_rusak > 0 ? (g.foto_rusak||null) : null,
+      foto_sj    : null,
+      timestamp  : new Date().toISOString(),
+    };
+    // Fire & forget — best effort, background
+    gasPost(payload);
+    // Optimistic: update snap
+    lastTasksSnap[g.doc_no] = 'Selesai';
+    stopsDone++;
+  });
+
+  // Notifikasi
+  addNotification({
+    type:'self', icon:'change',
+    title:`✅ Laporan Grup Dikirim (${grupCtx.length} DO)`,
+    msg:`${grupCtx.map(g=>g.doc_no).join(', ')} · mengirim ke server...`,
+  });
+
+  closeModal('m-selesai-grup');
+  grupCtx = [];
+  await loadTasks(false);
+  checkAllDone();
+}
 // Phase idle  → startMuatAll()   → phase loading (timer jalan)
 // Phase loading → selesaiMuatAll() → phase done (START JALAN muncul)
 // Phase done → startJalanAll()   → semua DO 'On Process', reset phase
@@ -1728,12 +1931,21 @@ function _saveMuatPhase() {
 }
 
 function _clearMuatPhase() {
+  // 'sent' phase — hapus dari localStorage tapi jangan reset ke idle
+  // (muatPhase='sent' di-set oleh startJalanAll, persist sampai hari ganti)
   const key = `muatphase_${driverState.plat}_${driverState.date}`;
   localStorage.removeItem(key);
   muatPhase = 'idle';
   muatStartTime = null;
   muatStartLabel = null;
   if (muatTimerInterval) { clearInterval(muatTimerInterval); muatTimerInterval = null; }
+}
+
+function _clearMuatPhaseFull() {
+  // Hard reset — dipakai hanya kalau perlu reset manual (e.g. hari baru)
+  _clearMuatPhase();
+  const key = `muatphase_${driverState.plat}_${driverState.date}`;
+  localStorage.removeItem(key);
 }
 
 function updateMuatTimer() {
@@ -1842,9 +2054,11 @@ async function startJalanAll() {
   const now      = new Date();
   const jamJalan = now.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
 
-  // Ambil semua DO yang belum 'On Process' (Baru atau Muat Kargo)
+  // Ambil semua DO yang belum 'On Process' dan BUKAN terminal
+  // PENTING: jangan kirim startJob untuk DO yang sudah Selesai/Gagal/Batal
+  const TERMINAL = new Set(['Selesai','Done','Gagal Kirim','Batal']);
   const doNos = currentTasks
-    .filter(t => t.status==='Baru' || t.status==='New' || t.status==='Muat Kargo')
+    .filter(t => !TERMINAL.has(t.status) && t.status !== 'On Process')
     .map(t => t.doc_no);
 
   if (doNos.length === 0) { _startJalanLock = false; return; }
@@ -1866,8 +2080,9 @@ async function startJalanAll() {
   document.getElementById('km-bar').style.display = 'flex';
   requestWakeLock();
 
-  // Reset muat phase
-  _clearMuatPhase();
+  // Set 'sent' phase — lock muat button permanen hari ini
+  muatPhase = 'sent';
+  _saveMuatPhase(); // persist 'sent' ke localStorage
   localStorage.removeItem(`muat_${driverState.plat}_${driverState.date}`);
 
   // Re-render SEKARANG (tanpa tunggu GAS) — instant response
@@ -2098,8 +2313,7 @@ async function capturePhoto(type, inputEl) {
         'Driver       : '+driverState.driver,
         'Koordinat    : '+(coords||'-'),
         'Alamat GPS   : '+gpsAddr,
-        'DO           : '+modalCtx.doc_no,
-        'Waktu Kamera : '+now,
+        'DO           : '+(_grupCam ? _grupCam.docNo : modalCtx.doc_no),
       ];
       const pad=18, lh=17, textX=100, maxTW=w-textX-16;
       ctx.font='11px Arial';
@@ -2135,6 +2349,13 @@ async function capturePhoto(type, inputEl) {
 }
 
 function setPhotoResult(type, b64) {
+  // v4.2: jika dalam mode grup camera, dispatch ke grupCtx
+  if (_grupCam && _grupCam.type === type) {
+    setGrupPhotoResult(_grupCam.docNo, type, b64);
+    _grupCam = null;
+    return;
+  }
+  // Normal single-DO flow
   modalCtx['foto_'+type]=b64;
   const prev=document.getElementById('prev-foto-'+type);
   const wrap=document.getElementById('wrap-foto-'+type);
@@ -2241,6 +2462,259 @@ async function submitSelesai() {
   });
 
   // Reload tugas langsung (optimistic — anggap sukses)
+  await loadTasks(false);
+  checkAllDone();
+}
+
+// ═══════════════════════════════════════════════════════
+// BULK SELESAI GRUP (v4.2)
+// ═══════════════════════════════════════════════════════
+
+function normalizeAlamat(s) {
+  return String(s||'').toLowerCase()
+    .replace(/[.,\-\/\\()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function detectGroup(docNo) {
+  // Kembalikan array task yang satu alamat (On Process, termasuk docNo sendiri)
+  const anchor = currentTasks.find(t => t.doc_no === docNo);
+  if (!anchor || !anchor.alamat) return [anchor].filter(Boolean);
+  const normAnchor = normalizeAlamat(anchor.alamat);
+  return currentTasks.filter(t =>
+    t.status === 'On Process' &&
+    normalizeAlamat(t.alamat) === normAnchor
+  );
+}
+
+function openSelesaiOrGrup(docNo, qty, customer, alamat) {
+  const grup = detectGroup(docNo);
+  if (grup.length > 1) {
+    openSelesaiGrup(grup);
+  } else {
+    openSelesai(docNo, qty, customer);
+  }
+}
+
+function buildGrupDoForm(t) {
+  const docNo = t.doc_no;
+  return `
+  <div style="border:1.5px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:14px"
+    id="grup-card-${docNo}">
+    <div style="font-size:13px;font-weight:800;color:#0b1f3a;margin-bottom:2px">
+      DO: ${escHtml(docNo)}
+    </div>
+    <div style="font-size:11px;color:#64748b;margin-bottom:10px">
+      ${escHtml(t.customer||'')} · ${escHtml(t.produk||'')}
+    </div>
+
+    <!-- Qty row -->
+    <div class="qty-row">
+      <div class="qty-box">
+        <div class="qty-box-label">Dikirim</div>
+        <div class="qty-val" id="gk-${docNo}">${t.qty||0}</div>
+      </div>
+      <div class="qty-box">
+        <div class="qty-box-label">Diterima</div>
+        <div class="qty-val terima" id="gt-${docNo}">${t.qty||0}</div>
+        <div class="qty-ctrl">
+          <button class="qty-btn" onclick="adjGrupQty('${escHtml(docNo)}','t',-1)">−</button>
+          <button class="qty-btn" onclick="adjGrupQty('${escHtml(docNo)}','t',1)">+</button>
+        </div>
+      </div>
+      <div class="qty-box">
+        <div class="qty-box-label">Rusak</div>
+        <div class="qty-val rusak" id="gr-${docNo}">0</div>
+        <div class="qty-ctrl">
+          <button class="qty-btn" onclick="adjGrupQty('${escHtml(docNo)}','r',-1)">−</button>
+          <button class="qty-btn" onclick="adjGrupQty('${escHtml(docNo)}','r',1)">+</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Foto DO -->
+    <div style="margin-top:8px">
+      <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">
+        📷 Foto DO <span style="color:#dc2626;font-size:11px">*wajib</span>
+      </div>
+      <div onclick="openGrupCamera('${escHtml(docNo)}','do')"
+        id="gwrap-do-${docNo}"
+        style="border:2px dashed #cbd5e1;border-radius:8px;padding:14px;
+          text-align:center;cursor:pointer;background:#f8fafc;position:relative">
+        <i class="fas fa-camera" style="color:#94a3b8;font-size:18px"></i>
+        <div id="gtxt-do-${docNo}"
+          style="font-size:11px;color:#64748b;margin-top:4px">Tap untuk foto DO</div>
+        <img id="gprev-do-${docNo}"
+          style="max-width:100%;border-radius:6px;display:none;margin-top:6px">
+      </div>
+    </div>
+
+    <!-- Foto Rusak (muncul kalau qty rusak > 0) -->
+    <div id="grsec-${docNo}" style="margin-top:8px;display:none">
+      <div style="font-size:12px;font-weight:600;color:#dc2626;margin-bottom:4px">
+        📷 Foto Rusak <span style="font-size:11px">*wajib jika ada kerusakan</span>
+      </div>
+      <div onclick="openGrupCamera('${escHtml(docNo)}','rusak')"
+        id="gwrap-rusak-${docNo}"
+        style="border:2px dashed #fca5a5;border-radius:8px;padding:14px;
+          text-align:center;cursor:pointer;background:#fff5f5">
+        <i class="fas fa-camera" style="color:#f87171;font-size:18px"></i>
+        <div id="gtxt-rusak-${docNo}"
+          style="font-size:11px;color:#dc2626;margin-top:4px">Tap foto kerusakan</div>
+        <img id="gprev-rusak-${docNo}"
+          style="max-width:100%;border-radius:6px;display:none;margin-top:6px">
+      </div>
+    </div>
+  </div>`;
+}
+
+function openSelesaiGrup(grupTasks) {
+  grupDoNos = grupTasks.map(t => t.doc_no);
+  grupCtx   = {};
+
+  // Init state per DO
+  grupTasks.forEach(t => {
+    grupCtx[t.doc_no] = {
+      qty_kirim  : t.qty || 0,
+      qty_terima : t.qty || 0,
+      qty_rusak  : 0,
+      foto_do    : null,
+      foto_rusak : null,
+    };
+  });
+
+  // Build modal content
+  document.getElementById('m-grup-info').textContent =
+    `${grupTasks.length} DO · ${escHtml(grupTasks[0].alamat||'—')}`;
+  document.getElementById('m-grup-do-list').innerHTML =
+    grupTasks.map(t => buildGrupDoForm(t)).join('');
+  document.getElementById('catatan-grup').value = '';
+  document.getElementById('btn-submit-grup').disabled = false;
+
+  openModal('m-selesai-grup');
+}
+
+function adjGrupQty(docNo, field, delta) {
+  const ctx = grupCtx[docNo];
+  if (!ctx) return;
+  if (field === 't') {
+    ctx.qty_terima = Math.max(0, Math.min(ctx.qty_kirim, ctx.qty_terima + delta));
+    const el = document.getElementById('gt-'+docNo);
+    if (el) el.textContent = ctx.qty_terima;
+  }
+  if (field === 'r') {
+    ctx.qty_rusak = Math.max(0, Math.min(ctx.qty_kirim, ctx.qty_rusak + delta));
+    const el = document.getElementById('gr-'+docNo);
+    if (el) el.textContent = ctx.qty_rusak;
+    // Tampilkan / sembunyikan seksi foto rusak
+    const sec = document.getElementById('grsec-'+docNo);
+    if (sec) sec.style.display = ctx.qty_rusak > 0 ? 'block' : 'none';
+  }
+}
+
+function openGrupCamera(docNo, type) {
+  // Set context agar setPhotoResult tahu harus update grupCtx
+  _grupCam = { docNo, type };
+  // Gunakan camera system yang sudah ada
+  openCamera(type);
+}
+
+function setGrupPhotoResult(docNo, type, b64) {
+  if (!grupCtx[docNo]) return;
+  if (type === 'do')    grupCtx[docNo].foto_do    = b64;
+  if (type === 'rusak') grupCtx[docNo].foto_rusak = b64;
+
+  // Update preview di modal
+  const prev = document.getElementById(`gprev-${type}-${docNo}`);
+  const txt  = document.getElementById(`gtxt-${type}-${docNo}`);
+  const wrap = document.getElementById(`gwrap-${type}-${docNo}`);
+  if (prev) { prev.src = b64; prev.style.display = 'block'; }
+  if (txt)  txt.textContent = '✅ Foto berhasil diambil';
+  if (wrap) wrap.style.border = '2px solid #22c55e';
+}
+
+async function submitSelesaiGrup() {
+  // Validasi semua DO
+  for (const docNo of grupDoNos) {
+    const ctx = grupCtx[docNo];
+    if (!ctx) continue;
+    if (!ctx.foto_do) {
+      alert(`Foto DO wajib untuk DO: ${docNo}`);
+      // Scroll ke card
+      const card = document.getElementById('grup-card-'+docNo);
+      if (card) card.scrollIntoView({behavior:'smooth', block:'center'});
+      return;
+    }
+    if (ctx.qty_rusak > 0 && !ctx.foto_rusak) {
+      alert(`Ada barang rusak pada DO: ${docNo} — foto kerusakan wajib`);
+      const card = document.getElementById('grup-card-'+docNo);
+      if (card) card.scrollIntoView({behavior:'smooth', block:'center'});
+      return;
+    }
+  }
+
+  const btn = document.getElementById('btn-submit-grup');
+  btn.disabled = true;
+  btn.textContent = 'Mengirim...';
+
+  const catatan = document.getElementById('catatan-grup').value;
+  const coords  = modalCtx.gps_coords ||
+    (tripState.last_pos
+      ? tripState.last_pos.lat.toFixed(6)+','+tripState.last_pos.lng.toFixed(6)
+      : '');
+
+  const now = new Date().toISOString();
+
+  // Kirim tiap DO secara fire-and-forget (background)
+  grupDoNos.forEach(docNo => {
+    const ctx = grupCtx[docNo];
+    if (!ctx) return;
+
+    const payload = {
+      action      : 'submitSelesai',
+      plat        : driverState.plat,
+      driver      : driverState.driver,
+      doc_no      : docNo,
+      date        : driverState.date,
+      qty_kirim   : ctx.qty_kirim,
+      qty_terima  : ctx.qty_terima,
+      qty_rusak   : ctx.qty_rusak,
+      catatan     : catatan,
+      titip_sj    : 'Tidak',
+      nama_spg    : '',
+      jabatan_spg : '',
+      gps_coords  : coords,
+      foto_do     : ctx.foto_do,
+      foto_rusak  : ctx.qty_rusak > 0 ? (ctx.foto_rusak||null) : null,
+      foto_sj     : null,
+      timestamp   : now,
+    };
+
+    // Optimistic update
+    lastTasksSnap[docNo] = 'Selesai';
+    const idx = currentTasks.findIndex(t => t.doc_no === docNo);
+    if (idx >= 0) currentTasks[idx].status = 'Selesai';
+
+    // Fire & forget (best effort)
+    gasPost(payload);
+
+    // Notif lokal
+    addNotification({
+      type:'self', icon:'change',
+      title:'✅ Laporan Dikirim',
+      msg:`DO ${docNo} — ${ctx.qty_terima} DUS · mengirim ke server...`,
+      doc_no: docNo,
+    });
+  });
+
+  stopsDone += grupDoNos.length;
+  closeModal('m-selesai-grup');
+
+  // Reset grup state
+  grupCtx   = {};
+  grupDoNos = [];
+
   await loadTasks(false);
   checkAllDone();
 }
@@ -3155,7 +3629,7 @@ async function processAndSetPhoto(type, rawB64) {
       'Plat         : '+driverState.plat,
       'Driver       : '+driverState.driver,
       'Koordinat    : '+(coords||'-'),
-      'DO           : '+modalCtx.doc_no,
+      'DO           : '+(_grupCam ? _grupCam.docNo : modalCtx.doc_no),
       'Waktu        : '+now,
     ];
     const pad=16,lh=16,textX=90,maxTW=w-textX-14;
@@ -3357,5 +3831,26 @@ document.addEventListener('click', function(e) {
   <canvas id="camera-canvas" style="display:none"></canvas>
 </div>
 
+<!-- MODAL: SELESAI GRUP (v4.2) -->
+<div class="modal-overlay" id="m-selesai-grup">
+  <div class="modal-box" style="max-height:90vh;overflow-y:auto">
+    <button class="modal-close" onclick="closeModal('m-selesai-grup')">×</button>
+    <div class="modal-title">Selesai Pengiriman Grup</div>
+    <div class="modal-sub" id="grup-alamat-info" style="margin-bottom:12px">—</div>
+    <!-- List DO dalam grup (di-render dinamis) -->
+    <div id="grup-do-list"></div>
+    <!-- Catatan bersama -->
+    <div class="form-group">
+      <label class="form-label">Catatan (opsional — berlaku semua DO)</label>
+      <textarea id="catatan-grup" class="form-input"
+        style="height:60px;resize:none" placeholder="Catatan kondisi pengiriman..."></textarea>
+    </div>
+    <button class="btn-submit-green" id="btn-submit-grup" onclick="submitSelesaiGrup()">
+      <i class="fas fa-check-circle"></i> Kirim Semua Laporan
+    </button>
+    <button class="btn-back" onclick="closeModal('m-selesai-grup')">Kembali</button>
+  </div>
+</div>
+
 </body>
-</html>  
+</html>
