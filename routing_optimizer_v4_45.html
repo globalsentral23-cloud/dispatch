@@ -1755,16 +1755,38 @@ async function startAnalysis(){
 
     // 2. Group by (gudang × luar_kota_area) — gabung hanya dengan carry-over AUTO
     //    Manual carry-over sudah masuk _carryOverManual (di-inject ke active bawah)
-    const _areaGroups = {};
+    // v4.45 FIX: group by doc_no dulu untuk aggregate vol/wt per DO,
+    //   lalu group by area — mencegah split group akibat SAP multi-line dengan area berbeda
+    const _docGroups = {};
     [..._luarKotaToday, ..._carryOverAuto].forEach(item => {
-      const key = (item.wh_cons||('GUDANG '+(item.gudang||''))) + '|' + (item.luar_kota_area||'UNKNOWN');
-      if(!_areaGroups[key]) _areaGroups[key] = {
-        area: item.luar_kota_area, wh: item.wh_cons||('GUDANG '+(item.gudang||'')),
-        items:[], totalVol:0, totalWt:0
+      const dn = item.doc_no;
+      if(!_docGroups[dn]) _docGroups[dn] = {
+        ...item,
+        // Resolusi area: pakai luar_kota_area jika ada, fallback ke extract dari kirim
+        _resolvedArea: item.luar_kota_area
+          || extractKotaFromAlamat(item.kirim||'')
+          || item.kota_tujuan || '',
+        totalVol: 0, totalWt: 0, items: []
       };
-      _areaGroups[key].items.push(item);
-      _areaGroups[key].totalVol += Number(item.total_vol)||0;
-      _areaGroups[key].totalWt  += Number(item.total_wt)||0;
+      _docGroups[dn].totalVol += Number(item.total_vol)||0;
+      _docGroups[dn].totalWt  += Number(item.total_wt)||0;
+      // Pakai area yang sudah ter-resolve (bukan per-item)
+      if(item.luar_kota_area && !_docGroups[dn]._resolvedArea){
+        _docGroups[dn]._resolvedArea = item.luar_kota_area;
+      }
+      _docGroups[dn].items.push(item);
+    });
+    // Group per-area dari DO yang sudah di-aggregate
+    const _areaGroups = {};
+    Object.values(_docGroups).forEach(doAgg => {
+      const area = doAgg._resolvedArea || 'UNKNOWN';
+      const wh   = doAgg.wh_cons||('GUDANG '+(doAgg.gudang||''));
+      const key  = wh + '|' + area;
+      if(!_areaGroups[key]) _areaGroups[key] = { area, wh, items:[], totalVol:0, totalWt:0 };
+      _areaGroups[key].items.push(...doAgg.items);
+      _areaGroups[key].totalVol += doAgg.totalVol;
+      _areaGroups[key].totalWt  += doAgg.totalWt;
+      console.log(`%c[v4.45 group] DO ${doAgg.doc_no} → area '${area}' (vol ${doAgg.totalVol.toFixed(2)}m³)`, 'color:#9333ea');
     });
 
     // 3. Evaluasi threshold per area
@@ -1917,7 +1939,8 @@ function processData(sapRaw,pgRaw){
     doc_no:['Document Number'],do_date:['DO Date'],wh:['Warehouse'],
     customer:['Customer'],stock_code:['Stock Code'],stock_name:['Stock Name'],
     shade:['SHADE'],size:['SIZE'],qty:['QTY'],uom:['UOM'],
-    remarks:['REMARKS'],kirim:['KIRIM'],kecamatan:['Kecamatan'],hp:['Cellular Customer','No CP Penerima'],
+    remarks:['REMARKS'],kirim:['KIRIM'],kecamatan:['Kecamatan','KOTA'],hp:['Cellular Customer','No CP Penerima'],
+    kota:['KOTA'],
   };
   for(const[k,names]of Object.entries(sapMap))
     SC[k]=names.reduce((a,n)=>a>=0?a:sh.findIndex(h=>String(h).trim()===n),-1);
