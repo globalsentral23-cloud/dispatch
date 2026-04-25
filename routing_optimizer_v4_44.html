@@ -529,7 +529,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.43</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.44</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -1694,14 +1694,14 @@ async function startAnalysis(){
     }
     const {active,skip,defer,transfer,vendor:autoVendor,conflict:autoConflict}=processData(sapRaw,pgRaw);
     skipped=skip;deferred=defer;transferItems=transfer;
-    // v4.43: Pre-populate auto-triggered vendor + conflict items
-    vendorItems = [...(autoVendor||[])];
+    // v4.43: conflict items
     conflictItems = [...(autoConflict||[])];
+    // NOTE: vendorItems di-set SETELAH luar kota consolidation (v4.44 fix)
 
     // ─────────────────────────────────────────────────────────────────────────
     // v4.44 — LUAR KOTA CONSOLIDATION (multi-hari)
-    // DO luar kota kecil (di bawah threshold 1 kendaraan) di-defer ke besok.
-    // Carry-over dari GAS digabung dengan DO hari ini sebelum evaluasi threshold.
+    // FIX: Luar kota items ada di autoVendor[] (dari processData), BUKAN di active[]!
+    //      autoVendor = semua item yang di-auto-trigger ke vendor (luar kota, overflow, dll)
     // ─────────────────────────────────────────────────────────────────────────
     luarKotaPending = []; // reset
     const _releasedDocNos = []; // carry-over yang threshold-nya sudah terpenuhi
@@ -1725,80 +1725,81 @@ async function startAnalysis(){
       }
     }
 
-    // Identifikasi doc_no carry-over untuk lookup cepat
+    // Identifikasi doc_no carry-over
     const _carryOverDocNos = new Set(_gasCarryOver.map(i=>i.doc_no));
-
-    // Group: luar kota items dari SAP hari ini (belum di-vendor-assign)
-    // plus carry-over dari GAS (hari sebelumnya)
     const _minVol = CFG.luar_kota_min_vol_m3 || 8.0;
     const _minWt  = CFG.luar_kota_min_wt_kg  || 6000;
 
-    // 1. Pisahkan: luar kota kecil (vendor_fallback=true, luar_kota=true)
-    //    yang BELUM di-assign ke vendor (belum di autoVendor)
-    const _autoVendorDocNos = new Set((autoVendor||[]).map(i=>i.doc_no));
-    const _luarKotaToday = active.filter(i =>
-      i.luar_kota && !_autoVendorDocNos.has(i.doc_no)
-    );
-    // Sisanya (bukan luar kota, atau sudah di vendor) tetap masuk routing biasa
-    const _activeNonLuarKota = active.filter(i =>
-      !i.luar_kota || _autoVendorDocNos.has(i.doc_no)
-    );
+    // 1. FIX: Pisahkan luar_kota dari AUTOVENDOR (bukan active!)
+    //    processData menaruh DO luar kota di vendor[] via vendor.push(enrichedItem) line ~2469
+    const _luarKotaFromVendor   = (autoVendor||[]).filter(i => i.luar_kota);
+    const _autoVendorNonLuarKota = (autoVendor||[]).filter(i => !i.luar_kota);
+    // Cek juga active (edge case: luar_kota di active tapi bukan di autoVendor)
+    const _luarKotaFromActive   = active.filter(i => i.luar_kota && i.vendor_fallback);
+    const _activeNonLuarKota    = active.filter(i => !i.luar_kota || !i.vendor_fallback);
+    // Gabung semua luar kota hari ini
+    const _luarKotaToday = [..._luarKotaFromVendor, ..._luarKotaFromActive];
 
-    // 2. Group by (gudang × luar_kota_area)
+    console.log(`%c[v4.44] Luar kota hari ini: ${_luarKotaToday.length} item (${_luarKotaFromVendor.length} dari autoVendor, ${_luarKotaFromActive.length} dari active)`, 'color:#f97316');
+
+    // 2. Group by (gudang × luar_kota_area) — gabung dengan carry-over GAS
     const _areaGroups = {};
     [..._luarKotaToday, ..._gasCarryOver].forEach(item => {
-      const key = (item.wh_cons||item.gudang||'') + '|' + (item.luar_kota_area||'');
-      if(!_areaGroups[key]) _areaGroups[key] = { area: item.luar_kota_area, wh: item.wh_cons||('GUDANG '+(item.gudang||'')), items:[], totalVol:0, totalWt:0 };
+      const key = (item.wh_cons||('GUDANG '+(item.gudang||''))) + '|' + (item.luar_kota_area||'UNKNOWN');
+      if(!_areaGroups[key]) _areaGroups[key] = {
+        area: item.luar_kota_area, wh: item.wh_cons||('GUDANG '+(item.gudang||'')),
+        items:[], totalVol:0, totalWt:0
+      };
       _areaGroups[key].items.push(item);
       _areaGroups[key].totalVol += Number(item.total_vol)||0;
       _areaGroups[key].totalWt  += Number(item.total_wt)||0;
     });
 
     // 3. Evaluasi threshold per area
-    const _activeFromRelease = [];
+    const _activeFromRelease = [];  // luar kota released, asal dari active
+    const _vendorFromRelease = [];  // luar kota released, asal dari autoVendor → tetap ke vendor
+    const _luarKotaFromVendorDocNos = new Set(_luarKotaFromVendor.map(i=>i.doc_no));
+
     Object.values(_areaGroups).forEach(grp => {
-      const volPct  = grp.totalVol / _minVol;
-      const wtPct   = grp.totalWt  / _minWt;
-      const pct100  = Math.round(Math.max(volPct, wtPct) * 100);
-      const met     = grp.totalVol >= _minVol || grp.totalWt >= _minWt;
+      const pct100 = Math.round(Math.max(grp.totalVol/_minVol, grp.totalWt/_minWt) * 100);
+      const met    = grp.totalVol >= _minVol || grp.totalWt >= _minWt;
 
       if(met){
-        // Threshold terpenuhi → semua item release ke active (akan ke vendor)
         grp.items.forEach(item => {
-          const normalized = {
-            ...item,
-            is_released_from_pending: _carryOverDocNos.has(item.doc_no),
-            vendor_reason: (item.vendor_reason||'') + (
-              _carryOverDocNos.has(item.doc_no) ? ' [carry-over — released]' : ' [threshold terpenuhi]'
-            )
+          const isCarryOver = _carryOverDocNos.has(item.doc_no);
+          const annotated = { ...item,
+            is_released_from_pending: isCarryOver,
+            vendor_reason: (item.vendor_reason||'') + (isCarryOver ? ' [carry-over released]' : ' [threshold terpenuhi]')
           };
-          _activeFromRelease.push(normalized);
-          if(_carryOverDocNos.has(item.doc_no)) _releasedDocNos.push(item.doc_no);
+          // Kembalikan ke array asal masing-masing
+          if(_luarKotaFromVendorDocNos.has(item.doc_no)) _vendorFromRelease.push(annotated);
+          else _activeFromRelease.push(annotated);
+          if(isCarryOver) _releasedDocNos.push(item.doc_no);
         });
-        console.log(`%c[v4.44] RELEASE ${grp.area}: ${grp.items.length} item, ${grp.totalVol.toFixed(2)}m³ >= ${_minVol}m³ threshold`, 'color:#22c55e;font-weight:bold');
+        console.log(`%c[v4.44] RELEASE ${grp.area}: ${grp.items.length} item, ${grp.totalVol.toFixed(2)}m³ >= ${_minVol}m³`, 'color:#22c55e;font-weight:bold');
       } else {
-        // Threshold belum terpenuhi → defer ke luarKotaPending
         grp.items.forEach(item => {
-          const daysOld = item.days_pending || 0;
           luarKotaPending.push({
             ...item,
-            wh_cons           : grp.wh,
-            luar_kota_area    : grp.area,
-            pending_pct       : pct100,
-            pending_current_m3: +grp.totalVol.toFixed(3),
-            pending_threshold_m3: _minVol,
-            pending_reason    : `Akumulasi ${grp.area}: ${grp.totalVol.toFixed(2)}/${_minVol}m³ (${pct100}%)`,
-            days_pending      : daysOld,
-            is_pending_carryover: _carryOverDocNos.has(item.doc_no),
+            wh_cons              : grp.wh,
+            luar_kota_area       : grp.area,
+            pending_pct          : pct100,
+            pending_current_m3   : +grp.totalVol.toFixed(3),
+            pending_threshold_m3 : _minVol,
+            pending_reason       : `Akumulasi ${grp.area}: ${grp.totalVol.toFixed(2)}/${_minVol}m³ (${pct100}%)`,
+            days_pending         : item.days_pending||0,
+            is_pending_carryover : _carryOverDocNos.has(item.doc_no),
           });
         });
-        console.log(`%c[v4.44] DEFER ${grp.area}: ${grp.items.length} item, ${grp.totalVol.toFixed(2)}/${_minVol}m³ (${pct100}%) — ditunda besok`, 'color:#f59e0b;font-weight:bold');
+        console.log(`%c[v4.44] DEFER ${grp.area}: ${grp.items.length} item, ${grp.totalVol.toFixed(2)}/${_minVol}m³ (${pct100}%)`, 'color:#f59e0b;font-weight:bold');
       }
     });
 
-    // 4. Merge active final: non-luar-kota + luar-kota yang released
+    // 4. Rebuild arrays (deferred items DIKELUARKAN)
     const _activeFinal = [..._activeNonLuarKota, ..._activeFromRelease];
-    // Simpan referensi untuk sync ke GAS
+    // vendorItems = non-luar-kota autoVendor + luar-kota yang released (ke Pegasus)
+    vendorItems = [..._autoVendorNonLuarKota, ..._vendorFromRelease];
+    // Simpan referensi untuk sync ke GAS saat klik Sync
     window.__pendingLuarKotaToSave   = luarKotaPending.filter(i => !i.is_pending_carryover);
     window.__pendingCarryOverToUpdate = luarKotaPending.filter(i =>  i.is_pending_carryover);
     window.__releasedDocNosToGAS     = _releasedDocNos;
@@ -1812,7 +1813,7 @@ async function startAnalysis(){
     showLoad('Menjalankan routing...');await sleep(30);
     const{rts,vendor:routingVendor,pendingTomorrow}=buildRoutes(_activeFinal);
     routes=rts;
-    // Merge: auto-trigger vendor + routing overflow vendor
+    // Merge: routing overflow vendor (tambah ke vendorItems yang sudah ada)
     vendorItems = [...vendorItems, ...(routingVendor||[])];
     pendingTomorrowItems=pendingTomorrow||[]; // v4.42 Step 5 output
     initBiaya(); // hitung estimasi biaya per kendaraan
