@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.47</title>
+<title>Routing Optimizer v4.47.1</title>
+<link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -521,15 +522,15 @@ body.dispatch-active .dispatch-bar{display:flex}
     <div class="tb-logo">
       <img class="tb-logo-img" 
            src="https://globalsentral23-cloud.github.io/dispatch/gst_logo.svg"
-           onerror="this.style.display='none';document.getElementById('logo-fallback').style.display='flex'"
+           onerror="this.onerror=null;this.style.display='none';var fb=document.getElementById('logo-fallback');if(fb)fb.style.display='flex';"
            alt="GST Logo">
-      <div class="tb-logo-text" style="display:none;flex-direction:column">
+      <div class="tb-logo-text" id="logo-fallback" style="display:none;flex-direction:column">
         <span>GST</span>
         <span class="tb-logo-sub">GlobalSentral</span>
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.47</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.47.1</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
