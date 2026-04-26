@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.45</title>
+<title>Routing Optimizer v4.47</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -469,7 +469,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.45</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.47</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -529,7 +529,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.45</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.47</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -537,20 +537,18 @@ body.dispatch-active .dispatch-bar{display:flex}
     <button class="tab-btn active" onclick="switchTab('routing',this)">Routing</button>
     <button class="tab-btn" onclick="switchTab('map',this)">🗺 Peta</button>
     <button class="tab-btn" onclick="switchTab('transfer',this)">Transfer Gudang</button>
-    <button class="tab-btn" onclick="switchTab('skipped',this)">Dilewati</button>
-    <button class="tab-btn" onclick="switchTab('deferred',this)">Ditunda</button>
+    <button class="tab-btn" onclick="switchTab('skipped',this)">Ambil Sendiri</button>
     <button class="tab-btn" onclick="switchTab('vendor',this)">DO Unplot (<span id="cnt-vendor">0</span>)</button>
-    <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota">Pending Besok</button>
+    <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota" title="DO yang ditunda ke besok — tanggal beda dari SAP atau capacity penuh">Pending (<span id="cnt-pending-tab">0</span>)</button>
     <button class="tab-btn" onclick="switchTab('konflik',this)" id="tab-btn-konflik" style="color:#b91c1c">⚠ DO Konflik</button>
     <button class="tab-btn" id="tab-btn-biaya" onclick="switchTab('biaya',this)">💰 Biaya Ops</button>
     <button class="tab-btn" onclick="switchTab('settlement',this)">📋 Settlement T+1</button>
-    <button class="tab-btn" onclick="switchTab('history',this)">📅 History</button>
+    <button class="tab-btn" onclick="switchTab('history',this)" title="Lihat rute hari sebelumnya — read-only, untuk audit & recall">📅 History</button>
     <div class="tb-right">
       <button class="tb-btn g" onclick="exportExcel()">⬇ Excel</button>
       <button class="tb-btn" onclick="printPickingList()">📋 Picking List</button>
       <button class="tb-btn" onclick="openTambahDO()" style="background:#7c3aed;color:#fff;border-color:#7c3aed" title="Tambah DO manual untuk kendaraan yang sudah ada">➕ Tambah DO</button>
       <button class="tb-btn" onclick="printAll()">🖨 Print SJ</button>
-      <button class="tb-btn" onclick="syncToGSheets()" title="Sync ke Google Sheets + kirim tugas ke driver app">☁ Sync</button>
       <a href="dispatcher_map.html" target="_blank" class="tb-btn" title="Live Monitoring GPS kendaraan (buka tab baru)" style="color:#fff;background:#2563eb;border-color:#1d4ed8;font-weight:700;text-decoration:none;display:inline-flex;align-items:center">🗺 Monitor</a>
       <button id="btn-dispatch" class="tb-btn" onclick="toggleDispatchMode()" title="Mode operasional saat muat — Skip/Cancel/Partial/Pindah per DO" style="background:#059669;color:#fff;border-color:#047857;font-weight:700">🚛 Dispatch</button>
       <button class="tb-btn" onclick="resetApp()">↩ Upload Baru</button>
@@ -569,7 +567,10 @@ body.dispatch-active .dispatch-bar{display:flex}
   <div class="dispatch-bar" id="dispatch-bar">
     <span>🚛 DISPATCH MODE AKTIF</span>
     <span id="dispatch-summary" style="opacity:.8;font-weight:400;font-size:10px"></span>
+    <span id="dispatch-dirty-badge" style="display:none;background:#dc2626;color:#fff;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;animation:pulse 2s infinite">⚠ BELUM SYNC</span>
     <div style="flex:1"></div>
+    <!-- v4.47 E: Sync pindah ke dispatch bar (di antara Dispatch dan WA Blast) -->
+    <button id="btn-sync-dispatch" class="daction-btn" onclick="syncToGSheets()" style="background:#fff;color:#064e3b;padding:4px 14px;font-size:11px;font-weight:700" title="Sync routing terbaru ke Google Sheets + kirim tugas ke driver app">☁ Sync</button>
     <button class="daction-btn wa" onclick="generateWABlast()" style="padding:4px 14px;font-size:11px">📱 Generate WA Blast</button>
     <button class="daction-btn" onclick="printSJRevisi()" style="background:#fff;color:#064e3b;padding:4px 14px;font-size:11px">🖨 Print SJ Revisi</button>
     <button onclick="showDispatchLog()" style="background:transparent;color:#86efac;border:1px solid #86efac;border-radius:5px;padding:3px 10px;font-size:10px;cursor:pointer">📋 Log (${0})</button>
@@ -633,26 +634,30 @@ body.dispatch-active .dispatch-bar{display:flex}
   </div>
   <div class="tab-pane" id="tab-skipped">
     <div class="info-wrap">
-      <div class="info-title">Dilewati — AS / Ambil Sendiri / Via Ekspedisi / Luar Jabodetabek (<span id="cnt-skip">0</span> item)</div>
+      <div class="info-title">Ambil Sendiri — AS / Via Ekspedisi / Luar Jabodetabek (<span id="cnt-skip">0</span> item)</div>
       <div class="tbl-wrap"><table class="info-tbl"><thead><tr><th>DO No</th><th>Gudang</th><th>Customer</th><th>Tujuan</th><th>QTY</th><th>Alasan</th></tr></thead><tbody id="tbody-skip"></tbody></table></div>
-    </div>
-  </div>
-  <div class="tab-pane" id="tab-deferred">
-    <div class="info-wrap">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-        <div class="info-title" style="margin-bottom:0">Ditunda — Tanggal Kirim Berbeda (<span id="cnt-defer">0</span> item)</div>
-        <button onclick="downloadDeferred()" style="padding:5px 14px;border-radius:8px;background:var(--navy);border:none;color:#fff;font-size:11px;font-weight:600;cursor:pointer">⬇ Download Excel</button>
-      </div>
-      <div class="tbl-wrap"><table class="info-tbl"><thead><tr><th>DO No</th><th>Gudang</th><th>Customer</th><th>Tujuan</th><th>QTY</th><th>Tgl Kirim</th></tr></thead><tbody id="tbody-defer"></tbody></table></div>
     </div>
   </div>
   <div class="tab-pane" id="tab-luarkota">
     <div class="info-wrap">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
-        <div style="font-size:14px;font-weight:600">Pending Besok — <span id="cnt-luarkota">0</span> item luar kota + <span id="cnt-lowutil">0</span> item low-util</div>
-        <button onclick="downloadLuarKotaPending()" style="padding:6px 16px;border-radius:8px;background:var(--navy);border:none;color:#fff;font-size:12px;font-weight:600;cursor:pointer">⬇ Download List DO</button>
-        <span style="font-size:11px;color:var(--muted)">DO yang ditunda untuk plot besok (kapasitas belum cukup, atau util kendaraan rendah)</span>
+        <div style="font-size:14px;font-weight:600">Pending — DO yang ditunda</div>
+        <button onclick="downloadLuarKotaPending()" style="padding:6px 16px;border-radius:8px;background:var(--navy);border:none;color:#fff;font-size:12px;font-weight:600;cursor:pointer">⬇ Download Pending Besok</button>
+        <button onclick="downloadDeferred()" style="padding:6px 16px;border-radius:8px;background:#475569;border:none;color:#fff;font-size:12px;font-weight:600;cursor:pointer">⬇ Download Tanggal Lain</button>
       </div>
+
+      <!-- v4.47 F: Section "Ditunda — Tanggal Kirim Berbeda" (digabung dari tab Ditunda) -->
+      <div id="deferred-section" style="margin-bottom:24px;padding:12px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <div style="width:12px;height:12px;border-radius:2px;background:#94a3b8;flex-shrink:0"></div>
+          <div style="font-size:13px;font-weight:700;color:#475569">📅 Tanggal Kirim Berbeda dari SAP — <span id="cnt-defer">0</span> item</div>
+          <span style="font-size:10px;color:var(--muted)">Pindah ke tanggal X yang sudah di-set di SAP</span>
+        </div>
+        <div class="tbl-wrap"><table class="info-tbl"><thead><tr><th>DO No</th><th>Gudang</th><th>Customer</th><th>Tujuan</th><th>QTY</th><th>Tgl Kirim</th></tr></thead><tbody id="tbody-defer"></tbody></table></div>
+      </div>
+
+      <!-- Summary cards (auto + manual defer dari capacity) -->
+      <div style="font-size:12px;color:#64748b;margin-bottom:6px">Pending Besok — <span id="cnt-luarkota">0</span> item luar kota + <span id="cnt-lowutil">0</span> item low-util</div>
       <!-- Auto-defer summary cards -->
       <div id="luar-kota-summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px"></div>
       <!-- Manual defer summary cards -->
@@ -849,6 +854,15 @@ let files={sap:null,pg:null,master:null,gagal:null};
 let carryOverItems=[]; // DO gagal kirim kemarin
 let dispatchLog=[];    // log perubahan saat muat (skip/cancel/partial/pindah)
 let dispatchMode=false;
+// v4.47 D: Track perubahan routing setelah Sync. Reset ke false saat Sync sukses.
+//         Set ke true saat dispatchAction (skip/cancel/pindah) atau saveTambahDO.
+//         WA Blast guard: kalau routesDirty=true, tampilkan dialog konfirmasi.
+let routesDirty = false;
+function setRoutesDirty(v) {
+  routesDirty = !!v;
+  const badge = document.getElementById('dispatch-dirty-badge');
+  if (badge) badge.style.display = routesDirty ? 'inline-block' : 'none';
+}
 
 // ── REALTIME DO STATUS ──────────────────────────────────────────────────────
 let rtDoStatus    = {};      // {doc_no: {status, qty_terima, qty_rusak, jam}}
@@ -1434,8 +1448,11 @@ async function syncToGSheets(){
 
     hideLoad();
     if(errors.length===0){
+      setRoutesDirty(false); // v4.47: reset dirty flag setelah sync sukses
       alert(`☁ Sync berhasil!\n\n✅ ${synced} data tersimpan ke Google Sheets:\n• Geo Cache (koordinat baru)\n• Routing Log (riwayat routing)\n• Settlement Harian (uang jalan)\n• DO Status (tugas driver app)`);
     } else {
+      // Sebagian sukses — reset dirty kalau >0 sukses (tidak strict)
+      if (synced > 0) setRoutesDirty(false);
       alert(`☁ Sync selesai dengan peringatan:\n✅ ${synced} sukses\n⚠ ${errors.length} error:\n${errors.join('\n')}`);
     }
   }catch(err){
@@ -5194,7 +5211,7 @@ function renderKPI(){
     ['🔁 TRIP 2',rT2,'kendaraan'],
     ['TRANSFER',transferItems.length,'DO'],
     ['SKIP',skipped.length,'item'],
-    ['DITUNDA',deferred.length,'item'],
+    ['TGL LAIN',deferred.length,'item'],
     ['⚠ JABO OVERFLOW',jaboOverflow,'DO'],
     ['LUAR KOTA',luarKotaVendor,'via vendor'],
     ['KNEK',knek,'kendaraan'],
@@ -5316,7 +5333,6 @@ function vcardHTML(r){
     const dBtns=`<div class="dispatch-actions" style="display:${dispatchMode?'flex':'none'};gap:3px;margin-top:4px;flex-wrap:wrap">
       <button class="daction-btn skip" onclick="dispatchAction('${r.id}','${docKey}','skip',event)" title="Barang belum ketemu, kirim besok">⏭ Skip</button>
       <button class="daction-btn cancel" onclick="dispatchAction('${r.id}','${docKey}','cancel',event)" title="Sales cancel, tidak jadi kirim">✗ Cancel</button>
-      <button class="daction-btn partial" onclick="dispatchAction('${r.id}','${docKey}','partial',event)" title="Kirim sebagian, sisa besok">∂ Partial</button>
       <button class="daction-btn pindah" onclick="dispatchAction('${r.id}','${docKey}','pindah',event)" title="Pindah ke kendaraan lain">→ Pindah</button>
       ${dStatus?`<button class="daction-btn" onclick="dispatchUndo('${r.id}','${docKey}')" style="background:#e2e8f0;color:#475569" title="Batalkan perubahan">↩ Undo</button>`:''}
     </div>`;
@@ -5490,6 +5506,17 @@ function renderDeferred(){
     <td style="font-family:var(--mono);font-weight:600">${r.qty}</td>
     <td style="font-family:var(--mono);font-size:10px;color:var(--amber)">${r.deferred_date||'—'}</td>
   </tr>`).join('');
+  _updatePendingTabCount();
+}
+
+// v4.47 F: aggregate counter untuk tab "Pending" (gabungan deferred + luar kota + low-util)
+function _updatePendingTabCount() {
+  const cntDef = (deferred||[]).length;
+  const cntLuar = (luarKotaPending||[]).filter(i => !i.is_low_util).length;
+  const cntLowUtil = (pendingTomorrowItems||[]).length;
+  const total = cntDef + cntLuar + cntLowUtil;
+  const el = document.getElementById('cnt-pending-tab');
+  if (el) el.textContent = total;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -5552,7 +5579,14 @@ function scoreVendorForItem(vendor, item){
 // Pure function — cari vendor terbaik untuk 1 item.
 // Return vendor object atau null kalau tidak ada yang cocok.
 // Bonus: kalau preferredTipe di-set dan ada vendor yang match tipe + zona, prefer itu.
+// v4.47 A: kalau item punya manual_vendor_kode (dispatcher manual assign), pakai itu langsung.
 function findBestVendorForItem(item, vendorList){
+  // v4.47 A: priority 1 = manual override dari Tambah DO
+  if (item.manual_vendor_kode) {
+    const v = vendorList.find(x => x.kode === item.manual_vendor_kode);
+    if (v) return v;
+  }
+
   const reason = String(item.vendor_trigger_reason||item.vendor_reason||'').toLowerCase();
   let preferredTipeRegex = null;
   if(/volume|berat|bongkar lama|oversized|fuso|tronton/i.test(reason)){
@@ -6351,7 +6385,7 @@ function dispatchAction(routeId,docKeyStr,action,evt){
       fields:[{id:'alasan',label:'Alasan',placeholder:'barang belum ketemu / gudang belum siap / ...'}],
       onOk:(vals)=>{
         docNos.forEach(dn=>{
-          dispatchLog.push({route_id:rid,doc_no:dn,action:'skip',
+          setRoutesDirty(true);dispatchLog.push({route_id:rid,doc_no:dn,action:'skip',
             alasan:vals.alasan,waktu:new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
             plat:route.vehicle.plat,driver:route.vehicle.driver,customer:route.vehicle.driver});
         });
@@ -6369,7 +6403,7 @@ function dispatchAction(routeId,docKeyStr,action,evt){
       ],
       onOk:(vals)=>{
         docNos.forEach(dn=>{
-          dispatchLog.push({route_id:rid,doc_no:dn,action:'cancel',
+          setRoutesDirty(true);dispatchLog.push({route_id:rid,doc_no:dn,action:'cancel',
             alasan:vals.alasan,sales:vals.sales,
             waktu:new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
             plat:route.vehicle.plat,driver:route.vehicle.driver});
@@ -6391,7 +6425,7 @@ function dispatchAction(routeId,docKeyStr,action,evt){
       onOk:(vals)=>{
         const qtyKirim=parseInt(vals.qty_kirim)||0;
         docNos.forEach(dn=>{
-          dispatchLog.push({route_id:rid,doc_no:dn,action:'partial',
+          setRoutesDirty(true);dispatchLog.push({route_id:rid,doc_no:dn,action:'partial',
             qty_original:totalQty,qty_kirim:qtyKirim,qty_sisa:totalQty-qtyKirim,
             alasan:vals.alasan,
             waktu:new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
@@ -6419,7 +6453,7 @@ function dispatchAction(routeId,docKeyStr,action,evt){
         const targetRoute=routes.find(r=>r.id===targetId);
         if(!targetRoute){alert('Kendaraan tidak ditemukan');return;}
         docNos.forEach(dn=>{
-          dispatchLog.push({route_id:rid,doc_no:dn,action:'pindah',
+          setRoutesDirty(true);dispatchLog.push({route_id:rid,doc_no:dn,action:'pindah',
             target_plat:targetRoute.vehicle.plat,target_driver:targetRoute.vehicle.driver,
             alasan:vals.alasan,
             waktu:new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
@@ -6578,6 +6612,15 @@ function printSJRevisi(){
 // ── WA Blast Generator ────────────────────────────────────────────────────────
 function generateWABlast(){
   if(!routes.length){alert('Belum ada routing');return;}
+  // v4.47 D: Guard — kalau routesDirty, force Sync dulu
+  if (routesDirty) {
+    if (confirm('⚠ Routing sudah berubah sejak Sync terakhir.\n\nDriver app akan baca data lama kalau tidak Sync ulang.\n\nKlik OK untuk Sync sekarang, lalu generate WA Blast otomatis.')) {
+      syncToGSheets().then(() => {
+        if (!routesDirty) generateWABlast(); // recursive call setelah sync
+      });
+    }
+    return;
+  }
   const TRACK_URL = (CFG.track_base_url||'https://globalsentral23-cloud.github.io/dispatch');
 
   // Buat pesan per kendaraan
@@ -7019,8 +7062,23 @@ function printPickingList(){
 
 // ═══════════════════════════════════════════════════════
 // EXPORT EXCEL
+// v4.47: defensive try/catch + diagnostic log untuk fix bug "klik tapi nothing happens"
 // ═══════════════════════════════════════════════════════
 function exportExcel(){
+  console.log('[exportExcel] Started. routes.length=', routes?.length, 'doDate=', doDate);
+  try {
+    // Guard 1: XLSX library loaded?
+    if (typeof XLSX === 'undefined') {
+      alert('⚠ Library Excel (XLSX) belum ke-load.\n\nCek koneksi internet — CDN cdnjs.cloudflare.com mungkin diblokir.\nCoba reload halaman.');
+      console.error('[exportExcel] XLSX undefined — CDN tidak ke-load');
+      return;
+    }
+    // Guard 2: Ada data routing?
+    if (!routes || routes.length === 0) {
+      alert('⚠ Belum ada data routing untuk di-export.\n\nLakukan upload SAP/PG dan tunggu routing selesai.');
+      return;
+    }
+
   const wbx=XLSX.utils.book_new();
 
   // Sheet 1: Routing Plan
@@ -7046,10 +7104,10 @@ function exportExcel(){
   const rows2=[h2,...transferItems.map(r=>[r.doc_no,r.wh_cons,r.transfer_to,r.customer,r.stock_name,r.qty,r.kirim.slice(0,100)])];
   XLSX.utils.book_append_sheet(wbx,XLSX.utils.aoa_to_sheet(rows2),'Transfer Gudang');
 
-  // Sheet 3: Dilewati
+  // Sheet 3: Ambil Sendiri (rename dari Dilewati di v4.47)
   const h3=['DO No','Gudang','Customer','Tujuan','QTY','Alasan'];
   const rows3=[h3,...skipped.map(r=>[r.doc_no,r.wh_cons,r.customer,r.kirim.slice(0,80),r.qty,r.skip_reason])];
-  XLSX.utils.book_append_sheet(wbx,XLSX.utils.aoa_to_sheet(rows3),'Dilewati');
+  XLSX.utils.book_append_sheet(wbx,XLSX.utils.aoa_to_sheet(rows3),'Ambil Sendiri');
 
   // Sheet 4: Ditunda
   const h4=['DO No','Gudang','Customer','Tujuan','QTY','Tanggal Kirim'];
@@ -7072,7 +7130,15 @@ function exportExcel(){
   })];
   XLSX.utils.book_append_sheet(wbx,XLSX.utils.aoa_to_sheet(rows6),'Biaya Ops');
 
-  XLSX.writeFile(wbx,`routing_${doDate.replace(/\./g,'')}.xlsx`);
+  // v4.47: safer doDate handling — kalau undefined, pakai today
+  const dateStr = (doDate || new Date().toLocaleDateString('id-ID').replace(/\//g,'.')).replace(/\./g,'');
+  const fname = `routing_${dateStr}.xlsx`;
+  XLSX.writeFile(wbx, fname);
+  console.log('[exportExcel] Success:', fname);
+  } catch(err) {
+    console.error('[exportExcel] Error:', err);
+    alert('❌ Gagal export Excel:\n\n' + (err.message || err) + '\n\nBuka Console (F12) untuk detail teknis.');
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -7560,74 +7626,6 @@ function printSJVendor(vendorKodeEncoded){
     </div>
   </div>
 
-  
-<!-- ═══ MODAL: TAMBAH DO MANUAL ═══ -->
-<div id="modal-tambah-do" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9000;align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:14px;padding:24px;width:500px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
-      <div>
-        <div style="font-size:16px;font-weight:700;color:#0b1f3a">➕ Tambah DO Manual</div>
-        <div style="font-size:11px;color:#64748b;margin-top:2px">DO tambahan yang tidak ada di file SAP</div>
-      </div>
-      <button onclick="closeTambahDO()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">×</button>
-    </div>
-
-    <!-- Form fields -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
-      <div style="grid-column:1/-1">
-        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px">DO No *</label>
-        <input id="tdo-docno" type="text" placeholder="Contoh: 261099999"
-          style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:monospace">
-      </div>
-      <div style="grid-column:1/-1">
-        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px">Customer *</label>
-        <input id="tdo-customer" type="text" placeholder="Nama customer"
-          style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px">
-      </div>
-      <div style="grid-column:1/-1">
-        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px">Alamat Pengiriman *</label>
-        <textarea id="tdo-alamat" rows="2" placeholder="Alamat lengkap pengiriman"
-          style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;resize:none"></textarea>
-      </div>
-      <div>
-        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px">Produk</label>
-        <input id="tdo-produk" type="text" placeholder="Nama produk / deskripsi"
-          style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px">
-      </div>
-      <div>
-        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px">QTY (DUS) *</label>
-        <input id="tdo-qty" type="number" min="1" placeholder="0"
-          style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px">
-      </div>
-      <div style="grid-column:1/-1">
-        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px">Assign ke Kendaraan *</label>
-        <select id="tdo-kendaraan"
-          style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;background:#fff">
-          <option value="">— Pilih kendaraan —</option>
-        </select>
-        <div id="tdo-kapasitas" style="font-size:10px;color:#64748b;margin-top:4px"></div>
-      </div>
-      <div style="grid-column:1/-1">
-        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px">Catatan</label>
-        <input id="tdo-catatan" type="text" placeholder="Instruksi khusus (opsional)"
-          style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px">
-      </div>
-    </div>
-
-    <div id="tdo-error" style="display:none;padding:10px 14px;background:#fee2e2;border-radius:8px;color:#b91c1c;font-size:12px;margin-bottom:12px"></div>
-
-    <div style="display:flex;gap:10px">
-      <button onclick="saveTambahDO()"
-        style="flex:1;padding:12px;background:#7c3aed;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">
-        ✓ Tambah ke Rute
-      </button>
-      <button onclick="closeTambahDO()"
-        style="padding:12px 20px;background:#f1f5f9;color:#334155;border:1.5px solid #e2e8f0;border-radius:10px;font-size:13px;cursor:pointer">
-        Batal
-      </button>
-    </div>
-  </div>
-</div>
 </body></html>`;
 
   const w=window.open('','_blank','width=950,height=750');
@@ -7767,9 +7765,9 @@ function renderLuarKotaPending(){
   document.getElementById('cnt-luarkota').textContent=cnt;
   const cntLU = document.getElementById('cnt-lowutil');
   if(cntLU) cntLU.textContent = cntLowUtil;
-  const btn=document.getElementById('tab-btn-luarkota');
-  const totalPending = cnt + cntLowUtil;
-  if(btn) btn.textContent='Pending Besok'+(totalPending>0?' ('+totalPending+')':'');
+  // v4.47 F: tab btn structure berubah jadi "Pending (<span id=cnt-pending-tab>0</span>)"
+  // Update via _updatePendingTabCount() supaya termasuk deferred items juga.
+  _updatePendingTabCount();
 
   // ── SECTION 1: Summary cards auto-defer per area (progress bar)
   const byArea={};
@@ -8938,8 +8936,14 @@ function openTambahDO() {
     alert('Lakukan routing terlebih dahulu sebelum menambah DO manual.');
     return;
   }
+  // v4.47 C: Lock by dispatch mode
+  if (!dispatchMode) {
+    alert('⚠ Aktifkan mode Dispatch dulu sebelum Tambah DO Manual.\n\nKlik tombol "🚛 Dispatch" di toolbar.');
+    return;
+  }
 
   // Populate dropdown kendaraan dari routes
+  // v4.47 A: Pakai <optgroup> untuk pisah ARMADA INTERNAL vs VENDOR
   const sel = document.getElementById('tdo-kendaraan');
   sel.innerHTML = '<option value="">— Pilih kendaraan —</option>';
 
@@ -8947,24 +8951,73 @@ function openTambahDO() {
   const sortedRoutes = [...routes].filter(r => !r.is_large_do || r.trip_no !== 2)
     .sort((a,b) => a.wh.localeCompare(b.wh) || a.vehicle.plat.localeCompare(b.vehicle.plat));
 
+  // GROUP 1: Armada Internal
+  const ogInternal = document.createElement('optgroup');
+  ogInternal.label = '🚛 ARMADA INTERNAL';
   sortedRoutes.forEach(r => {
     const b = biayaData[r.id] || {};
-    const kapPct = Math.round(Math.max(r.util_berat||0, r.util_vol||0)*100);
+    // FIX v4.46: Pakai formula SAMA dengan main panel (line 5278-5282)
+    const v    = r.vehicle;
+    const svol = CFG.safety_vol || 0.85;
+    const swt  = CFG.safety_wt  || 0.90;
+    const pctVol = v.vol_m3 > 0 ? Math.min(100, Math.round(r.total_vol/(v.vol_m3*svol)*100)) : 0;
+    const pctWt  = v.max_kg > 0 ? Math.min(100, Math.round(r.total_wt /(v.max_kg*swt )*100)) : 0;
+    const kapPct = Math.max(pctVol, pctWt);
     const wh = r.wh.replace('GUDANG ','');
     const opt = document.createElement('option');
     opt.value = r.id;
     opt.textContent = `${wh} | ${r.vehicle.plat} - ${r.vehicle.driver} | ${r.items.length} DO | ${kapPct}% penuh`;
     opt.dataset.routeId = r.id;
-    sel.appendChild(opt);
+    ogInternal.appendChild(opt);
   });
+  sel.appendChild(ogInternal);
 
-  // Update kapasitas saat pilih kendaraan
+  // GROUP 2: Vendor / Sub Kontrak (v4.47 A)
+  if (vendorList && vendorList.length > 0) {
+    const ogVendor = document.createElement('optgroup');
+    ogVendor.label = '🤝 VENDOR / SUB KONTRAK';
+    vendorList.forEach(vd => {
+      // Hitung berapa DO sudah di-assign ke vendor ini
+      const assignedCount = (vendorItems||[]).filter(i =>
+        i.manual_vendor_kode === vd.kode ||
+        (window.__vendorAssignMap && window.__vendorAssignMap[i.doc_no]?.kode === vd.kode)
+      ).length;
+      const opt = document.createElement('option');
+      opt.value = 'VEN_' + vd.kode;
+      opt.textContent = `${vd.kode} | ${vd.nama} | ${assignedCount} DO sudah di-assign`;
+      ogVendor.appendChild(opt);
+    });
+    sel.appendChild(ogVendor);
+  }
+
+  // Update kapasitas saat pilih kendaraan (v4.47 A: handle vendor option)
   sel.onchange = function() {
-    const rid = parseInt(this.value);
-    const route = routes.find(r => r.id === rid);
+    const val = this.value;
     const info = document.getElementById('tdo-kapasitas');
+    const vendorWrap = document.getElementById('tdo-vendor-reason-wrap');
+
+    // Branch vendor — value berbentuk "VEN_<kode>"
+    if (typeof val === 'string' && val.startsWith('VEN_')) {
+      const kode = val.substring(4);
+      const vd = vendorList.find(x => x.kode === kode);
+      if (vd) {
+        info.innerHTML = `<span style="color:#7c3aed">🤝 Vendor ${vd.kode} — ${vd.nama}</span>`;
+      }
+      if (vendorWrap) vendorWrap.style.display = 'block';
+      return;
+    }
+
+    // Branch kendaraan internal
+    if (vendorWrap) vendorWrap.style.display = 'none';
+    const rid = parseInt(val);
+    const route = routes.find(r => r.id === rid);
     if (route) {
-      const kapPct = Math.round(Math.max(route.util_berat||0, route.util_vol||0)*100);
+      const v    = route.vehicle;
+      const svol = CFG.safety_vol || 0.85;
+      const swt  = CFG.safety_wt  || 0.90;
+      const pctVol = v.vol_m3 > 0 ? Math.min(100, Math.round(route.total_vol/(v.vol_m3*svol)*100)) : 0;
+      const pctWt  = v.max_kg > 0 ? Math.min(100, Math.round(route.total_wt /(v.max_kg*swt )*100)) : 0;
+      const kapPct = Math.max(pctVol, pctWt);
       const sisa = 100 - kapPct;
       info.innerHTML = `<span style="color:${sisa>30?'#16a34a':sisa>10?'#d97706':'#dc2626'}">
         Sisa kapasitas: ~${sisa}% · ${route.items.length} DO sudah ada</span>`;
@@ -8974,9 +9027,12 @@ function openTambahDO() {
   };
 
   // Reset form
-  ['tdo-docno','tdo-customer','tdo-alamat','tdo-produk','tdo-qty','tdo-catatan']
+  ['tdo-docno','tdo-customer','tdo-alamat','tdo-produk','tdo-qty','tdo-catatan','tdo-vendor-reason']
     .forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('tdo-error').style.display = 'none';
+  // v4.47 A: reset vendor field visibility
+  const vendorWrap = document.getElementById('tdo-vendor-reason-wrap');
+  if (vendorWrap) vendorWrap.style.display = 'none';
 
   // Set tanggal hari ini sebagai default
   const modal = document.getElementById('modal-tambah-do');
@@ -8993,29 +9049,82 @@ function saveTambahDO() {
   const alamat  = document.getElementById('tdo-alamat').value.trim();
   const produk  = document.getElementById('tdo-produk').value.trim() || 'DO Manual';
   const qty     = parseInt(document.getElementById('tdo-qty').value) || 0;
-  const routeId = parseInt(document.getElementById('tdo-kendaraan').value);
+  const rawVal  = document.getElementById('tdo-kendaraan').value;
   // ── Validasi wajib — cegah undefined di card ──────────────────────────────
   if (!docNo)    { alert('⚠ No DO wajib diisi.'); document.getElementById('tdo-docno').focus(); return; }
   if (!customer) { alert('⚠ Nama Customer wajib diisi.'); document.getElementById('tdo-customer').focus(); return; }
   if (!alamat)   { alert('⚠ Alamat/Kirim wajib diisi.'); document.getElementById('tdo-alamat').focus(); return; }
   if (qty <= 0)  { alert('⚠ QTY harus lebih dari 0.'); document.getElementById('tdo-qty').focus(); return; }
-  if (!routeId)  { alert('⚠ Pilih kendaraan terlebih dahulu.'); return; }
+  if (!rawVal)   { alert('⚠ Pilih kendaraan terlebih dahulu.'); return; }
   const catatan = document.getElementById('tdo-catatan').value.trim();
-  const errEl   = document.getElementById('tdo-error');
 
-  // Validasi
-  if (!docNo)     { showTDOErr('DO No wajib diisi'); return; }
-  if (!customer)  { showTDOErr('Customer wajib diisi'); return; }
-  if (!alamat)    { showTDOErr('Alamat wajib diisi'); return; }
-  if (!qty || qty < 1) { showTDOErr('QTY harus minimal 1 DUS'); return; }
-  if (!routeId)   { showTDOErr('Pilih kendaraan terlebih dahulu'); return; }
-
-  // Cek duplikat DO No
-  const allDocNos = routes.flatMap(r => r.items.map(i => i.doc_no));
-  if (allDocNos.includes(docNo)) {
-    showTDOErr(`DO No ${docNo} sudah ada di rute. Gunakan nomor DO yang berbeda.`);
+  // Cek duplikat DO No (semua sumber: routes + vendor + skipped)
+  const allDocNosRoutes = routes.flatMap(r => r.items.map(i => String(i.doc_no)));
+  const allDocNosVendor = (vendorItems||[]).map(i => String(i.doc_no));
+  if (allDocNosRoutes.includes(String(docNo)) || allDocNosVendor.includes(String(docNo))) {
+    showTDOErr(`DO No ${docNo} sudah ada di sistem. Gunakan nomor DO yang berbeda.`);
     return;
   }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // v4.47 A: BRANCH VENDOR — value = "VEN_<kode>"
+  // ═══════════════════════════════════════════════════════════════════════
+  if (typeof rawVal === 'string' && rawVal.startsWith('VEN_')) {
+    const vendorKode = rawVal.substring(4);
+    const vendor = vendorList.find(v => v.kode === vendorKode);
+    if (!vendor) {
+      showTDOErr(`Vendor ${vendorKode} tidak ditemukan di master.`);
+      return;
+    }
+    const reasonInput = document.getElementById('tdo-vendor-reason');
+    const userReason = reasonInput ? reasonInput.value.trim() : '';
+    const spec = getSpec('60x60');
+    const newVendorItem = {
+      doc_no      : docNo,
+      do_date     : doDate || new Date().toLocaleDateString('id-ID'),
+      wh          : 'GUDANG CIKUDA',  // default — vendor belum tentu by gudang spesifik
+      wh_cons     : 'CIKUDA',
+      customer    : customer,
+      stock_code  : 'MANUAL',
+      stock_name  : produk,
+      shade       : '', size: '60x60',
+      qty         : qty, uom: 'DUS',
+      remarks     : catatan || 'DO Manual',
+      kirim       : alamat,
+      kecamatan   : '', hp: '',
+      source      : 'MANUAL',
+      priority    : 1,
+      manual_do   : true,
+      lat: 0, lng: 0, geo_src: 'manual',
+      ...spec,
+      total_wt    : (spec.unit_wt || 30) * qty,
+      total_vol   : (spec.unit_vol || 0.0144) * qty,
+      // v4.47 A: penanda manual vendor
+      manual_vendor_kode    : vendorKode,
+      is_manual_vendor      : true,
+      vendor_reason         : userReason || 'Manual assign dari Tambah DO',
+      vendor_trigger_reason : userReason || 'Manual assign dari Tambah DO',
+    };
+    vendorItems.push(newVendorItem);
+    setRoutesDirty(true);
+    closeTambahDO();
+    showApp();
+    // Toast notif
+    const toast = document.createElement('div');
+    toast.style.cssText = `position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+      background:#7c3aed;color:#fff;padding:12px 24px;border-radius:10px;
+      font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.2)`;
+    toast.textContent = `✅ DO ${docNo} di-assign ke ${vendor.kode} (${vendor.nama})`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3500);
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BRANCH KENDARAAN INTERNAL (existing flow)
+  // ═══════════════════════════════════════════════════════════════════════
+  const routeId = parseInt(rawVal);
+  if (!routeId)   { showTDOErr('Pilih kendaraan terlebih dahulu'); return; }
 
   // Temukan route
   const route = routes.find(r => r.id === routeId);
@@ -9088,6 +9197,7 @@ function saveTambahDO() {
   showApp();
 
   // Notifikasi sukses
+  setRoutesDirty(true); // v4.47 D: tandai dirty supaya wajib Sync sebelum WA Blast
   const toast = document.createElement('div');
   toast.style.cssText = `position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
     background:#7c3aed;color:#fff;padding:12px 24px;border-radius:10px;
@@ -9194,6 +9304,12 @@ async function syncManualDO(item, route) {
           <option value="">— Pilih kendaraan —</option>
         </select>
         <div id="tdo-kapasitas" style="font-size:10px;color:#64748b;margin-top:4px"></div>
+      </div>
+      <!-- v4.47 A: Field optional Alasan pindah vendor — hidden by default, muncul saat pilih vendor -->
+      <div id="tdo-vendor-reason-wrap" style="grid-column:1/-1;display:none">
+        <label style="font-size:11px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px">Alasan Pindah Vendor (opsional)</label>
+        <input id="tdo-vendor-reason" type="text" placeholder="Contoh: Customer request vendor khusus / Volume luar kota tinggi"
+          style="width:100%;padding:9px 12px;border:1.5px solid #c4b5fd;border-radius:8px;font-size:13px;background:#faf5ff">
       </div>
       <div style="grid-column:1/-1">
         <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px">Catatan</label>
