@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Data Curator v1.0 — GST Logistics</title>
+<title>Data Curator v1.1 — GST Logistics</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root {
@@ -155,7 +155,7 @@ body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--t
 
 <div class="app-header">
   <div class="app-logo">📋 DATA CURATOR</div>
-  <div class="app-version">v1.0</div>
+  <div class="app-version">v1.1</div>
   <div class="app-tagline">Pre-flight check & cleaning data SAP/PG sebelum dispatch besok</div>
   <div class="app-date" id="hdr-date">—</div>
 </div>
@@ -370,17 +370,56 @@ Object.entries(MASTER_KECAMATAN.kecamatan).forEach(([name, info]) => {
 // ═══════════════════════════════════════════════════════════════════════════
 // CONFIG
 // ═══════════════════════════════════════════════════════════════════════════
-const ALLOWED_WAREHOUSES = [
-  'DAAN MOGOT', 'DOYONG',
-  'GUDANG KEMENANGAN JAYA CIKUDA',
-  'GUDANG KEMENANGAN JAYA CIKUDA 2',
-  'GUDANG KEMENANGAN JAYA CIKUDA 3',
-  'CIKUDA',
-];
-const WAREHOUSE_NORMALIZE = {
-  'GUDANG KEMENANGAN JAYA CIKUDA': 'CIKUDA',
-  'GUDANG KEMENANGAN JAYA CIKUDA 2': 'CIKUDA',
-  'GUDANG KEMENANGAN JAYA CIKUDA 3': 'CIKUDA',
+// v1.1: WH mapping table — SAP warehouse code → internal warehouse name
+// Strict: hanya 3 warehouse internal (DAAN MOGOT, DOYONG, CIKUDA) yang diproses.
+// Selain itu auto-drop sebagai non-Jabodetabek.
+const WH_MAPPING = {
+  // Direct match — already standard names
+  'DAAN MOGOT'                             : 'DAAN MOGOT',
+  'DOYONG'                                 : 'DOYONG',
+  'CIKUDA'                                 : 'CIKUDA',
+  // CIKUDA variants (SAP code dengan prefix panjang)
+  'GUDANG KEMENANGAN JAYA CIKUDA'          : 'CIKUDA',
+  'GUDANG KEMENANGAN JAYA CIKUDA 2'        : 'CIKUDA',
+  'GUDANG KEMENANGAN JAYA CIKUDA 3'        : 'CIKUDA',
+  // SAP-specific aliases for internal Jabodetabek warehouses (v1.1, konfirmasi HG)
+  'PASAR KEMIS 2'                          : 'DOYONG',
+  'KOMP PASAR KEMIS 2'                     : 'DOYONG',
+  'DIRECT'                                 : 'DAAN MOGOT',
+  // Lainnya: tidak di mapping = di-drop
+};
+
+// v1.1: kota suffix yang menandakan alamat luar Jabodetabek.
+// Kalau muncul setelah `;` di KIRIM, biasanya bukan tujuan Jabo — tapi sesuai
+// keputusan HG (Q3=keep), kita TIDAK drop berdasarkan ini, hanya FLAG sebagai warning.
+const NON_JABO_CITY_SUFFIXES = new Set([
+  'BANDUNG', 'MEDAN', 'SURABAYA', 'SEMARANG', 'BALI', 'MAKASSAR',
+  'SAMARINDA', 'CIKAMPEK', 'KARAWANG', 'CILEGON', 'SERANG',
+  'CIREBON', 'YOGYAKARTA', 'SOLO', 'MALANG', 'PALEMBANG'
+]);
+
+// v1.1: kota suffix yang valid Jabodetabek — untuk normalisasi
+const JABO_CITY_ALIASES = {
+  'JAKBAR'      : 'JAKARTA BARAT',
+  'JAKTIM'      : 'JAKARTA TIMUR',
+  'JAKSEL'      : 'JAKARTA SELATAN',
+  'JAKPUS'      : 'JAKARTA PUSAT',
+  'JAKUT'       : 'JAKARTA UTARA',
+  'TANGSEL'     : 'TANGERANG SELATAN',
+  'BEKASI'      : 'BEKASI',
+  'DEPOK'       : 'DEPOK',
+  'TANGERANG'   : 'TANGERANG',
+  'BOGOR'       : 'BOGOR',
+  'CIBUBUR'     : 'JAKARTA TIMUR',  // Cibubur masuk Jaktim
+  'CIKARANG'    : 'BEKASI',
+  'LIPPO CIKARANG': 'BEKASI',
+  'KABUPATEN BOGOR': 'BOGOR',
+  'JAKARTA'     : 'JAKARTA',
+  'JAKARTA PUSAT'  : 'JAKARTA PUSAT',
+  'JAKARTA BARAT'  : 'JAKARTA BARAT',
+  'JAKARTA SELATAN': 'JAKARTA SELATAN',
+  'JAKARTA TIMUR'  : 'JAKARTA TIMUR',
+  'JAKARTA UTARA'  : 'JAKARTA UTARA',
 };
 
 // SAP Column indices (1-based, sesuai dengan analisis sample file)
@@ -394,6 +433,42 @@ const COL = {
   QTY: 30, UOM: 31, PAKET: 32, PI: 33, REMARKS: 34,
   KIRIM: 35, KECAMATAN: 36, NO_CP: 37,
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KIRIM PARSER (v1.1) — parse format "JL ABC ;JAKBAR" atau "JL ABC, BEKASI"
+// ═══════════════════════════════════════════════════════════════════════════
+// Return: { addr: <alamat tanpa suffix>, city_suffix: <kota uppercase>, raw: <input>, has_suffix: bool }
+function parseKirim(raw) {
+  if (!raw) return { addr: '', city_suffix: null, raw: '', has_suffix: false };
+  const s = String(raw).trim();
+  // Split by ; only — koma terlalu umum di alamat (RT/RW, dll)
+  const parts = s.split(/[;]/);
+  if (parts.length < 2) {
+    return { addr: s, city_suffix: null, raw: s, has_suffix: false };
+  }
+  // Last part = kota suffix (mungkin trailing ", ID" atau " SY")
+  let last = parts[parts.length - 1].trim();
+  last = last.replace(/,\s*ID\s*$/i, '').replace(/\s+SY\s*$/i, '').trim();
+  const cityUpper = last.toUpperCase();
+
+  const isJaboCity = cityUpper in JABO_CITY_ALIASES;
+  const isNonJabo = NON_JABO_CITY_SUFFIXES.has(cityUpper);
+
+  if (!isJaboCity && !isNonJabo) {
+    // Bukan suffix kota yang dikenali — jangan split
+    return { addr: s, city_suffix: null, raw: s, has_suffix: false };
+  }
+
+  const addr = parts.slice(0, -1).join(';').trim();
+  return {
+    addr: addr,
+    city_suffix: cityUpper,
+    city_normalized: JABO_CITY_ALIASES[cityUpper] || cityUpper,
+    raw: s,
+    has_suffix: true,
+    is_non_jabo_suffix: isNonJabo,
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STATE
@@ -584,12 +659,10 @@ function runRules() {
 
   sapRows.forEach((row) => {
     // ── DROP RULES ────────────────────────────────────────────────
-    // 1. Filter warehouse: hanya 3 (DAAN MOGOT, DOYONG, *CIKUDA*)
-    const wh = row.warehouse.toUpperCase();
-    let allowed = false;
-    if (wh === 'DAAN MOGOT' || wh === 'DOYONG' || wh === 'CIKUDA') allowed = true;
-    if (wh.startsWith('GUDANG KEMENANGAN JAYA CIKUDA')) allowed = true;
-    if (!allowed) {
+    // v1.1: Use WH_MAPPING — strict 3 warehouse only
+    const whUpper = row.warehouse.toUpperCase().trim();
+    const mappedWH = WH_MAPPING[whUpper];
+    if (!mappedWH) {
       row._drop = true;
       row._drop_reason = `Warehouse non-Jabodetabek: ${row.warehouse}`;
       droppedRows.push({
@@ -612,36 +685,55 @@ function runRules() {
     }
 
     // ── AUTO-FIX RULES ────────────────────────────────────────────
-    // Normalize warehouse code (CIKUDA variants → CIKUDA)
-    let normalizedWH = row.warehouse;
-    for (const [src, dst] of Object.entries(WAREHOUSE_NORMALIZE)) {
-      if (row.warehouse === src) {
-        normalizedWH = dst;
-        autoFixLog.push({
-          doc_no: row.doc_no, field: 'Warehouse',
-          before: row.warehouse, after: dst,
-          rule: 'normalize_cikuda'
-        });
-        break;
-      }
+    // v1.1: Apply WH mapping (PASAR KEMIS 2 → DOYONG, GUDANG KEMENANGAN... → CIKUDA, etc.)
+    if (mappedWH !== row.warehouse) {
+      autoFixLog.push({
+        doc_no: row.doc_no, field: 'Warehouse',
+        before: row.warehouse, after: mappedWH,
+        rule: 'wh_mapping'
+      });
     }
-    row._final_warehouse = normalizedWH;
+    row._final_warehouse = mappedWH;
 
-    // Trim whitespace KIRIM
-    if (row.kirim && /\s\s+|^\s+|\s+$/.test(row.kirim)) {
-      const cleaned = row.kirim.replace(/\s+/g, ' ').trim();
+    // v1.1: Parse KIRIM dengan delimiter ; — strip city suffix ke kolom Kecamatan
+    const parsed = parseKirim(row.kirim);
+    let cleanedKirim = row.kirim;
+    if (parsed.has_suffix) {
+      // Strip suffix ;<KOTA> dari KIRIM. Output cleaner.
+      cleanedKirim = parsed.addr;
       autoFixLog.push({
         doc_no: row.doc_no, field: 'KIRIM',
-        before: JSON.stringify(row.kirim), after: JSON.stringify(cleaned),
-        rule: 'trim_whitespace'
+        before: parsed.raw, after: parsed.addr,
+        rule: 'strip_city_suffix'
       });
-      row.kirim = cleaned;
+      // Kalau suffix non-Jabo (BANDUNG, MEDAN, dll) — flag warning, jangan drop (HG decision Q3)
+      if (parsed.is_non_jabo_suffix) {
+        issues.push({
+          type: 'addr_non_jabo', severity: 'warning',
+          doc_no: row.doc_no, field: 'KIRIM',
+          rowIdx: row._idx, status: 'open',
+          msg: `Alamat tujuan luar Jabodetabek (suffix: ${parsed.city_suffix})`,
+          suggest: `Verifikasi — apakah ada armada khusus / vendor untuk ${parsed.city_suffix}? Atau salah input?`,
+          row: row
+        });
+      }
     }
 
-    // Strip trailing punctuation di Kecamatan (kalau ada)
-    // ... (rule lainnya bisa ditambah seiring waktu)
+    // Trim whitespace double space
+    if (cleanedKirim && /\s\s+/.test(cleanedKirim)) {
+      const before = cleanedKirim;
+      cleanedKirim = cleanedKirim.replace(/\s+/g, ' ').trim();
+      if (before !== cleanedKirim) {
+        autoFixLog.push({
+          doc_no: row.doc_no, field: 'KIRIM',
+          before: before, after: cleanedKirim,
+          rule: 'trim_whitespace'
+        });
+      }
+    }
+    row.kirim = cleanedKirim; // update working state
 
-    // ── KECAMATAN EXTRACTION (Smart Logic) ────────────────────────
+    // ── KECAMATAN EXTRACTION (Smart Logic, v1.1 enhanced with city_suffix hint) ─
     let extractedKec = null;
     let kecSource = null;
 
@@ -651,7 +743,7 @@ function runRules() {
       if (matched) { extractedKec = matched; kecSource = 'sap_field'; }
     }
 
-    // (b) Extract dari Alamat 2 (pattern "KEC. <X>" / "KEC <X>")
+    // (b) Extract dari Alamat 2 (pattern "KEC. <X>")
     if (!extractedKec && row.alamat2) {
       const m = row.alamat2.match(/KEC\.?\s+([A-Z][A-Z\s]+?)(?:\s|,|$)/i);
       if (m) {
@@ -660,8 +752,9 @@ function runRules() {
       }
     }
 
-    // (c) Fuzzy match dari KIRIM atau alamat_customer
-    if (!extractedKec) {
+    // (c) v1.1: Fuzzy match — prioritas KIRIM (yang sudah di-strip suffix)
+    //     Skip kalau alamat luar Jabo supaya tidak false-match
+    if (!extractedKec && !parsed.is_non_jabo_suffix) {
       const sources = [row.kirim, row.alamat_customer, row.alamat2].filter(Boolean);
       for (const src of sources) {
         const matched = fuzzyMatchKecamatan(src);
@@ -675,7 +768,6 @@ function runRules() {
 
     if (extractedKec) {
       row._final_kecamatan = extractedKec;
-      // Kalau original kosong / berbeda → log auto-fix
       if (!row.kecamatan || row.kecamatan.toUpperCase() !== extractedKec.toUpperCase()) {
         autoFixLog.push({
           doc_no: row.doc_no, field: 'Kecamatan',
@@ -683,6 +775,14 @@ function runRules() {
           rule: 'extract_' + kecSource
         });
       }
+    } else if (parsed.is_non_jabo_suffix) {
+      // Non-Jabo addr: kasih kecamatan = city_suffix supaya routing tahu zona
+      row._final_kecamatan = parsed.city_normalized || parsed.city_suffix;
+      autoFixLog.push({
+        doc_no: row.doc_no, field: 'Kecamatan',
+        before: '(kosong)', after: row._final_kecamatan,
+        rule: 'fallback_non_jabo_suffix'
+      });
     } else {
       // Tidak bisa extract → warning
       issues.push({
@@ -901,6 +1001,7 @@ function humanIssueType(type) {
     'kirim_empty_fallback': '🟡 KIRIM kosong (ada fallback)',
     'kirim_empty_critical': '🔴 KIRIM kosong tanpa fallback',
     'alamat_short': '🟡 Alamat terlalu pendek',
+    'addr_non_jabo': '🟡 Alamat tujuan luar Jabodetabek',
     'qty_zero': '🔴 QTY = 0',
     'qty_high': '🟡 QTY anomali tinggi',
     'customer_empty': '🔴 Customer kosong',
@@ -1143,22 +1244,26 @@ function exportCleaned() {
     if (r._drop) return;
     // Build row: clone original, lalu apply final values
     const orig = r._origRow.slice(); // shallow copy
-    // Apply _final_warehouse
-    if (r._final_warehouse && r._final_warehouse !== r.warehouse) {
+
+    // Apply final warehouse (mapped: PASAR KEMIS 2 → DOYONG, dll)
+    if (r._final_warehouse) {
       orig[COL.WAREHOUSE - 1] = r._final_warehouse;
     }
-    // Apply _final_kecamatan
+    // Apply final kecamatan (extracted)
     if (r._final_kecamatan) {
       orig[COL.KECAMATAN - 1] = r._final_kecamatan;
     }
-    // Apply _final_kirim (kalau berbeda)
-    if (r._final_kirim && r._final_kirim !== r.kirim) {
+    // Apply KIRIM:
+    //   priority 1: _final_kirim (dari manual user override / fallback merge)
+    //   priority 2: r.kirim (sudah cleaned di runRules: stripped city suffix + trim)
+    if (r._final_kirim) {
       orig[COL.KIRIM - 1] = r._final_kirim;
+    } else {
+      orig[COL.KIRIM - 1] = r.kirim;
     }
-    // Apply qty kalau diubah
+    // Apply qty + customer kalau diubah manual
     orig[COL.QTY - 1] = r.qty;
     orig[COL.CUSTOMER - 1] = r.customer;
-    orig[COL.KIRIM - 1] = r.kirim || orig[COL.KIRIM - 1];
 
     exportRows.push(orig);
   });
