@@ -6,7 +6,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>GST Logistics — Driver App v4.2.3</title>
+<title>GST Logistics — Driver App v4.2.4</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <!-- Eruda Mobile DevTools — opt-in via ?debug=1 (sticky di localStorage HP) -->
 <!-- Cara pakai:                                                              -->
@@ -808,7 +808,7 @@ const CURRENT_BUILD = 'v3914-20260414';
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v4.2.3';
+const APP_VERSION    = 'v4.2.4';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -1745,6 +1745,12 @@ function openSelesaiOrGrup(docNo, qty, customer) {
 // ── GRUP MODAL STATE ──────────────────────────────────
 let grupCtx = []; // array of { doc_no, qty_kirim, qty_terima, qty_rusak, foto_do, foto_rusak, customer, alamat }
 let grupActiveIdx = 0; // index DO yang sedang difoto
+// FIX v4.2.4: deklarasi eksplisit. Sebelumnya cuma di-set implicit di openGrupCamera,
+// kalau driver test single-DO duluan → _grupCam undeclared → ReferenceError di
+// processAndSetPhoto/setPhotoResult/capturePhoto saat baca `_grupCam ? ... : ...`
+let _grupCam = null;
+// grupDoNos ditrack di openSelesaiGrup, default array kosong
+let grupDoNos = [];
 
 function openSelesaiGrup(docNos) {
   // Build grupCtx dari currentTasks
