@@ -6,7 +6,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>GST Logistics — Driver App v4.3.1</title>
+<title>GST Logistics — Driver App v4.3.2</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <!-- Eruda Mobile DevTools — opt-in via ?debug=1 (sticky di localStorage HP) -->
 <!-- Cara pakai:                                                              -->
@@ -794,7 +794,7 @@ const CURRENT_BUILD = 'v3914-20260414';
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v4.3.1';
+const APP_VERSION    = 'v4.3.2';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -2617,10 +2617,16 @@ async function capturePhoto(type, inputEl) {
 function setPhotoResult(type, b64) {
   console.log('[setPhotoResult] type='+type+' b64 len='+(b64?b64.length:0)+' grupMode='+(_grupCam?'YES('+_grupCam.docNo+')':'no')+' wizMode='+(_wizCam?'YES(step '+_wizCam.stepIdx+')':'no')+' gagalGrupMode='+(_wizGagalCam?'YES':'no'));
 
-  // v4.3.0: WIZARD SELESAI GRUP mode — simpan ke wizCtx.docs[stepIdx]
+  // v4.3.0+: WIZARD SELESAI GRUP mode
+  // - scope='step'   → simpan ke wizCtx.docs[stepIdx].foto_xxx (foto DO/rusak per-DO)
+  // - scope='shared' → simpan ke wizCtx.foto_xxx (foto SJ untuk semua DO grup)
   if (_wizCam && _wizCam.type === type) {
-    const idx = _wizCam.stepIdx;
-    if (wizCtx.docs[idx]) wizCtx.docs[idx]['foto_'+type] = b64;
+    if (_wizCam.scope === 'shared') {
+      wizCtx['foto_'+type] = b64;
+    } else {
+      const idx = _wizCam.stepIdx;
+      if (wizCtx.docs[idx]) wizCtx.docs[idx]['foto_'+type] = b64;
+    }
     _wizCam = null;
     if (wizCtx.active) renderWizardStep();
     return;
@@ -4032,9 +4038,18 @@ function closeCamera() {
 
 // ═══════════════════════════════════════════════════════
 // v4.3.0: WIZARD SELESAI GRUP — step-by-step per-DO foto+qty
+// v4.3.2: + Titip Surat Jalan di review screen (1 setting untuk semua DO grup)
 // ═══════════════════════════════════════════════════════
-let wizCtx = { active: false, step: 0, docs: [] };
-let _wizCam = null; // { stepIdx, type } — context for camera capture in wizard
+let wizCtx = {
+  active: false,
+  step: 0,
+  docs: [],
+  // Field shared (level grup, bukan per DO):
+  titip_sj : 'Tidak',  // 'Tidak' | 'Ya'
+  nama_spg : '',
+  foto_sj  : null,
+};
+let _wizCam = null; // { stepIdx, type, scope } — scope='step' simpan ke docs[stepIdx], 'shared' simpan ke wizCtx
 
 let wizGagalCtx = { active: false, doc_nos: [], alasan: '', keterangan: '', foto_gagal: null };
 let _wizGagalCam = null; // { type }
@@ -4049,6 +4064,9 @@ function openWizardSelesaiGrup(docNoCsv) {
   }
   wizCtx.active = true;
   wizCtx.step   = 0;
+  wizCtx.titip_sj = 'Tidak';
+  wizCtx.nama_spg = '';
+  wizCtx.foto_sj  = null;
   wizCtx.docs   = docNos.map(dn => {
     // FIX v4.3.0: pakai String() coercion karena t.doc_no bisa number dari GAS
     const t = currentTasks.find(x => String(x.doc_no) === String(dn)) || {};
@@ -4105,6 +4123,33 @@ function renderWizardStep() {
         <label class="form-label" style="font-size:12px">Catatan (opsional, berlaku semua DO)</label>
         <textarea id="wiz-catatan" class="form-input" rows="2" style="height:50px;resize:none"
           placeholder="Contoh: Diterima oleh Bpk. Budi"></textarea>
+      </div>
+
+      <!-- v4.3.2: Titip Surat Jalan (1 setting untuk semua DO grup) -->
+      <div style="margin-top:12px;border:1.5px solid #e2e8f0;border-radius:10px;padding:12px;background:#f8fafc">
+        <label class="form-label" style="font-size:12px">Titip Surat Jalan Asli?</label>
+        <select id="wiz-titip-sj" class="form-input" onchange="wizToggleTitipSJ(this.value)">
+          <option value="Tidak" ${wizCtx.titip_sj==='Tidak'?'selected':''}>Tidak (Dibawa Kembali)</option>
+          <option value="Ya"    ${wizCtx.titip_sj==='Ya'?'selected':''}>Ya (Dititip ke Penerima)</option>
+        </select>
+        <div id="wiz-titip-extra" style="display:${wizCtx.titip_sj==='Ya'?'block':'none'};margin-top:10px">
+          <label class="form-label" style="font-size:11px">Nama Penerima SJ <span style="color:#dc2626">*wajib</span></label>
+          <input type="text" id="wiz-nama-spg" class="form-input"
+            value="${escHtml(wizCtx.nama_spg||'')}"
+            oninput="wizCtx.nama_spg = this.value"
+            placeholder="Nama orang yang dititipi SJ">
+          <label class="form-label" style="font-size:11px;margin-top:8px">Foto Tanda Terima SJ <span style="color:#dc2626">*wajib</span></label>
+          <div onclick="wizOpenSharedCamera('sj')"
+            style="border:2px dashed ${wizCtx.foto_sj?'#16a34a':'#cbd5e1'};border-radius:10px;padding:14px;
+              text-align:center;cursor:pointer;background:${wizCtx.foto_sj?'#f0fdf4':'#f8fafc'};min-height:100px">
+            ${wizCtx.foto_sj
+              ? `<img src="${wizCtx.foto_sj}" style="max-width:100%;max-height:140px;border-radius:6px">
+                 <div style="font-size:11px;color:#16a34a;margin-top:4px;font-weight:600">✓ Foto SJ OK · Tap untuk ambil ulang</div>`
+              : `<i class="fas fa-camera" style="color:#94a3b8;font-size:24px"></i>
+                 <div style="font-size:11px;color:#64748b;margin-top:4px">Tap untuk foto SJ yang dititip</div>`
+            }
+          </div>
+        </div>
       </div>
     `;
     backBtn.style.display = 'inline-flex';
@@ -4199,8 +4244,20 @@ function wizAdjQty(field, delta) {
 }
 
 function wizOpenCamera(type) {
-  _wizCam = { stepIdx: wizCtx.step, type };
+  _wizCam = { stepIdx: wizCtx.step, type, scope: 'step' };
   openCamera(type);
+}
+
+// v4.3.2: Camera untuk foto SJ shared (1 foto untuk semua DO grup)
+function wizOpenSharedCamera(type) {
+  _wizCam = { stepIdx: -1, type, scope: 'shared' };
+  openCamera(type);
+}
+
+function wizToggleTitipSJ(val) {
+  wizCtx.titip_sj = val;
+  // Re-render review screen
+  renderWizardStep();
 }
 
 function wizNext() {
@@ -4227,6 +4284,20 @@ function wizBack() {
 
 async function wizSubmitAll() {
   const catatan = (document.getElementById('wiz-catatan')?.value)||'';
+
+  // v4.3.2: validate titip SJ kalau Ya
+  const titipSJ = wizCtx.titip_sj || 'Tidak';
+  if (titipSJ === 'Ya') {
+    if (!wizCtx.nama_spg || !wizCtx.nama_spg.trim()) {
+      alert('Nama penerima SJ wajib diisi');
+      return;
+    }
+    if (!wizCtx.foto_sj) {
+      alert('Foto tanda terima SJ wajib diambil');
+      return;
+    }
+  }
+
   const total = wizCtx.docs.length;
   const docNos = wizCtx.docs.map(d => d.doc_no);
 
@@ -4264,13 +4335,13 @@ async function wizSubmitAll() {
       qty_terima  : d.qty_terima,
       qty_rusak   : d.qty_rusak,
       catatan     : catatan,
-      titip_sj    : 'Tidak',
-      nama_spg    : '',
+      titip_sj    : titipSJ,
+      nama_spg    : titipSJ==='Ya' ? wizCtx.nama_spg : '',
       jabatan_spg : '',
       gps_coords  : modalCtx.gps_coords || '',
       foto_do     : d.foto_do,
       foto_rusak  : d.qty_rusak>0 ? d.foto_rusak : null,
-      foto_sj     : null,
+      foto_sj     : titipSJ==='Ya' ? wizCtx.foto_sj : null,
       timestamp   : new Date().toISOString(),
     };
     _trySubmit(payload, d.doc_no); // fire and forget
