@@ -545,12 +545,8 @@ body.dispatch-active .dispatch-bar{display:flex}
     <button class="tab-btn" onclick="switchTab('settlement',this)">📋 Settlement T+1</button>
     <button class="tab-btn" onclick="switchTab('history',this)" title="Lihat rute hari sebelumnya — read-only, untuk audit & recall">📅 History</button>
     <div class="tb-right">
-      <button class="tb-btn g" onclick="exportExcel()">⬇ Excel</button>
-      <button class="tb-btn" onclick="printPickingList()">📋 Picking List</button>
-      <button class="tb-btn" onclick="openTambahDO()" style="background:#7c3aed;color:#fff;border-color:#7c3aed" title="Tambah DO manual untuk kendaraan yang sudah ada">➕ Tambah DO</button>
-      <button class="tb-btn" onclick="printAll()">🖨 Print SJ</button>
       <a href="dispatcher_map.html" target="_blank" class="tb-btn" title="Live Monitoring GPS kendaraan (buka tab baru)" style="color:#fff;background:#2563eb;border-color:#1d4ed8;font-weight:700;text-decoration:none;display:inline-flex;align-items:center">🗺 Monitor</a>
-      <button id="btn-dispatch" class="tb-btn" onclick="toggleDispatchMode()" title="Mode operasional saat muat — Skip/Cancel/Partial/Pindah per DO" style="background:#059669;color:#fff;border-color:#047857;font-weight:700">🚛 Dispatch</button>
+      <button id="btn-dispatch" class="tb-btn" onclick="toggleDispatchMode()" title="Mode operasional saat muat — Skip/Cancel/Pindah per DO. Sebagian besar action operasional ada di sini setelah dispatch aktif." style="background:#059669;color:#fff;border-color:#047857;font-weight:700">🚛 Dispatch</button>
       <button class="tb-btn" onclick="resetApp()">↩ Upload Baru</button>
       <div id="user-badge" style="display:flex;align-items:center;gap:6px;padding:4px 10px;background:#1e3a5f;border-radius:8px;border:1px solid #334155;margin-left:4px">
         <div id="user-badge-dot" style="width:7px;height:7px;border-radius:50%;background:#22c55e;flex-shrink:0"></div>
@@ -569,11 +565,15 @@ body.dispatch-active .dispatch-bar{display:flex}
     <span id="dispatch-summary" style="opacity:.8;font-weight:400;font-size:10px"></span>
     <span id="dispatch-dirty-badge" style="display:none;background:#dc2626;color:#fff;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;animation:pulse 2s infinite">⚠ BELUM SYNC</span>
     <div style="flex:1"></div>
-    <!-- v4.47 E: Sync pindah ke dispatch bar (di antara Dispatch dan WA Blast) -->
-    <button id="btn-sync-dispatch" class="daction-btn" onclick="syncToGSheets()" style="background:#fff;color:#064e3b;padding:4px 14px;font-size:11px;font-weight:700" title="Sync routing terbaru ke Google Sheets + kirim tugas ke driver app">☁ Sync</button>
-    <button class="daction-btn wa" onclick="generateWABlast()" style="padding:4px 14px;font-size:11px">📱 Generate WA Blast</button>
-    <button class="daction-btn" onclick="printSJRevisi()" style="background:#fff;color:#064e3b;padding:4px 14px;font-size:11px">🖨 Print SJ Revisi</button>
-    <button onclick="showDispatchLog()" style="background:transparent;color:#86efac;border:1px solid #86efac;border-radius:5px;padding:3px 10px;font-size:10px;cursor:pointer">📋 Log (${0})</button>
+    <!-- v4.47: Tombol operasional pindah ke dispatch bar (Tambah DO, Excel, Picking, Print SJ, Sync, WA Blast) -->
+    <button class="daction-btn" onclick="openTambahDO()" style="background:#7c3aed;color:#fff;padding:4px 12px;font-size:11px;font-weight:700" title="Tambah DO manual">➕ Tambah DO</button>
+    <button class="daction-btn" onclick="exportExcel()" style="background:#fff;color:#064e3b;padding:4px 12px;font-size:11px" title="Export routing ke Excel">⬇ Excel</button>
+    <button class="daction-btn" onclick="printPickingList()" style="background:#fff;color:#064e3b;padding:4px 12px;font-size:11px" title="Cetak picking list per kendaraan">📋 Picking</button>
+    <button class="daction-btn" onclick="printAll()" style="background:#fff;color:#064e3b;padding:4px 12px;font-size:11px" title="Cetak Surat Jalan original (sebelum revisi dispatch)">🖨 Print SJ</button>
+    <button id="btn-sync-dispatch" class="daction-btn" onclick="syncToGSheets()" style="background:#fff;color:#064e3b;padding:4px 12px;font-size:11px;font-weight:700" title="Sync routing terbaru ke Google Sheets + kirim tugas ke driver app">☁ Sync</button>
+    <button class="daction-btn wa" onclick="generateWABlast()" style="padding:4px 12px;font-size:11px" title="Generate pesan WA per kendaraan">📱 WA Blast</button>
+    <button class="daction-btn" onclick="printSJRevisi()" style="background:#fff;color:#064e3b;padding:4px 12px;font-size:11px" title="Print SJ Revisi setelah ada perubahan">🖨 SJ Revisi</button>
+    <button onclick="showDispatchLog()" style="background:transparent;color:#86efac;border:1px solid #86efac;border-radius:5px;padding:3px 10px;font-size:10px;cursor:pointer" title="Lihat log perubahan dispatch">📋 Log</button>
   </div>
   <div class="kpi-bar" id="kpi-bar"></div>
 
@@ -2821,7 +2821,7 @@ function downloadDeferred(){
   if(!deferred.length){alert('Tidak ada data ditunda');return;}
   const wb=XLSX.utils.book_new();
   const h=['DO No','Gudang','Customer','Tujuan Kirim','QTY','Tanggal Kirim','Remarks'];
-  const rows=[h,...deferred.map(r=>[r.doc_no,r.wh_cons,r.customer,r.kirim.slice(0,100),r.qty,r.deferred_date||'',r.remarks.slice(0,100)])];
+  const rows=[h,...deferred.map(r=>[r.doc_no,r.wh_cons,r.customer,String(r.kirim||'').slice(0,100),r.qty,r.deferred_date||'',String(r.remarks||'').slice(0,100)])];
   const ws=XLSX.utils.aoa_to_sheet(rows);
   ws['!cols']=[{wch:14},{wch:20},{wch:30},{wch:60},{wch:8},{wch:14},{wch:60}];
   XLSX.utils.book_append_sheet(wb,ws,'Ditunda');
@@ -2838,7 +2838,7 @@ function downloadVendorDO(filter){
   const h=['DO No','Gudang','Customer','Tujuan Kirim','QTY','Volume (m³)','Alasan','Vendor Assigned'];
   const rows=[h,...items.map(r=>{
     const v=vendorState.find(vs=>vs.assigned_dos&&vs.assigned_dos.includes(r));
-    return [r.doc_no,r.wh_cons,r.customer,r.kirim.slice(0,80),r.qty,(r.total_vol||0).toFixed(3),r.vendor_reason||'',v?v.nama:'—'];
+    return [r.doc_no,r.wh_cons,r.customer,String(r.kirim||'').slice(0,80),r.qty,(r.total_vol||0).toFixed(3),r.vendor_reason||'',v?v.nama:'—'];
   })];
   const ws=XLSX.utils.aoa_to_sheet(rows);
   ws['!cols']=[{wch:14},{wch:20},{wch:30},{wch:60},{wch:8},{wch:12},{wch:60},{wch:30}];
@@ -5490,7 +5490,7 @@ function renderSkipped(){
     <td style="font-family:var(--mono);font-size:10px">${r.doc_no}</td>
     <td>${r.wh_cons}</td>
     <td>${r.customer.slice(0,30)}</td>
-    <td style="color:var(--muted);max-width:200px">${r.kirim.slice(0,60)}</td>
+    <td style="color:var(--muted);max-width:200px">${String(r.kirim||"").slice(0,60)}</td>
     <td style="font-family:var(--mono);font-weight:600">${r.qty}</td>
     <td style="font-size:10px;color:var(--red)">${r.skip_reason||'—'}</td>
   </tr>`).join('');
@@ -5502,7 +5502,7 @@ function renderDeferred(){
     <td style="font-family:var(--mono);font-size:10px">${r.doc_no}</td>
     <td>${r.wh_cons}</td>
     <td>${r.customer.slice(0,30)}</td>
-    <td style="color:var(--muted);max-width:200px">${r.kirim.slice(0,60)}</td>
+    <td style="color:var(--muted);max-width:200px">${String(r.kirim||"").slice(0,60)}</td>
     <td style="font-family:var(--mono);font-weight:600">${r.qty}</td>
     <td style="font-family:var(--mono);font-size:10px;color:var(--amber)">${r.deferred_date||'—'}</td>
   </tr>`).join('');
@@ -6437,9 +6437,15 @@ function dispatchAction(routeId,docKeyStr,action,evt){
       }
     });
   } else if(action==='pindah'){
-    // Build opsi kendaraan lain
+    // Build opsi kendaraan lain (v4.47: + vendor di optgroup terpisah)
     const otherRoutes=routes.filter(r=>r.id!==rid);
-    const opts=otherRoutes.map(r=>`<option value="${r.id}">${r.vehicle.plat} / ${r.vehicle.driver} | ${r.wh.replace('GUDANG ','')} (${r.total_km||0}km)</option>`).join('');
+    const internalOpts=otherRoutes.map(r=>`<option value="${r.id}">${r.vehicle.plat} / ${r.vehicle.driver} | ${r.wh.replace('GUDANG ','')} (${r.total_km||0}km)</option>`).join('');
+    let vendorOpts='';
+    if (vendorList && vendorList.length > 0) {
+      vendorOpts = vendorList.map(vd => `<option value="VEN_${vd.kode}">${vd.kode} | ${vd.nama}</option>`).join('');
+    }
+    const opts = `<optgroup label="🚛 ARMADA INTERNAL">${internalOpts}</optgroup>` +
+                 (vendorOpts ? `<optgroup label="🤝 VENDOR / SUB KONTRAK">${vendorOpts}</optgroup>` : '');
     showDispatchModal({
       title:'→ Pindah Kendaraan',
       color:'#6b21a8', bg:'#f3e8ff',
@@ -6449,7 +6455,36 @@ function dispatchAction(routeId,docKeyStr,action,evt){
         {id:'alasan',label:'Alasan pindah',placeholder:'kendaraan breakdown / kapasitas lebih baik / ...'},
       ],
       onOk:(vals)=>{
-        const targetId=parseInt(vals.target_route);
+        const targetVal = String(vals.target_route||'');
+        // v4.47 A2: Branch — kalau target = VEN_<kode>, pindah DO ke vendorItems
+        if (targetVal.startsWith('VEN_')) {
+          const vendorKode = targetVal.substring(4);
+          const vendor = vendorList.find(v => v.kode === vendorKode);
+          if (!vendor) { alert('Vendor tidak ditemukan'); return; }
+          docNos.forEach(dn=>{
+            setRoutesDirty(true);
+            dispatchLog.push({route_id:rid,doc_no:dn,action:'pindah_vendor',
+              target_vendor:vendor.kode, target_vendor_nama:vendor.nama,
+              alasan:vals.alasan,
+              waktu:new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
+              plat:route.vehicle.plat,driver:route.vehicle.driver});
+            const moveItems=route.items.filter(i=>i.doc_no===dn);
+            moveItems.forEach(mi=>{
+              route.items.splice(route.items.indexOf(mi),1);
+              // Tag manual vendor sebelum push ke vendorItems
+              mi.manual_vendor_kode = vendor.kode;
+              mi.is_manual_vendor   = true;
+              mi.vendor_reason      = vals.alasan || 'Pindah ke vendor dari dispatch';
+              mi.vendor_trigger_reason = mi.vendor_reason;
+              vendorItems.push(mi);
+            });
+          });
+          biayaData[route.id]=calcBiaya(route);
+          updateDispatchBar(); renderRouting(); renderVendor && renderVendor(); renderBiaya();
+          return;
+        }
+        // BRANCH KENDARAAN INTERNAL (existing flow)
+        const targetId=parseInt(targetVal);
         const targetRoute=routes.find(r=>r.id===targetId);
         if(!targetRoute){alert('Kendaraan tidak ditemukan');return;}
         docNos.forEach(dn=>{
@@ -6742,7 +6777,8 @@ function setWH(wh,btn){
     if(['fb-r1','fb-r2','fb-knek','fb-prio','fb-warn'].includes(b.id)) return;
     b.classList.remove('on');
   });
-  btn.classList.add('on');renderRouting();
+  if (btn && btn.classList) btn.classList.add('on');
+  renderRouting();
 }
 function toggleF(f,btn){
   if(f==='r1') fR1=!fR1;
@@ -7082,6 +7118,9 @@ function exportExcel(){
   const wbx=XLSX.utils.book_new();
 
   // Sheet 1: Routing Plan
+  // v4.47 helper: cegah .slice error kalau field null/undefined
+  const _s = (v, n) => String(v == null ? '' : v).slice(0, n || 9999);
+
   const h1=['Rute','Trip','Plat','Driver','Tipe','Gudang','Stop','Urutan Muat','DO No',
     'Customer','Nama Barang','Shade','Size','QTY','UOM','Tujuan Kirim','Kecamatan',
     'Zona','KNEK','Engkel','Prioritas','ETA Selesai','Flag','Remarks'];
@@ -7094,29 +7133,29 @@ function exportExcel(){
       rows1.push([r.route_no,tripLabel,r.vehicle.plat,r.vehicle.driver,r.vehicle.tipe,r.wh,
         i.stop_order,i.load_order,i.doc_no,i.customer,i.stock_name,i.shade,i.size,
         i.qty,i.uom,i.kirim,i.kecamatan,i.zona,
-        i.needs_knek?'Y':'',i.force_cde?'Y':'',i.priority,r.eta_selesai,manualFlag,i.remarks.slice(0,100)]);
+        i.needs_knek?'Y':'',i.force_cde?'Y':'',i.priority,r.eta_selesai,manualFlag,_s(i.remarks,100)]);
     });
   });
   XLSX.utils.book_append_sheet(wbx,XLSX.utils.aoa_to_sheet(rows1),'Routing Plan');
 
   // Sheet 2: Transfer Gudang
   const h2=['DO No','Gudang Asal','Ke Gudang','Customer','Barang','QTY','Keterangan'];
-  const rows2=[h2,...transferItems.map(r=>[r.doc_no,r.wh_cons,r.transfer_to,r.customer,r.stock_name,r.qty,r.kirim.slice(0,100)])];
+  const rows2=[h2,...transferItems.map(r=>[r.doc_no,r.wh_cons,r.transfer_to,r.customer,r.stock_name,r.qty,_s(r.kirim,100)])];
   XLSX.utils.book_append_sheet(wbx,XLSX.utils.aoa_to_sheet(rows2),'Transfer Gudang');
 
   // Sheet 3: Ambil Sendiri (rename dari Dilewati di v4.47)
   const h3=['DO No','Gudang','Customer','Tujuan','QTY','Alasan'];
-  const rows3=[h3,...skipped.map(r=>[r.doc_no,r.wh_cons,r.customer,r.kirim.slice(0,80),r.qty,r.skip_reason])];
+  const rows3=[h3,...skipped.map(r=>[r.doc_no,r.wh_cons,r.customer,_s(r.kirim,80),r.qty,r.skip_reason||''])];
   XLSX.utils.book_append_sheet(wbx,XLSX.utils.aoa_to_sheet(rows3),'Ambil Sendiri');
 
   // Sheet 4: Ditunda
   const h4=['DO No','Gudang','Customer','Tujuan','QTY','Tanggal Kirim'];
-  const rows4=[h4,...deferred.map(r=>[r.doc_no,r.wh_cons,r.customer,r.kirim.slice(0,80),r.qty,r.deferred_date])];
+  const rows4=[h4,...deferred.map(r=>[r.doc_no,r.wh_cons,r.customer,_s(r.kirim,80),r.qty,r.deferred_date||''])];
   XLSX.utils.book_append_sheet(wbx,XLSX.utils.aoa_to_sheet(rows4),'Ditunda');
 
   // Sheet 5: Vendor
   const h5=['DO No','Gudang','Customer','Tujuan','QTY','Alasan'];
-  const rows5=[h5,...vendorItems.map(r=>[r.doc_no,r.wh_cons,r.customer,r.kirim.slice(0,80),r.qty,r.vendor_reason])];
+  const rows5=[h5,...vendorItems.map(r=>[r.doc_no,r.wh_cons,r.customer,_s(r.kirim,80),r.qty,r.vendor_reason||''])];
   XLSX.utils.book_append_sheet(wbx,XLSX.utils.aoa_to_sheet(rows5),'Vendor');
 
   // Sheet 6: Biaya Operasional
@@ -7822,7 +7861,7 @@ function renderLuarKotaPending(){
       <td>${r.wh_cons}</td>
       <td>${r.customer.slice(0,28)}</td>
       <td style="font-weight:600;color:${r.defer_type==='auto'?'var(--orange)':'#1d4ed8'}">${r.kota_tujuan||r.luar_kota_area||'—'}</td>
-      <td style="color:var(--muted);max-width:180px;font-size:10px">${r.kirim.slice(0,55)}</td>
+      <td style="color:var(--muted);max-width:180px;font-size:10px">${String(r.kirim||"").slice(0,55)}</td>
       <td style="font-family:var(--mono);font-weight:600">${r.qty}</td>
       <td style="font-family:var(--mono);font-size:10px">${(r.total_vol||0).toFixed(3)}</td>
       <td>
@@ -7898,7 +7937,7 @@ function downloadLuarKotaPending(){
     const rows=[h,...luarKotaPending.map(r=>[
       r.doc_no,r.wh_cons,r.customer,r.luar_kota_area||'',r.kirim,
       r.stock_name,r.shade,r.size,r.qty,r.uom||'DUS',
-      (r.total_vol||0).toFixed(3),r.remarks.slice(0,100),
+      (r.total_vol||0).toFixed(3),String(r.remarks||'').slice(0,100),
       r.pending_current_m3||'',r.pending_threshold_m3||'',
       (r.pending_pct||0)+'%',r.pending_reason||''
     ])];
@@ -8315,11 +8354,15 @@ function downloadHistoryExcel(dateStr) {
 }
 
 function switchTab(tab,btn){
+  // v4.47: redirect old tab name 'deferred' → 'luarkota' (digabung)
+  if (tab === 'deferred') tab = 'luarkota';
   document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('tab-'+tab).classList.add('active');
-  btn.classList.add('active');
-  document.getElementById('fbar').style.display=tab==='routing'?'flex':'none';
+  const pane = document.getElementById('tab-'+tab);
+  if (pane) pane.classList.add('active');
+  if (btn) btn.classList.add('active');
+  const fbar = document.getElementById('fbar');
+  if (fbar) fbar.style.display = (tab==='routing'?'flex':'none');
   if(tab==='map') setTimeout(updateLiveMarkersOnMap, 200);
   if(tab==='map'){setTimeout(()=>{initMap();renderMap();},100);}
   if(tab==='vendor'){renderVendorTab();}
