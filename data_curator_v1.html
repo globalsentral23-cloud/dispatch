@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Data Curator v1.0 — GST Logistics</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg: #f8fafc; --card: #fff; --border: #e2e8f0; --text: #0b1f3a; --muted: #64748b;
+  --primary: #1e3a8a; --accent: #2563eb;
+  --critical: #dc2626; --critical-bg: #fee2e2;
+  --warning: #d97706; --warning-bg: #fef3c7;
+  --success: #16a34a; --success-bg: #f0fdf4;
+  --info: #0891b2; --info-bg: #ecfeff;
+  --mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--text); font-size: 13px; }
+
+/* Header */
+.app-header {
+  background: linear-gradient(135deg, #1e3a8a, #1e40af);
+  color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.1);
+}
+.app-logo { font-size: 16px; font-weight: 800; letter-spacing: 0.5px; }
+.app-version { background: rgba(255,255,255,.15); padding: 2px 10px; border-radius: 6px; font-size: 11px; font-family: var(--mono); }
+.app-tagline { font-size: 11px; opacity: .85; flex: 1; }
+.app-date { font-family: var(--mono); font-size: 11px; opacity: .9; }
+
+/* Tabs */
+.tab-bar { background: #fff; border-bottom: 1px solid var(--border); padding: 0 20px; display: flex; gap: 2px; overflow-x: auto; }
+.tab-btn {
+  background: none; border: none; padding: 12px 18px; font-size: 13px; font-weight: 600;
+  color: var(--muted); cursor: pointer; border-bottom: 3px solid transparent;
+  transition: all .15s; white-space: nowrap;
+}
+.tab-btn:hover { color: var(--text); background: #f1f5f9; }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-btn .badge {
+  display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 9px;
+  font-size: 10px; font-weight: 700; min-width: 16px; text-align: center;
+}
+.tab-btn .badge.critical { background: var(--critical); color: #fff; }
+.tab-btn .badge.warning { background: var(--warning); color: #fff; }
+.tab-btn .badge.success { background: var(--success); color: #fff; }
+.tab-btn .badge.info { background: var(--muted); color: #fff; }
+
+/* Pane */
+.pane { display: none; padding: 20px; max-width: 1400px; margin: 0 auto; }
+.pane.active { display: block; }
+
+/* Upload area */
+.upload-zone {
+  background: #fff; border: 2px dashed #cbd5e1; border-radius: 12px;
+  padding: 40px 20px; text-align: center; cursor: pointer; transition: all .2s;
+  margin-bottom: 16px;
+}
+.upload-zone:hover, .upload-zone.dragover { border-color: var(--accent); background: #eff6ff; }
+.upload-zone.has-file { border-style: solid; border-color: var(--success); background: var(--success-bg); }
+.upload-icon { font-size: 36px; margin-bottom: 8px; opacity: .6; }
+.upload-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+.upload-sub { font-size: 12px; color: var(--muted); }
+.upload-zone.has-file .upload-icon, .upload-zone.has-file .upload-sub { opacity: .9; color: #15803d; }
+
+/* Cards */
+.card { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+.card-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+
+/* Summary stats grid */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat-box { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+.stat-box.critical { border-left: 4px solid var(--critical); }
+.stat-box.warning { border-left: 4px solid var(--warning); }
+.stat-box.success { border-left: 4px solid var(--success); }
+.stat-box.info { border-left: 4px solid var(--info); }
+.stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+.stat-value { font-size: 24px; font-weight: 800; margin-top: 4px; font-family: var(--mono); }
+.stat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* Buttons */
+.btn { padding: 8px 16px; border: 1px solid var(--border); border-radius: 8px; background: #fff;
+       font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s; font-family: var(--sans); }
+.btn:hover { background: #f1f5f9; }
+.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-primary:hover { background: #1d4ed8; }
+.btn-success { background: var(--success); color: #fff; border-color: var(--success); }
+.btn-success:hover { background: #15803d; }
+.btn-warn { background: var(--warning); color: #fff; border-color: var(--warning); }
+.btn-warn:hover { background: #b45309; }
+.btn-danger { background: var(--critical); color: #fff; border-color: var(--critical); }
+.btn-danger:hover { background: #b91c1c; }
+.btn-sm { padding: 4px 10px; font-size: 11px; }
+.btn-disabled, .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* Issue rows */
+.issue-list { display: flex; flex-direction: column; gap: 8px; }
+.issue-row {
+  background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px;
+  display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start;
+}
+.issue-row.critical { border-left: 4px solid var(--critical); }
+.issue-row.warning { border-left: 4px solid var(--warning); }
+.issue-row.fixed { border-left: 4px solid var(--success); opacity: .7; }
+.issue-row.dropped { background: #f1f5f9; opacity: .5; }
+.issue-meta { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.issue-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.issue-desc { font-size: 12px; color: var(--text); line-height: 1.5; }
+.issue-suggest { background: #eff6ff; border-left: 3px solid var(--accent); padding: 6px 10px; margin-top: 6px; font-size: 11px; border-radius: 4px; }
+.issue-actions { display: flex; flex-direction: column; gap: 4px; min-width: 110px; }
+.issue-actions .btn { white-space: nowrap; }
+
+.kbd-tag { background: #f1f5f9; border: 1px solid var(--border); padding: 1px 6px; border-radius: 4px; font-family: var(--mono); font-size: 10px; }
+
+/* Filter chips */
+.filter-bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+.chip { padding: 4px 10px; border-radius: 14px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: #fff; }
+.chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Tables */
+.tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
+.tbl th { background: #f8fafc; text-align: left; padding: 8px 10px; font-weight: 700; color: var(--muted); border-bottom: 1px solid var(--border); }
+.tbl td { padding: 6px 10px; border-bottom: 1px solid #f1f5f9; }
+.tbl tr:hover td { background: #fafbfc; }
+
+/* Modal */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 9000; align-items: center; justify-content: center; }
+.modal-overlay.show { display: flex; }
+.modal-box { background: #fff; border-radius: 12px; padding: 22px; width: 460px; max-width: 92vw; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+.modal-title { font-size: 16px; font-weight: 800; margin-bottom: 12px; }
+.modal-input { width: 100%; padding: 9px 11px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 13px; font-family: var(--sans); }
+.modal-input:focus { outline: none; border-color: var(--accent); }
+
+/* Empty state */
+.empty { text-align: center; padding: 40px 20px; color: var(--muted); }
+.empty-icon { font-size: 40px; margin-bottom: 10px; opacity: .4; }
+
+/* Toast */
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: #0b1f3a; color: #fff; padding: 12px 20px; border-radius: 10px;
+  font-size: 13px; font-weight: 600; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,.2);
+  opacity: 0; transition: opacity .2s; }
+.toast.show { opacity: 1; }
+
+/* Action bar bottom */
+.action-bar { background: #fff; border-top: 1px solid var(--border); padding: 12px 20px;
+  display: flex; gap: 10px; justify-content: flex-end; align-items: center;
+  position: sticky; bottom: 0; box-shadow: 0 -2px 8px rgba(0,0,0,.04); }
+.action-bar .summary-text { flex: 1; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <div class="app-logo">📋 DATA CURATOR</div>
+  <div class="app-version">v1.0</div>
+  <div class="app-tagline">Pre-flight check & cleaning data SAP/PG sebelum dispatch besok</div>
+  <div class="app-date" id="hdr-date">—</div>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn active" data-tab="upload">📤 Upload</button>
+  <button class="tab-btn" data-tab="summary">📋 Summary</button>
+  <button class="tab-btn" data-tab="critical">🔴 Critical <span class="badge critical" id="cnt-critical">0</span></button>
+  <button class="tab-btn" data-tab="warning">🟡 Warning <span class="badge warning" id="cnt-warning">0</span></button>
+  <button class="tab-btn" data-tab="autofix">🟢 Auto-fixed <span class="badge success" id="cnt-autofix">0</span></button>
+  <button class="tab-btn" data-tab="dropped">🗑 Dropped <span class="badge info" id="cnt-dropped">0</span></button>
+  <button class="tab-btn" data-tab="history">📊 History</button>
+</div>
+
+<!-- TAB: UPLOAD -->
+<div class="pane active" id="pane-upload">
+  <div class="card">
+    <div class="card-title">📥 Upload File SAP DO (Excel)</div>
+    <div class="upload-zone" id="upload-sap">
+      <div class="upload-icon">📄</div>
+      <div class="upload-title" id="sap-filename">Klik atau drag file SAP DO di sini</div>
+      <div class="upload-sub">Format Excel (.xlsx) — tab "Sheet1"</div>
+    </div>
+    <input type="file" id="file-sap" accept=".xlsx,.xls" style="display:none">
+  </div>
+
+  <div class="card">
+    <div class="card-title">📥 Upload File PG (Picking — opsional)</div>
+    <div class="upload-zone" id="upload-pg">
+      <div class="upload-icon">📋</div>
+      <div class="upload-title" id="pg-filename">Klik atau drag file PG di sini (opsional)</div>
+      <div class="upload-sub">Akan auto-merge dengan SAP berdasarkan No DO</div>
+    </div>
+    <input type="file" id="file-pg" accept=".xlsx,.xls" style="display:none">
+  </div>
+
+  <div style="display:flex;gap:10px;margin-top:16px">
+    <button class="btn btn-primary" id="btn-validate" onclick="runValidation()" disabled>
+      🔍 Run Validation
+    </button>
+    <button class="btn" onclick="resetAll()">↻ Reset</button>
+  </div>
+
+  <!-- Help text -->
+  <div class="card" style="background:#fffbeb;border-color:#fde68a">
+    <div class="card-title" style="color:#92400e">💡 Workflow</div>
+    <div style="font-size:12px;color:#92400e;line-height:1.7">
+      <strong>Sore hari:</strong> upload file SAP yg di-export untuk dispatch besok →
+      klik <strong>Run Validation</strong> →
+      app cek otomatis (filter warehouse non-Jabodetabek, deteksi AS, extract kecamatan, fuzzy match typo) →
+      review tab <strong>Critical</strong> & <strong>Warning</strong> →
+      klik <strong>Export Cleaned Data</strong> di bawah → file XLSX siap dipakai pagi besok di Routing Optimizer.
+    </div>
+  </div>
+</div>
+
+<!-- TAB: SUMMARY -->
+<div class="pane" id="pane-summary">
+  <div class="empty" id="summary-empty">
+    <div class="empty-icon">📊</div>
+    <div>Upload file & run validation dulu untuk lihat ringkasan.</div>
+  </div>
+  <div id="summary-content" style="display:none">
+    <div class="stat-grid">
+      <div class="stat-box info">
+        <div class="stat-label">Total Row Loaded</div>
+        <div class="stat-value" id="s-total">0</div>
+        <div class="stat-sub" id="s-total-sub">— DO unique</div>
+      </div>
+      <div class="stat-box success">
+        <div class="stat-label">✅ Clean (no issues)</div>
+        <div class="stat-value" id="s-clean">0</div>
+        <div class="stat-sub" id="s-clean-sub">—</div>
+      </div>
+      <div class="stat-box success">
+        <div class="stat-label">🟢 Auto-fixed</div>
+        <div class="stat-value" id="s-autofix">0</div>
+        <div class="stat-sub" id="s-autofix-sub">whitespace, dll</div>
+      </div>
+      <div class="stat-box warning">
+        <div class="stat-label">🟡 Warning</div>
+        <div class="stat-value" id="s-warning">0</div>
+        <div class="stat-sub">need review</div>
+      </div>
+      <div class="stat-box critical">
+        <div class="stat-label">🔴 Critical</div>
+        <div class="stat-value" id="s-critical">0</div>
+        <div class="stat-sub">must-fix</div>
+      </div>
+      <div class="stat-box info">
+        <div class="stat-label">🗑 Dropped</div>
+        <div class="stat-value" id="s-dropped">0</div>
+        <div class="stat-sub" id="s-dropped-sub">non-Jabo / AS</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Top issue patterns</div>
+      <div id="top-issues">—</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Distribusi per Warehouse (sebelum filter)</div>
+      <div id="wh-distribution">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB: CRITICAL -->
+<div class="pane" id="pane-critical">
+  <div class="filter-bar">
+    <div style="font-size:12px;font-weight:700;color:var(--muted)">Issues yang harus diperbaiki sebelum lanjut.</div>
+  </div>
+  <div class="issue-list" id="list-critical"><div class="empty"><div class="empty-icon">✅</div>Tidak ada critical issue.</div></div>
+</div>
+
+<!-- TAB: WARNING -->
+<div class="pane" id="pane-warning">
+  <div class="filter-bar">
+    <span class="chip active" data-filter="all" onclick="filterWarning('all', this)">Semua</span>
+    <span class="chip" data-filter="kecamatan" onclick="filterWarning('kecamatan', this)">Kecamatan</span>
+    <span class="chip" data-filter="alamat" onclick="filterWarning('alamat', this)">Alamat</span>
+    <span class="chip" data-filter="qty" onclick="filterWarning('qty', this)">QTY anomali</span>
+    <span class="chip" data-filter="customer" onclick="filterWarning('customer', this)">Customer baru</span>
+  </div>
+  <div class="issue-list" id="list-warning"><div class="empty"><div class="empty-icon">🟢</div>Tidak ada warning.</div></div>
+</div>
+
+<!-- TAB: AUTO-FIX -->
+<div class="pane" id="pane-autofix">
+  <div class="filter-bar">
+    <div style="font-size:12px;color:var(--muted)">Audit log auto-fix yang dilakukan otomatis. Read-only.</div>
+  </div>
+  <div class="card">
+    <table class="tbl"><thead><tr>
+      <th>DO No</th><th>Field</th><th>Before</th><th>After</th><th>Rule</th>
+    </tr></thead><tbody id="tbody-autofix"></tbody></table>
+  </div>
+</div>
+
+<!-- TAB: DROPPED -->
+<div class="pane" id="pane-dropped">
+  <div class="filter-bar">
+    <div style="font-size:12px;color:var(--muted)">Row yg di-drop otomatis (non-Jabodetabek warehouse, atau AS auto-detect).</div>
+  </div>
+  <div class="card">
+    <table class="tbl"><thead><tr>
+      <th>DO No</th><th>Customer</th><th>Warehouse</th><th>KIRIM</th><th>Alasan Drop</th>
+    </tr></thead><tbody id="tbody-dropped"></tbody></table>
+  </div>
+</div>
+
+<!-- TAB: HISTORY -->
+<div class="pane" id="pane-history">
+  <div class="card">
+    <div class="card-title">📊 Audit log 90 hari terakhir</div>
+    <div class="empty">
+      <div class="empty-icon">📊</div>
+      Audit log akan tersedia setelah curator dipakai beberapa hari.<br>
+      <small>(History sync ke Google Sheets — fitur Phase 2)</small>
+    </div>
+  </div>
+</div>
+
+<!-- ACTION BAR (bottom sticky) -->
+<div class="action-bar" id="action-bar" style="display:none">
+  <div class="summary-text" id="action-summary">—</div>
+  <button class="btn" onclick="downloadAuditJSON()">📋 Audit JSON</button>
+  <button class="btn btn-success" id="btn-export" onclick="exportCleaned()" disabled>
+    ⬇ Export Cleaned Data
+  </button>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Modal: Edit field manual -->
+<div class="modal-overlay" id="modal-edit">
+  <div class="modal-box">
+    <div class="modal-title" id="modal-title">Edit Field</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px" id="modal-context">—</div>
+    <input type="text" class="modal-input" id="modal-input" placeholder="Nilai baru...">
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button class="btn" onclick="closeEditModal()">Batal</button>
+      <button class="btn btn-primary" onclick="saveEdit()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<script>
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MASTER KECAMATAN — embedded inline (avoid CORS untuk file:// dan GitHub Pages)
+// ═══════════════════════════════════════════════════════════════════════════
+const MASTER_KECAMATAN = {"_meta":{"version":"1.0","source":"Jabodetabek administrative divisions (BPS-aligned)","total_kecamatan":248,"build_date":"2026-04-26","format":{"name":"kecamatan name (UPPERCASE)","kota":"kota/kabupaten parent","zona":"zona untuk routing clustering","lat":"latitude approx (centroid kecamatan)","lon":"longitude approx","aliases":"common typos / alternate spellings"}},"kecamatan":{"GAMBIR":{"kota":"JAKARTA PUSAT","zona":"JAKPUS","lat":-6.176,"lon":106.831,"aliases":[]},"TANAH ABANG":{"kota":"JAKARTA PUSAT","zona":"JAKPUS","lat":-6.193,"lon":106.811,"aliases":["TANAHABANG"]},"MENTENG":{"kota":"JAKARTA PUSAT","zona":"JAKPUS","lat":-6.196,"lon":106.831,"aliases":[]},"SENEN":{"kota":"JAKARTA PUSAT","zona":"JAKPUS","lat":-6.18,"lon":106.842,"aliases":[]},"CEMPAKA PUTIH":{"kota":"JAKARTA PUSAT","zona":"JAKPUS","lat":-6.176,"lon":106.873,"aliases":["CEMPAKAPUTIH"]},"JOHAR BARU":{"kota":"JAKARTA PUSAT","zona":"JAKPUS","lat":-6.184,"lon":106.864,"aliases":["JOHARBARU"]},"KEMAYORAN":{"kota":"JAKARTA PUSAT","zona":"JAKPUS","lat":-6.158,"lon":106.852,"aliases":[]},"SAWAH BESAR":{"kota":"JAKARTA PUSAT","zona":"JAKPUS","lat":-6.155,"lon":106.831,"aliases":["SAWAHBESAR"]},"TAMBORA":{"kota":"JAKARTA BARAT","zona":"JAKBAR","lat":-6.149,"lon":106.804,"aliases":[]},"TAMAN SARI":{"kota":"JAKARTA BARAT","zona":"JAKBAR","lat":-6.142,"lon":106.819,"aliases":["TAMANSARI"]},"GROGOL PETAMBURAN":{"kota":"JAKARTA BARAT","zona":"JAKBAR","lat":-6.166,"lon":106.787,"aliases":["GROGOL","PETAMBURAN"]},"PALMERAH":{"kota":"JAKARTA BARAT","zona":"JAKBAR","lat":-6.196,"lon":106.793,"aliases":[]},"KEBON JERUK":{"kota":"JAKARTA BARAT","zona":"JAKBAR","lat":-6.187,"lon":106.76,"aliases":["KEBONJERUK"]},"KEMBANGAN":{"kota":"JAKARTA BARAT","zona":"JAKBAR","lat":-6.176,"lon":106.741,"aliases":[]},"CENGKARENG":{"kota":"JAKARTA BARAT","zona":"JAKBAR","lat":-6.146,"lon":106.731,"aliases":[]},"KALIDERES":{"kota":"JAKARTA BARAT","zona":"JAKBAR","lat":-6.139,"lon":106.704,"aliases":[]},"GAMBIR PUSAT":{"kota":"JAKARTA PUSAT","zona":"JAKPUS","lat":-6.176,"lon":106.831,"aliases":["GAMBIRPUSAT"]},"PASAR MINGGU":{"kota":"JAKARTA SELATAN","zona":"JAKSEL","lat":-6.288,"lon":106.844,"aliases":["PASARMINGGU"]},"JAGAKARSA":{"kota":"JAKARTA SELATAN","zona":"JAKSEL","lat":-6.331,"lon":106.82,"aliases":[]},"CILANDAK":{"kota":"JAKARTA SELATAN","zona":"JAKSEL","lat":-6.292,"lon":106.799,"aliases":[]},"PASANGGRAHAN":{"kota":"JAKARTA SELATAN","zona":"JAKSEL","lat":-6.249,"lon":106.762,"aliases":["PESANGGRAHAN"]},"KEBAYORAN LAMA":{"kota":"JAKARTA SELATAN","zona":"JAKSEL","lat":-6.246,"lon":106.769,"aliases":["KEBAYORANLAMA","KEB LAMA"]},"KEBAYORAN BARU":{"kota":"JAKARTA SELATAN","zona":"JAKSEL","lat":-6.235,"lon":106.799,"aliases":["KEBAYORANBARU","KEB BARU"]},"MAMPANG PRAPATAN":{"kota":"JAKARTA SELATAN","zona":"JAKSEL","lat":-6.247,"lon":106.825,"aliases":["MAMPANG","MAMPANGPRAPATAN"]},"PANCORAN":{"kota":"JAKARTA SELATAN","zona":"JAKSEL","lat":-6.25,"lon":106.84,"aliases":[]},"TEBET":{"kota":"JAKARTA SELATAN","zona":"JAKSEL","lat":-6.231,"lon":106.851,"aliases":[]},"SETIABUDI":{"kota":"JAKARTA SELATAN","zona":"JAKSEL","lat":-6.213,"lon":106.831,"aliases":[]},"MATRAMAN":{"kota":"JAKARTA TIMUR","zona":"JAKTIM","lat":-6.207,"lon":106.866,"aliases":[]},"PULOGADUNG":{"kota":"JAKARTA TIMUR","zona":"JAKTIM","lat":-6.193,"lon":106.892,"aliases":["PULO GADUNG"]},"JATINEGARA":{"kota":"JAKARTA TIMUR","zona":"JAKTIM","lat":-6.221,"lon":106.87,"aliases":[]},"DUREN SAWIT":{"kota":"JAKARTA TIMUR","zona":"JAKTIM","lat":-6.235,"lon":106.913,"aliases":["DURENSAWIT"]},"KRAMAT JATI":{"kota":"JAKARTA TIMUR","zona":"JAKTIM","lat":-6.281,"lon":106.871,"aliases":["KRAMATJATI"]},"MAKASAR":{"kota":"JAKARTA TIMUR","zona":"JAKTIM","lat":-6.273,"lon":106.891,"aliases":["MAKASSAR JT"]},"PASAR REBO":{"kota":"JAKARTA TIMUR","zona":"JAKTIM","lat":-6.31,"lon":106.866,"aliases":["PASARREBO"]},"CIRACAS":{"kota":"JAKARTA TIMUR","zona":"JAKTIM","lat":-6.323,"lon":106.875,"aliases":[]},"CIPAYUNG":{"kota":"JAKARTA TIMUR","zona":"JAKTIM","lat":-6.319,"lon":106.911,"aliases":[]},"CAKUNG":{"kota":"JAKARTA TIMUR","zona":"JAKTIM","lat":-6.179,"lon":106.951,"aliases":[]},"PENJARINGAN":{"kota":"JAKARTA UTARA","zona":"JAKUT","lat":-6.117,"lon":106.77,"aliases":[]},"PADEMANGAN":{"kota":"JAKARTA UTARA","zona":"JAKUT","lat":-6.131,"lon":106.835,"aliases":[]},"TANJUNG PRIOK":{"kota":"JAKARTA UTARA","zona":"JAKUT","lat":-6.117,"lon":106.881,"aliases":["TANJUNGPRIOK"]},"KOJA":{"kota":"JAKARTA UTARA","zona":"JAKUT","lat":-6.11,"lon":106.895,"aliases":[]},"KELAPA GADING":{"kota":"JAKARTA UTARA","zona":"JAKUT","lat":-6.157,"lon":106.907,"aliases":["KELAPAGADING"]},"CILINCING":{"kota":"JAKARTA UTARA","zona":"JAKUT","lat":-6.114,"lon":106.937,"aliases":[]},"BOGOR UTARA":{"kota":"BOGOR KOTA","zona":"BOGOR","lat":-6.567,"lon":106.802,"aliases":["BOGORUTARA"]},"BOGOR SELATAN":{"kota":"BOGOR KOTA","zona":"BOGOR","lat":-6.605,"lon":106.804,"aliases":["BOGORSELATAN"]},"BOGOR TIMUR":{"kota":"BOGOR KOTA","zona":"BOGOR","lat":-6.589,"lon":106.816,"aliases":["BOGORTIMUR"]},"BOGOR BARAT":{"kota":"BOGOR KOTA","zona":"BOGOR","lat":-6.555,"lon":106.766,"aliases":["BOGORBARAT"]},"BOGOR TENGAH":{"kota":"BOGOR KOTA","zona":"BOGOR","lat":-6.594,"lon":106.792,"aliases":["BOGORTENGAH"]},"TANAH SAREAL":{"kota":"BOGOR KOTA","zona":"BOGOR","lat":-6.564,"lon":106.797,"aliases":["TANAHSAREAL"]},"NANGGUNG":{"kota":"BOGOR KAB","zona":"BOGOR-LUAR","lat":-6.633,"lon":106.547,"aliases":[]},"LEUWILIANG":{"kota":"BOGOR KAB","zona":"BOGOR-LUAR","lat":-6.567,"lon":106.629,"aliases":[]},"LEUWISADENG":{"kota":"BOGOR KAB","zona":"BOGOR-LUAR","lat":-6.607,"lon":106.628,"aliases":[]},"PAMIJAHAN":{"kota":"BOGOR KAB","zona":"BOGOR-LUAR","lat":-6.682,"lon":106.657,"aliases":[]},"CIBUNGBULANG":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.578,"lon":106.657,"aliases":[]},"CIAMPEA":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.561,"lon":106.703,"aliases":[]},"DRAMAGA":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.553,"lon":106.736,"aliases":[]},"CIOMAS":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.606,"lon":106.776,"aliases":[]},"TAMANSARI BOGOR":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.66,"lon":106.77,"aliases":[]},"CIJERUK":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.679,"lon":106.795,"aliases":[]},"CIGOMBONG":{"kota":"BOGOR KAB","zona":"BOGOR-LUAR","lat":-6.726,"lon":106.819,"aliases":[]},"CARINGIN":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.704,"lon":106.829,"aliases":[]},"CISARUA":{"kota":"BOGOR KAB","zona":"BOGOR-PUNCAK","lat":-6.703,"lon":106.929,"aliases":[]},"MEGAMENDUNG":{"kota":"BOGOR KAB","zona":"BOGOR-PUNCAK","lat":-6.658,"lon":106.89,"aliases":[]},"CIAWI":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.66,"lon":106.84,"aliases":[]},"CIBINONG":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.481,"lon":106.851,"aliases":[]},"BOJONGGEDE":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.498,"lon":106.802,"aliases":["BOJONG GEDE"]},"CITEUREUP":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.488,"lon":106.875,"aliases":[]},"BABAKAN MADANG":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.495,"lon":106.888,"aliases":[]},"SUKAMAKMUR":{"kota":"BOGOR KAB","zona":"BOGOR-LUAR","lat":-6.585,"lon":106.953,"aliases":[]},"JONGGOL":{"kota":"BOGOR KAB","zona":"BOGOR-LUAR","lat":-6.487,"lon":107.014,"aliases":[]},"CARIU":{"kota":"BOGOR KAB","zona":"BOGOR-LUAR","lat":-6.51,"lon":107.117,"aliases":[]},"TANJUNGSARI BOGOR":{"kota":"BOGOR KAB","zona":"BOGOR-LUAR","lat":-6.581,"lon":107.133,"aliases":[]},"CILEUNGSI":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.42,"lon":106.957,"aliases":[]},"GUNUNG PUTRI":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.45,"lon":106.917,"aliases":["GUNUNGPUTRI"]},"KLAPANUNGGAL":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.434,"lon":106.907,"aliases":[]},"GUNUNG SINDUR":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.398,"lon":106.687,"aliases":["GUNUNGSINDUR"]},"PARUNG":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.428,"lon":106.732,"aliases":[]},"PARUNG PANJANG":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.358,"lon":106.554,"aliases":["PARUNGPANJANG"]},"TENJO":{"kota":"BOGOR KAB","zona":"BOGOR-LUAR","lat":-6.361,"lon":106.481,"aliases":[]},"RUMPIN":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.453,"lon":106.616,"aliases":[]},"CIGUDEG":{"kota":"BOGOR KAB","zona":"BOGOR-LUAR","lat":-6.488,"lon":106.564,"aliases":[]},"JASINGA":{"kota":"BOGOR KAB","zona":"BOGOR-LUAR","lat":-6.475,"lon":106.452,"aliases":[]},"KEMANG":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.482,"lon":106.748,"aliases":[]},"KEMANG JAKSEL":{"kota":"JAKARTA SELATAN","zona":"JAKSEL","lat":-6.262,"lon":106.811,"aliases":["KEMANG JAKARTA"]},"RANCABUNGUR":{"kota":"BOGOR KAB","zona":"BOGOR","lat":-6.531,"lon":106.726,"aliases":[]},"RANCA EKEK":{"kota":"BOGOR KAB","zona":"BOGOR-LUAR","lat":-6.949,"lon":107.77,"aliases":[]},"BEKASI BARAT":{"kota":"BEKASI KOTA","zona":"BEKASI","lat":-6.231,"lon":106.973,"aliases":["BEKASIBARAT"]},"BEKASI TIMUR":{"kota":"BEKASI KOTA","zona":"BEKASI","lat":-6.235,"lon":107.011,"aliases":["BEKASITIMUR"]},"BEKASI UTARA":{"kota":"BEKASI KOTA","zona":"BEKASI","lat":-6.198,"lon":106.999,"aliases":["BEKASIUTARA"]},"BEKASI SELATAN":{"kota":"BEKASI KOTA","zona":"BEKASI","lat":-6.26,"lon":106.987,"aliases":["BEKASISELATAN"]},"RAWALUMBU":{"kota":"BEKASI KOTA","zona":"BEKASI","lat":-6.272,"lon":107.011,"aliases":["RAWA LUMBU"]},"MEDAN SATRIA":{"kota":"BEKASI KOTA","zona":"BEKASI","lat":-6.214,"lon":106.967,"aliases":["MEDANSATRIA"]},"BANTAR GEBANG":{"kota":"BEKASI KOTA","zona":"BEKASI","lat":-6.318,"lon":106.992,"aliases":["BANTARGEBANG"]},"PONDOK GEDE":{"kota":"BEKASI KOTA","zona":"BEKASI","lat":-6.27,"lon":106.913,"aliases":["PONDOKGEDE","PONDOK GD"]},"PONDOK MELATI":{"kota":"BEKASI KOTA","zona":"BEKASI","lat":-6.295,"lon":106.917,"aliases":["PONDOKMELATI"]},"JATIASIH":{"kota":"BEKASI KOTA","zona":"BEKASI","lat":-6.292,"lon":106.948,"aliases":["JATI ASIH"]},"JATISAMPURNA":{"kota":"BEKASI KOTA","zona":"BEKASI","lat":-6.343,"lon":106.91,"aliases":["JATI SAMPURNA"]},"MUSTIKA JAYA":{"kota":"BEKASI KOTA","zona":"BEKASI","lat":-6.301,"lon":107.022,"aliases":["MUSTIKAJAYA"]},"TAMBUN UTARA":{"kota":"BEKASI KAB","zona":"BEKASI","lat":-6.176,"lon":107.058,"aliases":["TAMBUNUTARA"]},"TAMBUN SELATAN":{"kota":"BEKASI KAB","zona":"BEKASI","lat":-6.265,"lon":107.058,"aliases":["TAMBUNSELATAN"]},"TAMBELANG":{"kota":"BEKASI KAB","zona":"BEKASI","lat":-6.149,"lon":107.099,"aliases":[]},"BABELAN":{"kota":"BEKASI KAB","zona":"BEKASI","lat":-6.148,"lon":107.024,"aliases":[]},"TARUMAJAYA":{"kota":"BEKASI KAB","zona":"BEKASI","lat":-6.103,"lon":106.991,"aliases":[]},"CIBITUNG":{"kota":"BEKASI KAB","zona":"BEKASI","lat":-6.243,"lon":107.085,"aliases":[]},"CIKARANG BARAT":{"kota":"BEKASI KAB","zona":"CIKARANG","lat":-6.245,"lon":107.115,"aliases":["CIKARANGBARAT"]},"CIKARANG SELATAN":{"kota":"BEKASI KAB","zona":"CIKARANG","lat":-6.328,"lon":107.156,"aliases":["CIKARANGSELATAN"]},"CIKARANG TIMUR":{"kota":"BEKASI KAB","zona":"CIKARANG","lat":-6.29,"lon":107.187,"aliases":["CIKARANGTIMUR"]},"CIKARANG UTARA":{"kota":"BEKASI KAB","zona":"CIKARANG","lat":-6.256,"lon":107.151,"aliases":["CIKARANGUTARA"]},"CIKARANG PUSAT":{"kota":"BEKASI KAB","zona":"CIKARANG","lat":-6.302,"lon":107.171,"aliases":["CIKARANGPUSAT"]},"KARANG BAHAGIA":{"kota":"BEKASI KAB","zona":"CIKARANG","lat":-6.214,"lon":107.123,"aliases":["KARANGBAHAGIA"]},"SETU BEKASI":{"kota":"BEKASI KAB","zona":"BEKASI","lat":-6.345,"lon":107.045,"aliases":["SETU"]},"SERANG BARU":{"kota":"BEKASI KAB","zona":"CIKARANG","lat":-6.35,"lon":107.133,"aliases":["SERANGBARU"]},"MUARA GEMBONG":{"kota":"BEKASI KAB","zona":"BEKASI-LUAR","lat":-6.057,"lon":107.066,"aliases":["MUARAGEMBONG"]},"PEBAYURAN":{"kota":"BEKASI KAB","zona":"BEKASI-LUAR","lat":-6.183,"lon":107.183,"aliases":[]},"SUKAKARYA":{"kota":"BEKASI KAB","zona":"BEKASI-LUAR","lat":-6.189,"lon":107.232,"aliases":[]},"SUKAWANGI":{"kota":"BEKASI KAB","zona":"BEKASI-LUAR","lat":-6.151,"lon":107.143,"aliases":[]},"SUKATANI":{"kota":"BEKASI KAB","zona":"BEKASI-LUAR","lat":-6.227,"lon":107.205,"aliases":[]},"BOJONGMANGU":{"kota":"BEKASI KAB","zona":"BEKASI-LUAR","lat":-6.394,"lon":107.193,"aliases":[]},"CABANGBUNGIN":{"kota":"BEKASI KAB","zona":"BEKASI-LUAR","lat":-6.124,"lon":107.187,"aliases":[]},"KEDUNGWARINGIN":{"kota":"BEKASI KAB","zona":"BEKASI-LUAR","lat":-6.244,"lon":107.212,"aliases":[]},"CIBARUSAH":{"kota":"BEKASI KAB","zona":"BEKASI-LUAR","lat":-6.391,"lon":107.15,"aliases":[]},"BEJI":{"kota":"DEPOK KOTA","zona":"DEPOK","lat":-6.376,"lon":106.817,"aliases":[]},"PANCORAN MAS":{"kota":"DEPOK KOTA","zona":"DEPOK","lat":-6.395,"lon":106.824,"aliases":["PANCORANMAS"]},"CIPAYUNG DEPOK":{"kota":"DEPOK KOTA","zona":"DEPOK","lat":-6.418,"lon":106.815,"aliases":[]},"SUKMAJAYA":{"kota":"DEPOK KOTA","zona":"DEPOK","lat":-6.393,"lon":106.856,"aliases":[]},"CIMANGGIS":{"kota":"DEPOK KOTA","zona":"DEPOK","lat":-6.378,"lon":106.89,"aliases":[]},"TAPOS":{"kota":"DEPOK KOTA","zona":"DEPOK","lat":-6.418,"lon":106.892,"aliases":[]},"CILODONG":{"kota":"DEPOK KOTA","zona":"DEPOK","lat":-6.418,"lon":106.851,"aliases":[]},"LIMO":{"kota":"DEPOK KOTA","zona":"DEPOK","lat":-6.354,"lon":106.77,"aliases":[]},"CINERE":{"kota":"DEPOK KOTA","zona":"DEPOK","lat":-6.318,"lon":106.788,"aliases":[]},"BOJONGSARI":{"kota":"DEPOK KOTA","zona":"DEPOK","lat":-6.397,"lon":106.764,"aliases":["BOJONG SARI"]},"SAWANGAN":{"kota":"DEPOK KOTA","zona":"DEPOK","lat":-6.422,"lon":106.769,"aliases":[]},"TANGERANG KOTA":{"kota":"TANGERANG KOTA","zona":"TANG-KOTA","lat":-6.179,"lon":106.628,"aliases":["KOTA TANGERANG"]},"BATUCEPER":{"kota":"TANGERANG KOTA","zona":"TANG-TENGAH","lat":-6.158,"lon":106.683,"aliases":[]},"BENDA":{"kota":"TANGERANG KOTA","zona":"TANG-TENGAH","lat":-6.122,"lon":106.695,"aliases":[]},"CIPONDOH":{"kota":"TANGERANG KOTA","zona":"TANG-TENGAH","lat":-6.181,"lon":106.682,"aliases":[]},"CILEDUG":{"kota":"TANGERANG KOTA","zona":"TANG-TENGAH","lat":-6.225,"lon":106.708,"aliases":[]},"KARANG TENGAH":{"kota":"TANGERANG KOTA","zona":"TANG-TENGAH","lat":-6.22,"lon":106.726,"aliases":["KARANGTENGAH"]},"LARANGAN":{"kota":"TANGERANG KOTA","zona":"TANG-TENGAH","lat":-6.247,"lon":106.747,"aliases":[]},"PINANG":{"kota":"TANGERANG KOTA","zona":"TANG-TENGAH","lat":-6.213,"lon":106.66,"aliases":["PINGAN","PIANG"]},"PERIUK":{"kota":"TANGERANG KOTA","zona":"TANG-TENGAH","lat":-6.166,"lon":106.605,"aliases":[]},"JATIUWUNG":{"kota":"TANGERANG KOTA","zona":"TANG-TENGAH","lat":-6.192,"lon":106.585,"aliases":["JATI UWUNG"]},"CIBODAS":{"kota":"TANGERANG KOTA","zona":"TANG-TENGAH","lat":-6.198,"lon":106.609,"aliases":[]},"KARAWACI":{"kota":"TANGERANG KOTA","zona":"TANG-TENGAH","lat":-6.212,"lon":106.624,"aliases":[]},"TANGERANG":{"kota":"TANGERANG KOTA","zona":"TANG-TENGAH","lat":-6.179,"lon":106.628,"aliases":[]},"NEGLASARI":{"kota":"TANGERANG KOTA","zona":"TANG-TENGAH","lat":-6.158,"lon":106.624,"aliases":[]},"CISAUK":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.343,"lon":106.654,"aliases":[]},"PAGEDANGAN":{"kota":"TANGERANG KAB","zona":"TANG-TENGAH","lat":-6.276,"lon":106.598,"aliases":[]},"LEGOK":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.31,"lon":106.619,"aliases":[]},"KELAPA DUA":{"kota":"TANGERANG KAB","zona":"TANG-TENGAH","lat":-6.247,"lon":106.617,"aliases":["KELAPADUA"]},"CURUG":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.247,"lon":106.572,"aliases":[]},"BALARAJA":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.193,"lon":106.471,"aliases":[]},"JAYANTI":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.205,"lon":106.426,"aliases":[]},"TIGARAKSA":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.29,"lon":106.485,"aliases":[]},"JAMBE":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.283,"lon":106.56,"aliases":[]},"CIKUPA":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.222,"lon":106.51,"aliases":[]},"PANONGAN":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.249,"lon":106.521,"aliases":[]},"KRESEK":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.158,"lon":106.394,"aliases":[]},"GUNUNG KALER":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.103,"lon":106.44,"aliases":["GUNUNGKALER"]},"KRONJO":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.077,"lon":106.443,"aliases":[]},"MEKAR BARU":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.09,"lon":106.504,"aliases":["MEKARBARU"]},"MAUK":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.082,"lon":106.578,"aliases":[]},"KEMIRI":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.072,"lon":106.554,"aliases":[]},"SUKADIRI":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.09,"lon":106.601,"aliases":[]},"RAJEG":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.137,"lon":106.552,"aliases":[]},"SEPATAN":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.124,"lon":106.594,"aliases":[]},"SEPATAN TIMUR":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.132,"lon":106.62,"aliases":[]},"PASAR KEMIS":{"kota":"TANGERANG KAB","zona":"TANG-TENGAH","lat":-6.169,"lon":106.567,"aliases":["PASARKEMIS"]},"SINDANG JAYA":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.174,"lon":106.532,"aliases":["SINDANGJAYA"]},"SUKAMULYA":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.18,"lon":106.452,"aliases":[]},"SOLEAR":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.319,"lon":106.545,"aliases":[]},"CISOKA":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.295,"lon":106.476,"aliases":[]},"TELUKNAGA":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.094,"lon":106.685,"aliases":["TELUK NAGA"]},"KOSAMBI":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.103,"lon":106.701,"aliases":[]},"PAKUHAJI":{"kota":"TANGERANG KAB","zona":"TANG-LUAR","lat":-6.107,"lon":106.625,"aliases":[]},"SERPONG":{"kota":"TANGSEL","zona":"TANG-TENGAH","lat":-6.305,"lon":106.677,"aliases":[]},"SERPONG UTARA":{"kota":"TANGSEL","zona":"TANG-TENGAH","lat":-6.276,"lon":106.681,"aliases":["SERPONGUTARA"]},"PONDOK AREN":{"kota":"TANGSEL","zona":"TANG-TENGAH","lat":-6.272,"lon":106.722,"aliases":["PONDOKAREN"]},"CIPUTAT":{"kota":"TANGSEL","zona":"TANG-TENGAH","lat":-6.319,"lon":106.752,"aliases":[]},"CIPUTAT TIMUR":{"kota":"TANGSEL","zona":"TANG-TENGAH","lat":-6.296,"lon":106.755,"aliases":["CIPUTATTIMUR"]},"PAMULANG":{"kota":"TANGSEL","zona":"TANG-TENGAH","lat":-6.343,"lon":106.736,"aliases":[]},"SETU TANGSEL":{"kota":"TANGSEL","zona":"TANG-TENGAH","lat":-6.343,"lon":106.692,"aliases":[]}}};
+
+// Build flat lookup map for fast matching:
+//   key = uppercase tanpa spasi, value = { name, kota, zona, lat, lon }
+const KEC_LOOKUP = {};
+const KEC_NAMES = []; // array of {key, name} for fuzzy match
+Object.entries(MASTER_KECAMATAN.kecamatan).forEach(([name, info]) => {
+  const key = name.replace(/\s+/g, '').toUpperCase();
+  KEC_LOOKUP[key] = { name, ...info };
+  KEC_NAMES.push({ key, name });
+  // Add aliases
+  (info.aliases || []).forEach(alias => {
+    const akey = alias.replace(/\s+/g, '').toUpperCase();
+    if (!KEC_LOOKUP[akey]) KEC_LOOKUP[akey] = { name, ...info, _via_alias: alias };
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════════════════════════
+const ALLOWED_WAREHOUSES = [
+  'DAAN MOGOT', 'DOYONG',
+  'GUDANG KEMENANGAN JAYA CIKUDA',
+  'GUDANG KEMENANGAN JAYA CIKUDA 2',
+  'GUDANG KEMENANGAN JAYA CIKUDA 3',
+  'CIKUDA',
+];
+const WAREHOUSE_NORMALIZE = {
+  'GUDANG KEMENANGAN JAYA CIKUDA': 'CIKUDA',
+  'GUDANG KEMENANGAN JAYA CIKUDA 2': 'CIKUDA',
+  'GUDANG KEMENANGAN JAYA CIKUDA 3': 'CIKUDA',
+};
+
+// SAP Column indices (1-based, sesuai dengan analisis sample file)
+const COL = {
+  LINK_DO: 1, DOC_NO: 2, PO_REF: 3, BRANCH_CODE: 4, BRANCH_NAME: 5,
+  NO_SO: 6, DO_DATE: 7, VEHICLE: 8, DRIVER: 9, WAREHOUSE: 10,
+  CUSTOMER_ID: 11, SALESMAN: 12, SALES_ADMIN: 13, CREATED_BY: 14,
+  CUSTOMER: 15, ALAMAT_CUSTOMER: 16, BILL_CITY: 17, ALAMAT2: 18, ALAMAT3: 19,
+  STATE: 20, TELP1: 21, TELP2: 22, CELLULAR: 23, ROW_NUM: 24,
+  STOCK_CODE: 25, STOCK_NAME: 26, COLOR: 27, SHADE: 28, SIZE: 29,
+  QTY: 30, UOM: 31, PAKET: 32, PI: 33, REMARKS: 34,
+  KIRIM: 35, KECAMATAN: 36, NO_CP: 37,
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════════════════
+let sapFile = null;       // raw File object
+let pgFile = null;
+let sapRaw = [];          // array of arrays from sheet
+let sapRows = [];         // parsed objects, 1 row per SAP row (multi per DO)
+let sapHeaders = [];      // header row (37 cols)
+let issues = [];          // {type, severity, doc_no, field, msg, suggest, rowIdx, status}
+let autoFixLog = [];      // {doc_no, field, before, after, rule}
+let droppedRows = [];     // {rowIdx, doc_no, customer, wh, kirim, reason}
+let warningFilter = 'all';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════════════
+window.onload = function() {
+  const today = new Date();
+  const tomorrow = new Date(today.getTime() + 24*3600*1000);
+  const fmt = (d) => {
+    const dd = String(d.getDate()).padStart(2,'0');
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const yyyy = d.getFullYear();
+    return `${dd}.${mm}.${yyyy}`;
+  };
+  document.getElementById('hdr-date').textContent = `${fmt(today)} → dispatch ${fmt(tomorrow)}`;
+
+  // Tab switching
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.onclick = () => switchTab(b.dataset.tab);
+  });
+
+  // Upload zones
+  setupUploadZone('upload-sap', 'file-sap', (f) => { sapFile = f; updateUploadUI('sap', f); checkValidateButton(); });
+  setupUploadZone('upload-pg',  'file-pg',  (f) => { pgFile = f; updateUploadUI('pg', f); });
+};
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === 'pane-'+tab));
+}
+
+function setupUploadZone(zoneId, inputId, onFile) {
+  const zone = document.getElementById(zoneId);
+  const input = document.getElementById(inputId);
+  zone.onclick = () => input.click();
+  input.onchange = (e) => { if (e.target.files[0]) onFile(e.target.files[0]); };
+  zone.ondragover = (e) => { e.preventDefault(); zone.classList.add('dragover'); };
+  zone.ondragleave = () => zone.classList.remove('dragover');
+  zone.ondrop = (e) => {
+    e.preventDefault(); zone.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0]);
+  };
+}
+
+function updateUploadUI(kind, file) {
+  const zone = document.getElementById('upload-' + kind);
+  const fnameEl = document.getElementById((kind === 'sap' ? 'sap' : 'pg') + '-filename');
+  zone.classList.add('has-file');
+  fnameEl.textContent = `✅ ${file.name} (${(file.size/1024).toFixed(0)} KB)`;
+}
+
+function checkValidateButton() {
+  document.getElementById('btn-validate').disabled = !sapFile;
+}
+
+function resetAll() {
+  sapFile = pgFile = null; sapRaw = []; sapRows = []; issues = []; autoFixLog = []; droppedRows = [];
+  document.getElementById('upload-sap').classList.remove('has-file');
+  document.getElementById('upload-pg').classList.remove('has-file');
+  document.getElementById('sap-filename').textContent = 'Klik atau drag file SAP DO di sini';
+  document.getElementById('pg-filename').textContent = 'Klik atau drag file PG di sini (opsional)';
+  document.getElementById('file-sap').value = '';
+  document.getElementById('file-pg').value = '';
+  document.getElementById('btn-validate').disabled = true;
+  document.getElementById('btn-export').disabled = true;
+  document.getElementById('action-bar').style.display = 'none';
+  document.getElementById('summary-empty').style.display = 'block';
+  document.getElementById('summary-content').style.display = 'none';
+  ['critical','warning','autofix','dropped'].forEach(k => {
+    document.getElementById('cnt-'+k).textContent = '0';
+  });
+  toast('Reset selesai');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VALIDATION ENGINE — main entry point
+// ═══════════════════════════════════════════════════════════════════════════
+async function runValidation() {
+  if (!sapFile) { alert('Upload file SAP dulu'); return; }
+  const btn = document.getElementById('btn-validate');
+  btn.disabled = true; btn.textContent = '⏳ Reading file...';
+
+  try {
+    // 1. Read SAP file
+    const buf = await sapFile.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    sapRaw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+    if (sapRaw.length < 2) { alert('File SAP kosong / tidak ada data'); return; }
+    sapHeaders = sapRaw[0];
+
+    btn.textContent = '⏳ Parsing rows...';
+    await sleep(50);
+
+    // 2. Parse rows + reset state
+    sapRows = []; issues = []; autoFixLog = []; droppedRows = [];
+    for (let i = 1; i < sapRaw.length; i++) {
+      const r = sapRaw[i];
+      if (!r || !r.length) continue;
+      // Skip rows yang doc_no kosong (footer/empty)
+      const docNo = r[COL.DOC_NO - 1];
+      if (!docNo) continue;
+      sapRows.push({
+        _idx: i, _origRow: r,
+        doc_no: String(docNo).trim(),
+        do_date: r[COL.DO_DATE - 1],
+        warehouse: String(r[COL.WAREHOUSE - 1] || '').trim(),
+        customer: String(r[COL.CUSTOMER - 1] || '').trim(),
+        alamat_customer: String(r[COL.ALAMAT_CUSTOMER - 1] || '').trim(),
+        alamat2: String(r[COL.ALAMAT2 - 1] || '').trim(),
+        state: String(r[COL.STATE - 1] || '').trim(),
+        stock_code: String(r[COL.STOCK_CODE - 1] || '').trim(),
+        stock_name: String(r[COL.STOCK_NAME - 1] || '').trim(),
+        shade: String(r[COL.SHADE - 1] || '').trim(),
+        size: String(r[COL.SIZE - 1] || '').trim(),
+        qty: r[COL.QTY - 1],
+        uom: String(r[COL.UOM - 1] || '').trim(),
+        remarks: String(r[COL.REMARKS - 1] || '').trim(),
+        kirim: String(r[COL.KIRIM - 1] || '').trim(),
+        kecamatan: String(r[COL.KECAMATAN - 1] || '').trim(),
+        salesman: String(r[COL.SALESMAN - 1] || '').trim(),
+        // Final values (after auto-fix). Default = original.
+        _final_kirim: '',
+        _final_kecamatan: '',
+        _final_warehouse: '',
+        _drop: false, _drop_reason: '',
+      });
+    }
+
+    btn.textContent = '⏳ Running rules...';
+    await sleep(50);
+
+    // 3. Run rule engine per row
+    runRules();
+
+    // 4. Aggregate per DO untuk display & summary
+    aggregateResults();
+
+    // 5. Render UI
+    renderSummary();
+    renderCritical();
+    renderWarning();
+    renderAutoFix();
+    renderDropped();
+
+    document.getElementById('summary-empty').style.display = 'none';
+    document.getElementById('summary-content').style.display = 'block';
+    document.getElementById('action-bar').style.display = 'flex';
+    document.getElementById('btn-export').disabled = (issues.filter(i => i.severity==='critical' && i.status!=='resolved').length > 0);
+    updateActionSummary();
+
+    btn.textContent = '🔍 Run Validation';
+    btn.disabled = false;
+
+    // Auto-switch ke Summary
+    switchTab('summary');
+    toast('Validation selesai. Lihat tab Critical & Warning.');
+  } catch (err) {
+    console.error('Validation error:', err);
+    alert('❌ Error parsing file:\n\n' + err.message);
+    btn.textContent = '🔍 Run Validation';
+    btn.disabled = false;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RULE ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+function runRules() {
+  // Group by Document Number untuk deteksi duplicate (cuma cek 1 line per DO)
+  const docGroups = {};
+  sapRows.forEach(r => {
+    if (!docGroups[r.doc_no]) docGroups[r.doc_no] = [];
+    docGroups[r.doc_no].push(r);
+  });
+
+  sapRows.forEach((row) => {
+    // ── DROP RULES ────────────────────────────────────────────────
+    // 1. Filter warehouse: hanya 3 (DAAN MOGOT, DOYONG, *CIKUDA*)
+    const wh = row.warehouse.toUpperCase();
+    let allowed = false;
+    if (wh === 'DAAN MOGOT' || wh === 'DOYONG' || wh === 'CIKUDA') allowed = true;
+    if (wh.startsWith('GUDANG KEMENANGAN JAYA CIKUDA')) allowed = true;
+    if (!allowed) {
+      row._drop = true;
+      row._drop_reason = `Warehouse non-Jabodetabek: ${row.warehouse}`;
+      droppedRows.push({
+        rowIdx: row._idx, doc_no: row.doc_no, customer: row.customer,
+        wh: row.warehouse, kirim: row.kirim, reason: row._drop_reason
+      });
+      return;
+    }
+
+    // 2. AS pattern di KIRIM → drop ke "Ambil Sendiri"
+    const kirim = row.kirim.toUpperCase().trim();
+    if (/^AS(\s|$)/.test(kirim) || kirim === 'AS' || kirim.includes('AMBIL SENDIRI')) {
+      row._drop = true;
+      row._drop_reason = `Ambil Sendiri (KIRIM = "${row.kirim}")`;
+      droppedRows.push({
+        rowIdx: row._idx, doc_no: row.doc_no, customer: row.customer,
+        wh: row.warehouse, kirim: row.kirim, reason: row._drop_reason
+      });
+      return;
+    }
+
+    // ── AUTO-FIX RULES ────────────────────────────────────────────
+    // Normalize warehouse code (CIKUDA variants → CIKUDA)
+    let normalizedWH = row.warehouse;
+    for (const [src, dst] of Object.entries(WAREHOUSE_NORMALIZE)) {
+      if (row.warehouse === src) {
+        normalizedWH = dst;
+        autoFixLog.push({
+          doc_no: row.doc_no, field: 'Warehouse',
+          before: row.warehouse, after: dst,
+          rule: 'normalize_cikuda'
+        });
+        break;
+      }
+    }
+    row._final_warehouse = normalizedWH;
+
+    // Trim whitespace KIRIM
+    if (row.kirim && /\s\s+|^\s+|\s+$/.test(row.kirim)) {
+      const cleaned = row.kirim.replace(/\s+/g, ' ').trim();
+      autoFixLog.push({
+        doc_no: row.doc_no, field: 'KIRIM',
+        before: JSON.stringify(row.kirim), after: JSON.stringify(cleaned),
+        rule: 'trim_whitespace'
+      });
+      row.kirim = cleaned;
+    }
+
+    // Strip trailing punctuation di Kecamatan (kalau ada)
+    // ... (rule lainnya bisa ditambah seiring waktu)
+
+    // ── KECAMATAN EXTRACTION (Smart Logic) ────────────────────────
+    let extractedKec = null;
+    let kecSource = null;
+
+    // (a) Sudah ada di kolom Kecamatan?
+    if (row.kecamatan && row.kecamatan.trim()) {
+      const matched = matchKecamatan(row.kecamatan);
+      if (matched) { extractedKec = matched; kecSource = 'sap_field'; }
+    }
+
+    // (b) Extract dari Alamat 2 (pattern "KEC. <X>" / "KEC <X>")
+    if (!extractedKec && row.alamat2) {
+      const m = row.alamat2.match(/KEC\.?\s+([A-Z][A-Z\s]+?)(?:\s|,|$)/i);
+      if (m) {
+        const matched = matchKecamatan(m[1]);
+        if (matched) { extractedKec = matched; kecSource = 'alamat2_regex'; }
+      }
+    }
+
+    // (c) Fuzzy match dari KIRIM atau alamat_customer
+    if (!extractedKec) {
+      const sources = [row.kirim, row.alamat_customer, row.alamat2].filter(Boolean);
+      for (const src of sources) {
+        const matched = fuzzyMatchKecamatan(src);
+        if (matched) {
+          extractedKec = matched.name;
+          kecSource = 'fuzzy_' + matched.score.toFixed(2);
+          break;
+        }
+      }
+    }
+
+    if (extractedKec) {
+      row._final_kecamatan = extractedKec;
+      // Kalau original kosong / berbeda → log auto-fix
+      if (!row.kecamatan || row.kecamatan.toUpperCase() !== extractedKec.toUpperCase()) {
+        autoFixLog.push({
+          doc_no: row.doc_no, field: 'Kecamatan',
+          before: row.kecamatan || '(kosong)', after: extractedKec,
+          rule: 'extract_' + kecSource
+        });
+      }
+    } else {
+      // Tidak bisa extract → warning
+      issues.push({
+        type: 'kecamatan_unknown', severity: 'warning',
+        doc_no: row.doc_no, field: 'Kecamatan',
+        rowIdx: row._idx, status: 'open',
+        msg: `Kecamatan tidak bisa di-detect dari data`,
+        suggest: `Cek alamat: "${(row.kirim || row.alamat_customer || '').slice(0,80)}"`,
+        row: row
+      });
+    }
+
+    // ── ALAMAT (KIRIM) FALLBACK ───────────────────────────────────
+    if (!row.kirim || row.kirim.length < 5) {
+      // Fallback: gabung Alamat Customer + Alamat 2 + State
+      const fallback = [row.alamat_customer, row.alamat2, row.state].filter(Boolean).join(', ');
+      if (fallback && fallback.length > 10) {
+        // Suggest, BUKAN auto-apply (sesuai keputusan: B — review dulu)
+        issues.push({
+          type: 'kirim_empty_fallback', severity: 'warning',
+          doc_no: row.doc_no, field: 'KIRIM',
+          rowIdx: row._idx, status: 'open',
+          msg: `KIRIM kosong / terlalu pendek ("${row.kirim}")`,
+          suggest: `Pakai gabungan kolom lain: "${fallback}"`,
+          suggest_value: fallback,
+          row: row
+        });
+        row._final_kirim = ''; // belum apply, tunggu user
+      } else if (!row.kirim) {
+        // Tidak ada fallback juga → critical
+        issues.push({
+          type: 'kirim_empty_critical', severity: 'critical',
+          doc_no: row.doc_no, field: 'KIRIM',
+          rowIdx: row._idx, status: 'open',
+          msg: `KIRIM kosong dan tidak ada data fallback`,
+          suggest: `Edit manual atau exclude DO ini`,
+          row: row
+        });
+      }
+    } else {
+      row._final_kirim = row.kirim;
+    }
+
+    // KIRIM short < 20 char → warning (kecuali sudah punya fallback issue)
+    if (row.kirim && row.kirim.length >= 5 && row.kirim.length < 20) {
+      issues.push({
+        type: 'alamat_short', severity: 'warning',
+        doc_no: row.doc_no, field: 'KIRIM',
+        rowIdx: row._idx, status: 'open',
+        msg: `Alamat sangat pendek (${row.kirim.length} char): "${row.kirim}"`,
+        suggest: `Verifikasi dengan customer / sales — alamat mungkin tidak lengkap`,
+        row: row
+      });
+    }
+
+    // ── QTY ANOMALI ───────────────────────────────────────────────
+    const qty = Number(row.qty);
+    if (qty === 0) {
+      issues.push({
+        type: 'qty_zero', severity: 'critical',
+        doc_no: row.doc_no, field: 'QTY',
+        rowIdx: row._idx, status: 'open',
+        msg: `QTY = 0`,
+        suggest: `Edit qty atau exclude DO`,
+        row: row
+      });
+    } else if (qty > 200) {
+      // QTY mencurigakan tinggi (>200 DUS)
+      issues.push({
+        type: 'qty_high', severity: 'warning',
+        doc_no: row.doc_no, field: 'QTY',
+        rowIdx: row._idx, status: 'open',
+        msg: `QTY tinggi: ${qty} DUS`,
+        suggest: `Verifikasi dengan sales — kemungkinan order besar atau typo`,
+        row: row
+      });
+    }
+
+    // ── CUSTOMER EMPTY (rare tapi possible) ───────────────────────
+    if (!row.customer || row.customer.length < 2) {
+      issues.push({
+        type: 'customer_empty', severity: 'critical',
+        doc_no: row.doc_no, field: 'Customer',
+        rowIdx: row._idx, status: 'open',
+        msg: `Customer kosong`,
+        suggest: `Edit manual atau exclude DO`,
+        row: row
+      });
+    }
+  });
+
+  // ── DOC NO DUPLICATE check (across all rows, but skip multi-line same DO) ──
+  // Multi-row 1 DO bukan duplicate. Cuma flag kalau ada DO No yg muncul lebih
+  // dari 1x DENGAN customer berbeda.
+  const docCustomerMap = {};
+  sapRows.filter(r => !r._drop).forEach(r => {
+    const k = r.doc_no;
+    if (!docCustomerMap[k]) docCustomerMap[k] = new Set();
+    docCustomerMap[k].add(r.customer);
+  });
+  Object.entries(docCustomerMap).forEach(([dn, custs]) => {
+    if (custs.size > 1) {
+      const firstRow = sapRows.find(r => r.doc_no === dn);
+      issues.push({
+        type: 'doc_duplicate', severity: 'critical',
+        doc_no: dn, field: 'Document Number',
+        rowIdx: firstRow ? firstRow._idx : -1, status: 'open',
+        msg: `DO ${dn} muncul di customer berbeda: ${Array.from(custs).join(', ')}`,
+        suggest: `Cek SAP — kemungkinan data input error`,
+        row: firstRow
+      });
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KECAMATAN MATCHING — exact + fuzzy
+// ═══════════════════════════════════════════════════════════════════════════
+function matchKecamatan(input) {
+  if (!input) return null;
+  const norm = String(input).replace(/\s+/g, '').toUpperCase().replace(/[^A-Z]/g, '');
+  if (KEC_LOOKUP[norm]) return KEC_LOOKUP[norm].name;
+  return null;
+}
+
+// Fuzzy match: cari substring dalam alamat
+function fuzzyMatchKecamatan(text) {
+  if (!text) return null;
+  const t = String(text).toUpperCase();
+  let bestMatch = null;
+  let bestScore = 0;
+  KEC_NAMES.forEach(({ key, name }) => {
+    // Coba substring exact match dulu (kecamatan name muncul dalam text)
+    if (t.includes(name)) {
+      const score = name.length / t.length; // longer match = better
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = { name, score };
+      }
+    }
+  });
+  // Threshold: kalau match tapi terlalu lemah (kecamatan 4 char dalam alamat 100 char), skip
+  if (bestMatch && bestMatch.score > 0.05) return bestMatch;
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AGGREGATE RESULTS — group issues per doc untuk display
+// ═══════════════════════════════════════════════════════════════════════════
+function aggregateResults() {
+  // Update tab counters
+  document.getElementById('cnt-critical').textContent = issues.filter(i => i.severity === 'critical' && i.status !== 'resolved').length;
+  document.getElementById('cnt-warning').textContent = issues.filter(i => i.severity === 'warning' && i.status !== 'resolved').length;
+  document.getElementById('cnt-autofix').textContent = autoFixLog.length;
+  document.getElementById('cnt-dropped').textContent = droppedRows.length;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RENDER FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+function renderSummary() {
+  const total = sapRows.length;
+  const dropped = droppedRows.length;
+  const critical = issues.filter(i => i.severity === 'critical' && i.status !== 'resolved').length;
+  const warning = issues.filter(i => i.severity === 'warning' && i.status !== 'resolved').length;
+  const autofix = autoFixLog.length;
+  const rowsWithIssues = new Set(issues.filter(i => i.status !== 'resolved').map(i => i.rowIdx));
+  const clean = sapRows.filter(r => !r._drop).length - rowsWithIssues.size;
+
+  // Unique DO
+  const uniqueDOs = new Set();
+  sapRows.filter(r => !r._drop).forEach(r => uniqueDOs.add(r.doc_no));
+
+  document.getElementById('s-total').textContent = total;
+  document.getElementById('s-total-sub').textContent = `${uniqueDOs.size} DO unique (after drop)`;
+  document.getElementById('s-clean').textContent = clean;
+  document.getElementById('s-clean-sub').textContent = total > 0 ? `${(clean/total*100).toFixed(0)}% bersih` : '—';
+  document.getElementById('s-autofix').textContent = autofix;
+  document.getElementById('s-warning').textContent = warning;
+  document.getElementById('s-critical').textContent = critical;
+  document.getElementById('s-dropped').textContent = dropped;
+  document.getElementById('s-dropped-sub').textContent = `${droppedRows.filter(d=>d.reason.includes('AS')).length} AS, ${droppedRows.filter(d=>d.reason.includes('non-Jabo')).length} non-Jabo`;
+
+  // Top issue patterns
+  const issueCount = {};
+  issues.filter(i => i.status !== 'resolved').forEach(i => {
+    issueCount[i.type] = (issueCount[i.type] || 0) + 1;
+  });
+  const top = Object.entries(issueCount).sort((a,b) => b[1]-a[1]).slice(0, 6);
+  document.getElementById('top-issues').innerHTML = top.length ?
+    `<table class="tbl"><tbody>${top.map(([type, cnt]) =>
+      `<tr><td>${humanIssueType(type)}</td><td style="text-align:right;font-weight:700;font-family:var(--mono)">${cnt}</td></tr>`
+    ).join('')}</tbody></table>` :
+    '<div class="empty">✅ Tidak ada issue.</div>';
+
+  // Warehouse distribution
+  const whCount = {};
+  sapRows.forEach(r => { whCount[r.warehouse || '(kosong)'] = (whCount[r.warehouse || '(kosong)'] || 0) + 1; });
+  const whSorted = Object.entries(whCount).sort((a,b) => b[1]-a[1]);
+  document.getElementById('wh-distribution').innerHTML =
+    `<table class="tbl"><thead><tr><th>Warehouse</th><th style="text-align:right">Rows</th><th>Status</th></tr></thead><tbody>${
+      whSorted.map(([wh, cnt]) => {
+        const allowed = ALLOWED_WAREHOUSES.some(a => wh === a || wh.startsWith('GUDANG KEMENANGAN JAYA CIKUDA'));
+        return `<tr>
+          <td>${wh}</td>
+          <td style="text-align:right;font-family:var(--mono);font-weight:700">${cnt}</td>
+          <td>${allowed ? '<span style="color:var(--success)">✓ Diproses</span>' : '<span style="color:var(--muted)">drop</span>'}</td>
+        </tr>`;
+      }).join('')
+    }</tbody></table>`;
+}
+
+function humanIssueType(type) {
+  return ({
+    'kecamatan_unknown': '🟡 Kecamatan tidak bisa di-extract',
+    'kirim_empty_fallback': '🟡 KIRIM kosong (ada fallback)',
+    'kirim_empty_critical': '🔴 KIRIM kosong tanpa fallback',
+    'alamat_short': '🟡 Alamat terlalu pendek',
+    'qty_zero': '🔴 QTY = 0',
+    'qty_high': '🟡 QTY anomali tinggi',
+    'customer_empty': '🔴 Customer kosong',
+    'doc_duplicate': '🔴 DO No duplicate (customer beda)',
+  })[type] || type;
+}
+
+function renderCritical() {
+  const list = issues.filter(i => i.severity === 'critical');
+  const container = document.getElementById('list-critical');
+  if (!list.length) {
+    container.innerHTML = '<div class="empty"><div class="empty-icon">✅</div>Tidak ada critical issue. Lanjut ke Warning.</div>';
+    return;
+  }
+  container.innerHTML = list.map((iss, idx) => renderIssueRow(iss, 'critical', idx)).join('');
+}
+
+function renderWarning() {
+  const all = issues.filter(i => i.severity === 'warning');
+  const filtered = warningFilter === 'all' ? all : all.filter(i => {
+    if (warningFilter === 'kecamatan') return i.type.includes('kecamatan');
+    if (warningFilter === 'alamat') return i.type.includes('kirim') || i.type.includes('alamat');
+    if (warningFilter === 'qty') return i.type.includes('qty');
+    if (warningFilter === 'customer') return i.type.includes('customer');
+    return true;
+  });
+  const container = document.getElementById('list-warning');
+  if (!filtered.length) {
+    container.innerHTML = '<div class="empty"><div class="empty-icon">🟢</div>Tidak ada warning untuk filter ini.</div>';
+    return;
+  }
+  container.innerHTML = filtered.map((iss) => {
+    const idx = issues.indexOf(iss);
+    return renderIssueRow(iss, 'warning', idx);
+  }).join('');
+}
+
+function filterWarning(filter, btn) {
+  warningFilter = filter;
+  document.querySelectorAll('#pane-warning .chip').forEach(c => c.classList.toggle('active', c.dataset.filter === filter));
+  renderWarning();
+}
+
+function renderIssueRow(iss, sevClass, issueIdx) {
+  const r = iss.row || {};
+  const statusClass = iss.status === 'resolved' ? 'fixed' : (iss.status === 'dropped' ? 'dropped' : sevClass);
+  const statusBadge = iss.status === 'resolved' ? '<span style="color:var(--success);font-weight:700">✓ Resolved</span>' :
+                      iss.status === 'dropped' ? '<span style="color:var(--muted)">🗑 Dropped</span>' : '';
+
+  let actions = '';
+  if (iss.status === 'open') {
+    if (iss.suggest_value) {
+      actions += `<button class="btn btn-sm btn-success" onclick="applyFix(${issueIdx}, '${escapeAttr(iss.suggest_value)}')">✓ Apply Suggest</button>`;
+    }
+    actions += `<button class="btn btn-sm" onclick="openEdit(${issueIdx})">✏ Edit Manual</button>`;
+    actions += `<button class="btn btn-sm" onclick="acceptAnyway(${issueIdx})">→ Accept Anyway</button>`;
+    actions += `<button class="btn btn-sm btn-danger" onclick="dropIssue(${issueIdx})">🗑 Exclude DO</button>`;
+  }
+
+  return `
+  <div class="issue-row ${statusClass}">
+    <div>
+      <div class="issue-meta">
+        DO <span class="kbd-tag">${escapeHtml(iss.doc_no)}</span>
+        · ${escapeHtml(r.customer || '—')}
+        · WH: ${escapeHtml(r.warehouse || '—')}
+        · Stock: ${escapeHtml((r.stock_name || '').slice(0, 40))}
+        · QTY: ${r.qty || 0} ${escapeHtml(r.uom || '')}
+        ${statusBadge}
+      </div>
+      <div class="issue-title">${escapeHtml(iss.msg)}</div>
+      <div class="issue-desc">Field: <span class="kbd-tag">${escapeHtml(iss.field)}</span> · Row asli SAP: ${iss.rowIdx + 1}</div>
+      ${iss.suggest ? `<div class="issue-suggest">💡 ${escapeHtml(iss.suggest)}</div>` : ''}
+    </div>
+    <div class="issue-actions">${actions}</div>
+  </div>`;
+}
+
+function renderAutoFix() {
+  const tbody = document.getElementById('tbody-autofix');
+  if (!autoFixLog.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty">Tidak ada auto-fix dilakukan.</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = autoFixLog.map(f => `
+    <tr>
+      <td><span class="kbd-tag">${escapeHtml(f.doc_no)}</span></td>
+      <td><strong>${escapeHtml(f.field)}</strong></td>
+      <td style="color:var(--muted)">${escapeHtml(String(f.before).slice(0,40))}</td>
+      <td style="color:var(--success);font-weight:600">${escapeHtml(String(f.after).slice(0,40))}</td>
+      <td><span class="kbd-tag">${escapeHtml(f.rule)}</span></td>
+    </tr>
+  `).join('');
+}
+
+function renderDropped() {
+  const tbody = document.getElementById('tbody-dropped');
+  if (!droppedRows.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty">Tidak ada row di-drop.</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = droppedRows.map(d => `
+    <tr>
+      <td><span class="kbd-tag">${escapeHtml(d.doc_no)}</span></td>
+      <td>${escapeHtml(d.customer)}</td>
+      <td>${escapeHtml(d.wh)}</td>
+      <td style="color:var(--muted);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(d.kirim)}</td>
+      <td><span style="color:${d.reason.includes('AS') ? '#0891b2' : '#64748b'}">${escapeHtml(d.reason)}</span></td>
+    </tr>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ISSUE ACTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+let editingIssueIdx = -1;
+
+function applyFix(idx, value) {
+  const iss = issues[idx];
+  if (!iss) return;
+  applyValueToRow(iss, value);
+  iss.status = 'resolved';
+  iss._applied_value = value;
+  rerenderAfterChange();
+  toast(`✓ DO ${iss.doc_no}: ${iss.field} di-apply`);
+}
+
+function openEdit(idx) {
+  const iss = issues[idx];
+  if (!iss) return;
+  editingIssueIdx = idx;
+  document.getElementById('modal-title').textContent = `Edit ${iss.field} — DO ${iss.doc_no}`;
+  document.getElementById('modal-context').innerHTML =
+    `Customer: <strong>${escapeHtml(iss.row?.customer || '—')}</strong><br>Issue: ${escapeHtml(iss.msg)}`;
+  const input = document.getElementById('modal-input');
+  input.value = iss.suggest_value || (iss.row && iss.row[iss.field.toLowerCase()] || '');
+  document.getElementById('modal-edit').classList.add('show');
+  setTimeout(() => input.focus(), 50);
+}
+
+function closeEditModal() {
+  document.getElementById('modal-edit').classList.remove('show');
+  editingIssueIdx = -1;
+}
+
+function saveEdit() {
+  if (editingIssueIdx < 0) return;
+  const val = document.getElementById('modal-input').value.trim();
+  if (!val) { alert('Nilai tidak boleh kosong'); return; }
+  applyFix(editingIssueIdx, val);
+  closeEditModal();
+}
+
+function acceptAnyway(idx) {
+  const iss = issues[idx];
+  if (!iss) return;
+  iss.status = 'resolved';
+  iss._applied_value = '(accepted as-is)';
+  rerenderAfterChange();
+  toast(`→ DO ${iss.doc_no}: accepted as-is`);
+}
+
+function dropIssue(idx) {
+  const iss = issues[idx];
+  if (!iss) return;
+  if (!confirm(`Exclude DO ${iss.doc_no} dari export?\n\nDO ini tidak akan masuk ke routing.`)) return;
+  // Mark all rows for this DO sebagai dropped
+  sapRows.filter(r => r.doc_no === iss.doc_no).forEach(r => {
+    r._drop = true;
+    r._drop_reason = `Manual exclude: ${iss.msg}`;
+    droppedRows.push({
+      rowIdx: r._idx, doc_no: r.doc_no, customer: r.customer,
+      wh: r.warehouse, kirim: r.kirim, reason: r._drop_reason
+    });
+  });
+  // Mark all related issues sebagai dropped
+  issues.filter(i => i.doc_no === iss.doc_no).forEach(i => i.status = 'dropped');
+  rerenderAfterChange();
+  toast(`🗑 DO ${iss.doc_no} di-exclude dari export`);
+}
+
+function applyValueToRow(iss, value) {
+  // Apply ke row sesuai field
+  const r = iss.row;
+  if (!r) return;
+  const f = iss.field.toUpperCase();
+  if (f === 'KIRIM') {
+    r.kirim = value;
+    r._final_kirim = value;
+  } else if (f === 'KECAMATAN') {
+    r.kecamatan = value;
+    r._final_kecamatan = value;
+  } else if (f === 'QTY') {
+    r.qty = Number(value) || 0;
+  } else if (f === 'CUSTOMER') {
+    r.customer = value;
+  }
+}
+
+function rerenderAfterChange() {
+  aggregateResults();
+  renderSummary();
+  renderCritical();
+  renderWarning();
+  renderDropped();
+  // Update export button: enabled jika tidak ada critical open
+  const stillCritical = issues.filter(i => i.severity === 'critical' && i.status === 'open').length;
+  document.getElementById('btn-export').disabled = stillCritical > 0;
+  updateActionSummary();
+}
+
+function updateActionSummary() {
+  const totalOpen = issues.filter(i => i.status === 'open').length;
+  const critical = issues.filter(i => i.severity === 'critical' && i.status === 'open').length;
+  const total = sapRows.length;
+  const dropped = droppedRows.length;
+  const ready = total - dropped;
+  if (critical > 0) {
+    document.getElementById('action-summary').innerHTML =
+      `<span style="color:var(--critical);font-weight:700">⚠ ${critical} critical issue belum di-fix.</span> Export di-blokir.`;
+  } else {
+    document.getElementById('action-summary').innerHTML =
+      `${ready} row siap di-export · ${dropped} dropped · ${totalOpen} warning open (akan diexport as-is)`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EXPORT CLEANED DATA
+// ═══════════════════════════════════════════════════════════════════════════
+function exportCleaned() {
+  const stillCritical = issues.filter(i => i.severity === 'critical' && i.status === 'open').length;
+  if (stillCritical > 0) {
+    alert(`Masih ada ${stillCritical} critical issue. Fix dulu di tab Critical.`);
+    return;
+  }
+
+  // Build new sheet from sapRaw, hanya keep row yang tidak _drop
+  const exportRows = [sapHeaders]; // header tetap
+  sapRows.forEach(r => {
+    if (r._drop) return;
+    // Build row: clone original, lalu apply final values
+    const orig = r._origRow.slice(); // shallow copy
+    // Apply _final_warehouse
+    if (r._final_warehouse && r._final_warehouse !== r.warehouse) {
+      orig[COL.WAREHOUSE - 1] = r._final_warehouse;
+    }
+    // Apply _final_kecamatan
+    if (r._final_kecamatan) {
+      orig[COL.KECAMATAN - 1] = r._final_kecamatan;
+    }
+    // Apply _final_kirim (kalau berbeda)
+    if (r._final_kirim && r._final_kirim !== r.kirim) {
+      orig[COL.KIRIM - 1] = r._final_kirim;
+    }
+    // Apply qty kalau diubah
+    orig[COL.QTY - 1] = r.qty;
+    orig[COL.CUSTOMER - 1] = r.customer;
+    orig[COL.KIRIM - 1] = r.kirim || orig[COL.KIRIM - 1];
+
+    exportRows.push(orig);
+  });
+
+  // Build workbook
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(exportRows);
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+
+  // Filename: sap_clean_YYYY-MM-DD.xlsx
+  const today = new Date();
+  const fname = `sap_clean_${today.toISOString().slice(0,10)}.xlsx`;
+  XLSX.writeFile(wb, fname);
+
+  toast(`✅ ${exportRows.length - 1} row di-export ke ${fname}`);
+}
+
+function downloadAuditJSON() {
+  const audit = {
+    timestamp: new Date().toISOString(),
+    sap_filename: sapFile?.name,
+    total_input_rows: sapRows.length,
+    dropped_count: droppedRows.length,
+    autofix_count: autoFixLog.length,
+    issues_by_severity: {
+      critical: issues.filter(i => i.severity === 'critical').length,
+      warning: issues.filter(i => i.severity === 'warning').length,
+    },
+    issues_by_status: {
+      open: issues.filter(i => i.status === 'open').length,
+      resolved: issues.filter(i => i.status === 'resolved').length,
+      dropped: issues.filter(i => i.status === 'dropped').length,
+    },
+    autofix_log: autoFixLog,
+    dropped_rows: droppedRows,
+    issues: issues.map(i => ({
+      type: i.type, severity: i.severity, doc_no: i.doc_no, field: i.field,
+      msg: i.msg, status: i.status, applied: i._applied_value || null
+    })),
+  };
+  const blob = new Blob([JSON.stringify(audit, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `audit_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escapeAttr(s) { return String(s == null ? '' : s).replace(/'/g, "\\'").replace(/"/g, '&quot;'); }
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+</script>
+</body>
+</html>
