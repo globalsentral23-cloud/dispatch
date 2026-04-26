@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.47.5</title>
+<title>Routing Optimizer v4.47.6</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.47.5</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.47.6</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -8112,6 +8112,7 @@ async function emergencyRestoreToToday(docNo, source){
       // Hapus item dari pending array
       pendingArr.splice(pendingIdx, 1);
 
+      try {
       if (target.startsWith('VENDOR_KODE:')) {
         // Push ke vendorItems → vendor card akan ditampilkan
         const kode = target.replace('VENDOR_KODE:','');
@@ -8145,7 +8146,7 @@ async function emergencyRestoreToToday(docNo, source){
           waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
         });
         setRoutesDirty(true);
-        toast(`✅ DO ${item.doc_no} dipulihkan ke vendor ${vendor.nama} — gunakan WA Order Vendor untuk kirim ke PIC`);
+        alert(`✅ DO ${item.doc_no} dipulihkan ke vendor ${vendor.nama} — gunakan WA Order Vendor untuk kirim ke PIC`);
       } else if (target.startsWith('KEND:')) {
         // Tambah ke existing route
         const routeId = parseInt(target.replace('KEND:',''));
@@ -8181,7 +8182,7 @@ async function emergencyRestoreToToday(docNo, source){
           waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
         });
         setRoutesDirty(true);
-        toast(`✅ DO ${item.doc_no} ditambahkan ke ${route.vehicle.plat} (${route.vehicle.driver})`);
+        alert(`✅ DO ${item.doc_no} ditambahkan ke ${route.vehicle.plat} (${route.vehicle.driver})`);
       } else if (target.startsWith('IDLE:')) {
         // Spawn new route dari kendaraan idle (mirror handler IDLE: di reassignDO)
         const parts = target.replace('IDLE:','').split('|');
@@ -8225,7 +8226,7 @@ async function emergencyRestoreToToday(docNo, source){
           waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
         });
         setRoutesDirty(true);
-        toast(`✅ DO ${item.doc_no} di-assign ke kendaraan idle ${idlePlat} (${vIdle.driver})`);
+        alert(`✅ DO ${item.doc_no} di-assign ke kendaraan idle ${idlePlat} (${vIdle.driver})`);
       } else {
         alert('Target tidak valid: ' + target);
         return;
@@ -8241,7 +8242,18 @@ async function emergencyRestoreToToday(docNo, source){
           }).catch(e => console.warn('[v4.47.3] Gagal clear pending di GAS:', e.message));
         }
       }
-      renderRouting(); renderKPI(); renderVendor && renderVendor(); renderLuarKotaPending(); renderBiaya();
+      } catch (err) {
+        // v4.47.6: kalau error di tengah branch, tetap re-render UI supaya tidak stale
+        console.error('[Emergency] Error di branch:', err);
+        alert(`⚠ Error saat assign: ${err.message}\n\nUI akan di-refresh. Cek tab Routing untuk verify.`);
+      } finally {
+        // Selalu re-render — supaya UI tidak stale walaupun ada error
+        try { renderRouting(); } catch(e){ console.warn(e); }
+        try { renderKPI(); } catch(e){ console.warn(e); }
+        try { renderVendor && renderVendor(); } catch(e){ console.warn(e); }
+        try { renderLuarKotaPending(); } catch(e){ console.warn(e); }
+        try { renderBiaya(); } catch(e){ console.warn(e); }
+      }
     }
   });
 }
