@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.47.1</title>
+<title>Routing Optimizer v4.47.3</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.47.1</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.47.3</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -694,7 +694,7 @@ body.dispatch-active .dispatch-bar{display:flex}
             <thead><tr>
               <th>DO No</th><th>Gudang</th><th>Customer</th><th>Kota Tujuan</th>
               <th>Tujuan</th><th>QTY</th><th>Volume (m³)</th>
-              <th>Kendaraan (sebelumnya)</th><th>Alasan</th>
+              <th>Kendaraan (sebelumnya)</th><th>Alasan</th><th>Aksi</th>
             </tr></thead>
             <tbody id="tbody-lowutil"></tbody>
           </table>
@@ -5721,12 +5721,33 @@ function renderVendor(){
     const vendorOpts = vendorState.filter(v=>v.available)
       .map((v,vi)=>`<option value="VENDOR:${vi}">📦 ${v.nama} [${v.tipe}]</option>`).join('');
     const svolU=CFG.safety_vol||0.85, swtU=CFG.safety_wt||0.90;
-    const internalOptsU = routes
+    // v4.47.2: Include idle vehicles juga (sebelumnya cuma routes)
+    const assignedPlatsU = new Set(routes.map(r=>r.vehicle.plat));
+    const optsListU = [];
+    vehicles.forEach(v => {
+      if (assignedPlatsU.has(v.plat)) return;
+      const sisaVol = (v.vol_m3 * svolU).toFixed(2);
+      optsListU.push({
+        isIdle: true,
+        sisaVol: parseFloat(sisaVol),
+        html: `<option value="IDLE:${v.plat}|${v.wh}|${v.vol_m3}">🟢 ${v.plat} / ${v.driver} [${v.tipe}] · ${String(v.wh||'').replace('GUDANG ','')} (idle, ${sisaVol}m³)</option>`
+      });
+    });
+    routes
       .filter(r=> r.total_vol<r.vehicle.vol_m3*svolU*0.98 && r.total_wt<r.vehicle.max_kg*swtU*0.98)
-      .map(r=>{
+      .forEach(r=>{
         const sv=(r.vehicle.vol_m3*svolU-r.total_vol).toFixed(2);
-        return `<option value="KEND:${r.id}">🚛 ${r.vehicle.plat} / ${r.vehicle.driver} (${sv}m³)</option>`;
-      }).join('');
+        optsListU.push({
+          isIdle: false,
+          sisaVol: parseFloat(sv),
+          html: `<option value="KEND:${r.id}">🚛 ${r.vehicle.plat} / ${r.vehicle.driver} (${sv}m³)</option>`
+        });
+      });
+    optsListU.sort((a,b)=>{
+      if (a.isIdle !== b.isIdle) return a.isIdle ? -1 : 1;
+      return b.sisaVol - a.sisaVol;
+    });
+    const internalOptsU = optsListU.map(o=>o.html).join('');
 
     unassignedTbody.innerHTML = unassigned.map(r=>{
       const itemIdx = vendorItems.indexOf(r);
@@ -5766,12 +5787,40 @@ function renderVendorGroup(group, wh){
       return `<option value="VENDOR:${realIdx}">📦 ${v.nama} [${v.tipe}]</option>`;
     }).join('');
   const svol=CFG.safety_vol||0.85, swt=CFG.safety_wt||0.90;
-  const internalOpts = routes
-    .filter(r=> r.wh.toUpperCase().includes(wh) && r.total_vol<r.vehicle.vol_m3*svol*0.98 && r.total_wt<r.vehicle.max_kg*swt*0.98)
-    .map(r=>{
-      const sv=(r.vehicle.vol_m3*svol-r.total_vol).toFixed(2);
-      return `<option value="KEND:${r.id}">🚛 ${r.vehicle.plat} / ${r.vehicle.driver} (sisa ${sv}m³)</option>`;
-    }).join('');
+  // v4.47.2: Include IDLE vehicles (belum ada di routes) + sudah ke-plot dengan sisa kapasitas.
+  // HG insight: maksimalkan unit sendiri sebelum vendor.
+  const assignedPlats = new Set(routes.map(r=>r.vehicle.plat));
+  const whUpper = String(wh||'').toUpperCase();
+  // Helper: format option dari spec kendaraan + sisa kapasitas
+  const optsList = [];
+  // (1) Kendaraan idle dari gudang yang sama — sisa = full capacity
+  vehicles.forEach(v => {
+    if (assignedPlats.has(v.plat)) return;
+    if (!String(v.wh||'').toUpperCase().includes(whUpper)) return;
+    const sisaVol = (v.vol_m3 * svol).toFixed(2);
+    optsList.push({
+      isIdle: true,
+      sisaVol: parseFloat(sisaVol),
+      html: `<option value="IDLE:${v.plat}|${v.wh}|${v.vol_m3}">🟢 ${v.plat} / ${v.driver} [${v.tipe}] (idle, kosong ${sisaVol}m³)</option>`
+    });
+  });
+  // (2) Kendaraan yang sudah ke-plot dengan sisa kapasitas
+  routes
+    .filter(r=> r.wh.toUpperCase().includes(whUpper) && r.total_vol<r.vehicle.vol_m3*svol*0.98 && r.total_wt<r.vehicle.max_kg*swt*0.98)
+    .forEach(r=>{
+      const sv = (r.vehicle.vol_m3*svol - r.total_vol).toFixed(2);
+      optsList.push({
+        isIdle: false,
+        sisaVol: parseFloat(sv),
+        html: `<option value="KEND:${r.id}">🚛 ${r.vehicle.plat} / ${r.vehicle.driver} (sisa ${sv}m³)</option>`
+      });
+    });
+  // Sort: idle dulu (paling utama dipakai), kemudian by sisa terbesar
+  optsList.sort((a,b)=>{
+    if (a.isIdle !== b.isIdle) return a.isIdle ? -1 : 1;
+    return b.sisaVol - a.sisaVol;
+  });
+  const internalOpts = optsList.map(o=>o.html).join('');
 
   const telpAvail = vendor.telp && !/\[ISI|\[Telp/i.test(vendor.telp);
   const whatsappBtn = telpAvail
@@ -6438,14 +6487,22 @@ function dispatchAction(routeId,docKeyStr,action,evt){
       }
     });
   } else if(action==='pindah'){
-    // Build opsi kendaraan lain (v4.47: + vendor di optgroup terpisah)
+    // Build opsi kendaraan lain (v4.47.2: + IDLE armada + vendor di optgroup terpisah)
     const otherRoutes=routes.filter(r=>r.id!==rid);
-    const internalOpts=otherRoutes.map(r=>`<option value="${r.id}">${r.vehicle.plat} / ${r.vehicle.driver} | ${r.wh.replace('GUDANG ','')} (${r.total_km||0}km)</option>`).join('');
+    const internalOpts=otherRoutes.map(r=>`<option value="${r.id}">🚛 ${r.vehicle.plat} / ${r.vehicle.driver} | ${r.wh.replace('GUDANG ','')} (${r.total_km||0}km)</option>`).join('');
+    // v4.47.2: kendaraan idle (belum ada di routes)
+    const assignedPlats3 = new Set(routes.map(rr=>rr.vehicle.plat));
+    const idleOpts = vehicles
+      .filter(v => !assignedPlats3.has(v.plat))
+      .sort((a,b) => b.vol_m3 - a.vol_m3)
+      .map(v => `<option value="IDLE_PINDAH:${v.plat}|${v.wh}|${v.vol_m3}">🟢 ${v.plat} / ${v.driver} [${v.tipe}] | ${String(v.wh||'').replace('GUDANG ','')} (idle, kosong ${(v.vol_m3*0.85).toFixed(2)}m³)</option>`)
+      .join('');
     let vendorOpts='';
     if (vendorList && vendorList.length > 0) {
       vendorOpts = vendorList.map(vd => `<option value="VEN_${vd.kode}">${vd.kode} | ${vd.nama}</option>`).join('');
     }
-    const opts = `<optgroup label="🚛 ARMADA INTERNAL">${internalOpts}</optgroup>` +
+    const opts = (idleOpts ? `<optgroup label="🟢 IDLE — Belum dipakai (utamakan!)">${idleOpts}</optgroup>` : '') +
+                 `<optgroup label="🚛 ARMADA INTERNAL (sudah ada DO)">${internalOpts}</optgroup>` +
                  (vendorOpts ? `<optgroup label="🤝 VENDOR / SUB KONTRAK">${vendorOpts}</optgroup>` : '');
     showDispatchModal({
       title:'→ Pindah Kendaraan',
@@ -6482,6 +6539,66 @@ function dispatchAction(routeId,docKeyStr,action,evt){
           });
           biayaData[route.id]=calcBiaya(route);
           updateDispatchBar(); renderRouting(); renderVendor && renderVendor(); renderBiaya();
+          return;
+        }
+        // v4.47.2: BRANCH IDLE — spawn route baru dari kendaraan idle
+        if (targetVal.startsWith('IDLE_PINDAH:')) {
+          const parts = targetVal.replace('IDLE_PINDAH:','').split('|');
+          const idlePlat = parts[0]; const idleWh = parts[1];
+          const idleVolM3 = parseFloat(parts[2])||9;
+          // Lookup driver/tipe/maxKg dari vehicles array
+          const vIdle = vehicles.find(vv => vv.plat === idlePlat);
+          if (!vIdle) { alert(`Kendaraan idle ${idlePlat} tidak ditemukan di master`); return; }
+          const moveItemsAll = [];
+          docNos.forEach(dn=>{
+            const moveItems = route.items.filter(i=>i.doc_no===dn);
+            moveItems.forEach(mi=>{
+              route.items.splice(route.items.indexOf(mi),1);
+              moveItemsAll.push(mi);
+            });
+            setRoutesDirty(true);
+            dispatchLog.push({route_id:rid,doc_no:dn,action:'pindah_idle',
+              target_plat: idlePlat, target_driver: vIdle.driver,
+              alasan: vals.alasan,
+              waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
+              plat: route.vehicle.plat, driver: route.vehicle.driver
+            });
+          });
+          if (moveItemsAll.length === 0) { alert('Tidak ada item untuk dipindah'); return; }
+          // Build new route untuk idle vehicle
+          const totalVolNew = moveItemsAll.reduce((a,i)=>a+(i.total_vol||0),0);
+          const totalWtNew = moveItemsAll.reduce((a,i)=>a+(i.total_wt||0),0);
+          const groupsNew = moveItemsAll.map(mi => {
+            const kecI = getSubCluster(mi.kecamatan, mi.zona, mi.kirim);
+            return {
+              doc_no: mi.doc_no, items:[mi],
+              total_vol: mi.total_vol||0, total_wt: mi.total_wt||0,
+              priority: mi.priority||0,
+              lat: mi.lat||kecI.lat, lng: mi.lng||kecI.lng,
+              zona: mi.zona, sub_cluster: kecI.sc||'', sub_urutan: kecI.u||99, bearing:0,
+            };
+          });
+          const org = WH_COORDS[idleWh] || {lat:-6.2,lng:106.8};
+          const ord = nearestNeighbor(groupsNew, org);
+          const itms = buildItems(ord);
+          const eta = calcETA(ord, org);
+          const newRoute = {
+            id: routes.length + Date.now(), wh: idleWh,
+            vehicle: { plat: idlePlat, driver: vIdle.driver, wh: idleWh,
+                       tipe: vIdle.tipe, vol_m3: idleVolM3, max_kg: vIdle.max_kg||5000,
+                       rank: rankTipe(vIdle.tipe) },
+            items: itms, groups: ord,
+            total_vol: +totalVolNew.toFixed(3), total_wt: +totalWtNew.toFixed(1),
+            route_no: 1, has_knek: itms.some(i=>i.needs_knek),
+            max_priority: Math.max(0, ...moveItemsAll.map(i=>i.priority||0)),
+            eta_selesai: eta.selesai, eta_ok: eta.ok, total_km: eta.km||0,
+            _eta_menit: eta.menit, zona_coverage: [...new Set(ord.map(g=>g.sub_cluster||g.zona||''))],
+            is_manual_assign: true,
+          };
+          routes.push(newRoute);
+          biayaData[newRoute.id] = calcBiaya(newRoute);
+          biayaData[route.id] = calcBiaya(route);
+          updateDispatchBar(); renderRouting(); renderBiaya();
           return;
         }
         // BRANCH KENDARAAN INTERNAL (existing flow)
@@ -7797,6 +7914,226 @@ DO akan dikembalikan ke DO Unplot.`)) return;
   renderVendor();renderKPI();renderLuarKotaPending();
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// v4.47.3: Emergency Restore — pulihkan DO Pending ke routing HARI INI
+// ═══════════════════════════════════════════════════════════════════════════
+// Use case HG: kalau ada case emergency (customer mendesak, complaint, dll)
+// untuk DO yang sudah di-defer ke Pending besok, dispatcher bisa "pulihkan"
+// dengan assign langsung ke kendaraan internal idle / route existing / vendor.
+//
+// source: 'luar_kota' (luarKotaPending array) atau 'low_util' (pendingTomorrowItems)
+async function emergencyRestoreToToday(docNo, source){
+  // Cari item di pending list yang sesuai
+  let item = null; let pendingIdx = -1; let pendingArr = null;
+  if (source === 'luar_kota') {
+    pendingIdx = luarKotaPending.findIndex(p=>p.doc_no===docNo);
+    if (pendingIdx < 0) { alert('DO tidak ditemukan di pending Luar Kota'); return; }
+    item = luarKotaPending[pendingIdx];
+    pendingArr = luarKotaPending;
+  } else if (source === 'low_util') {
+    pendingIdx = (pendingTomorrowItems||[]).findIndex(p=>p.doc_no===docNo);
+    if (pendingIdx < 0) { alert('DO tidak ditemukan di pending Low Util'); return; }
+    item = pendingTomorrowItems[pendingIdx];
+    pendingArr = pendingTomorrowItems;
+  } else { alert('Source tidak valid'); return; }
+
+  // Build dropdown opts: IDLE (utamakan) → existing routes → vendor
+  const itemWh = String(item.wh_cons || item.wh || '').toUpperCase();
+  const svol = CFG.safety_vol || 0.85;
+  const swt = CFG.safety_wt || 0.90;
+  const assignedPlatsE = new Set(routes.map(r=>r.vehicle.plat));
+  const optsList = [];
+
+  // (1) Idle vehicles dari gudang yang sama dulu
+  vehicles.forEach(v => {
+    if (assignedPlatsE.has(v.plat)) return;
+    if (itemWh && !String(v.wh||'').toUpperCase().includes(itemWh.replace('GUDANG ',''))) return;
+    const sisaVol = (v.vol_m3 * svol).toFixed(2);
+    optsList.push({
+      kind: 'idle',
+      sisaVol: parseFloat(sisaVol),
+      html: `<option value="IDLE:${v.plat}|${v.wh}|${v.vol_m3}">🟢 ${v.plat} / ${v.driver} [${v.tipe}] (idle, kosong ${sisaVol}m³)</option>`
+    });
+  });
+  // (2) Existing routes dari gudang yang sama dengan sisa kapasitas
+  routes
+    .filter(r => (!itemWh || r.wh.toUpperCase().includes(itemWh.replace('GUDANG ',''))) &&
+                 r.total_vol < r.vehicle.vol_m3 * svol * 0.98 &&
+                 r.total_wt  < r.vehicle.max_kg * swt  * 0.98)
+    .forEach(r => {
+      const sv = (r.vehicle.vol_m3*svol - r.total_vol).toFixed(2);
+      optsList.push({
+        kind: 'route',
+        sisaVol: parseFloat(sv),
+        html: `<option value="KEND:${r.id}">🚛 ${r.vehicle.plat} / ${r.vehicle.driver} (sisa ${sv}m³)</option>`
+      });
+    });
+  optsList.sort((a,b) => {
+    if (a.kind !== b.kind) return a.kind === 'idle' ? -1 : 1;
+    return b.sisaVol - a.sisaVol;
+  });
+  const internalGroup = optsList.length
+    ? `<optgroup label="🚛 ARMADA INTERNAL (utamakan)">${optsList.map(o=>o.html).join('')}</optgroup>`
+    : '';
+  // (3) Vendor
+  let vendorGroup = '';
+  if (typeof vendorState !== 'undefined' && vendorState.length > 0) {
+    const vendorOpts = vendorState.filter(v=>v.available)
+      .map(v => `<option value="VENDOR_KODE:${v.kode}">📦 ${v.nama} [${v.tipe}]</option>`).join('');
+    if (vendorOpts) vendorGroup = `<optgroup label="🤝 VENDOR / SUB KONTRAK">${vendorOpts}</optgroup>`;
+  }
+
+  if (!internalGroup && !vendorGroup) {
+    alert('Tidak ada kendaraan internal atau vendor tersedia untuk assignment.');
+    return;
+  }
+
+  const opts = internalGroup + vendorGroup;
+  const itemSummary = `<b>${item.doc_no}</b> · ${item.customer || '-'} · ${item.qty || 0} DUS · ${(item.total_vol||0).toFixed(3)}m³ · → ${item.kota_tujuan || item.kota || item.luar_kota_area || '-'}`;
+
+  showDispatchModal({
+    title: '🚨 Emergency — Kirim Hari Ini',
+    color: '#b91c1c', bg: '#fee2e2',
+    desc: `DO ${itemSummary}<br><br>Pulihkan ke routing aktif hari ini. Pilih kendaraan / vendor:`,
+    fields: [
+      { id: 'target', label: 'Pulihkan ke', type: 'select', opts },
+      { id: 'alasan', label: 'Alasan emergency', placeholder: 'customer mendesak / sales follow-up / complaint / ...' },
+    ],
+    onOk: (vals) => {
+      const target = String(vals.target || '');
+      const alasan = String(vals.alasan || 'Emergency restore').trim();
+      if (!target) { alert('Pilih kendaraan / vendor dulu'); return; }
+      // Hapus item dari pending array
+      pendingArr.splice(pendingIdx, 1);
+
+      if (target.startsWith('VENDOR_KODE:')) {
+        // Push ke vendorItems → vendor card akan ditampilkan
+        const kode = target.replace('VENDOR_KODE:','');
+        const vendor = vendorState.find(v => v.kode === kode);
+        if (!vendor) { alert('Vendor tidak ditemukan'); return; }
+        vendorItems.push({
+          ...item,
+          manual_vendor_kode: kode,
+          is_manual_vendor: true,
+          vendor_reason: `🚨 Emergency: ${alasan}`,
+          vendor_trigger_reason: `🚨 Emergency: ${alasan}`,
+          is_pending_carryover: false,
+        });
+        // Tambah ke vendor.assigned_dos kalau struktur ini dipakai
+        if (vendor.assigned_dos) {
+          const lastItem = vendorItems[vendorItems.length - 1];
+          if (!vendor.assigned_dos.find(d => d.doc_no === lastItem.doc_no)) {
+            vendor.assigned_dos.push(lastItem);
+          }
+        }
+        dispatchLog.push({
+          route_id: 0, doc_no: item.doc_no, action: 'emergency_restore_vendor',
+          target_vendor: kode, target_vendor_nama: vendor.nama,
+          alasan: alasan, source_pending: source,
+          waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
+        });
+        setRoutesDirty(true);
+        toast(`✅ DO ${item.doc_no} dipulihkan ke vendor ${vendor.nama}`);
+      } else if (target.startsWith('KEND:')) {
+        // Tambah ke existing route
+        const routeId = parseInt(target.replace('KEND:',''));
+        const route = routes.find(r => r.id === routeId);
+        if (!route) { alert('Kendaraan tidak ditemukan'); return; }
+        const lastStop = Math.max(0, ...route.items.map(i=>i.stop_order||0));
+        const newItem = { ...item, stop_order: lastStop+1, load_order: 1, is_pending_carryover: false };
+        route.items.push(newItem);
+        // Recalc grup + ETA
+        const kecI = getSubCluster(item.kecamatan, item.zona, item.kirim);
+        const newDG = {
+          doc_no: item.doc_no, items: [newItem],
+          total_vol: item.total_vol||0, total_wt: item.total_wt||0,
+          priority: item.priority||0,
+          lat: item.lat||kecI.lat, lng: item.lng||kecI.lng,
+          zona: item.zona, sub_cluster: kecI.sc||'', sub_urutan: kecI.u||99, bearing: 0,
+        };
+        route.groups = [...(route.groups||[]), newDG];
+        const org = WH_COORDS[route.wh] || {lat:-6.2,lng:106.8};
+        const ord = nearestNeighbor(route.groups, org);
+        const itms = buildItems(ord);
+        const eta = calcETA(ord, org);
+        route.groups = ord; route.items = itms;
+        route.total_vol = +(itms.reduce((a,i)=>a+(i.total_vol||0), 0)).toFixed(3);
+        route.total_wt  = +(itms.reduce((a,i)=>a+(i.total_wt||0), 0)).toFixed(1);
+        route.eta_selesai = eta.selesai; route.eta_ok = eta.ok;
+        route.total_km = eta.km||0; route._eta_menit = eta.menit;
+        biayaData[route.id] = calcBiaya(route);
+        dispatchLog.push({
+          route_id: route.id, doc_no: item.doc_no, action: 'emergency_restore_route',
+          target_plat: route.vehicle.plat, target_driver: route.vehicle.driver,
+          alasan: alasan, source_pending: source,
+          waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
+        });
+        setRoutesDirty(true);
+        toast(`✅ DO ${item.doc_no} ditambahkan ke ${route.vehicle.plat} (${route.vehicle.driver})`);
+      } else if (target.startsWith('IDLE:')) {
+        // Spawn new route dari kendaraan idle (mirror handler IDLE: di reassignDO)
+        const parts = target.replace('IDLE:','').split('|');
+        const idlePlat = parts[0]; const idleWh = parts[1];
+        const idleVolM3 = parseFloat(parts[2])||9;
+        const vIdle = vehicles.find(vv => vv.plat === idlePlat);
+        if (!vIdle) { alert(`Kendaraan ${idlePlat} tidak ditemukan di master`); return; }
+        const newItem = { ...item, stop_order: 1, load_order: 1, is_pending_carryover: false };
+        const kecI = getSubCluster(item.kecamatan, item.zona, item.kirim);
+        const newDG = {
+          doc_no: item.doc_no, items: [newItem],
+          total_vol: item.total_vol||0, total_wt: item.total_wt||0,
+          priority: item.priority||0,
+          lat: item.lat||kecI.lat, lng: item.lng||kecI.lng,
+          zona: item.zona, sub_cluster: kecI.sc||'', sub_urutan: kecI.u||99, bearing: 0,
+        };
+        const org = WH_COORDS[idleWh] || {lat:-6.2,lng:106.8};
+        const ord = nearestNeighbor([newDG], org);
+        const itms = buildItems(ord);
+        const eta = calcETA(ord, org);
+        const newRoute = {
+          id: routes.length + Date.now(),
+          vehicle: { plat: idlePlat, driver: vIdle.driver, wh: idleWh,
+                     tipe: vIdle.tipe, vol_m3: idleVolM3, max_kg: vIdle.max_kg||5000,
+                     rank: rankTipe(vIdle.tipe) },
+          wh: idleWh,
+          items: itms, groups: ord,
+          total_vol: +(item.total_vol||0).toFixed(3), total_wt: +(item.total_wt||0).toFixed(1),
+          route_no: 1, has_knek: item.needs_knek||false,
+          max_priority: item.priority||0,
+          eta_selesai: eta.selesai, eta_ok: eta.ok, total_km: eta.km||0,
+          _eta_menit: eta.menit, zona_coverage: [kecI.sc||item.zona||''],
+          is_manual_assign: true, is_emergency_restore: true,
+        };
+        routes.push(newRoute);
+        biayaData[newRoute.id] = calcBiaya(newRoute);
+        dispatchLog.push({
+          route_id: newRoute.id, doc_no: item.doc_no, action: 'emergency_restore_idle',
+          target_plat: idlePlat, target_driver: vIdle.driver,
+          alasan: alasan, source_pending: source,
+          waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
+        });
+        setRoutesDirty(true);
+        toast(`✅ DO ${item.doc_no} di-assign ke kendaraan idle ${idlePlat} (${vIdle.driver})`);
+      } else {
+        alert('Target tidak valid: ' + target);
+        return;
+      }
+
+      // Clear pending dari GAS kalau auto-defer (clean up server state)
+      if (source === 'luar_kota') {
+        const gsUrl = document.getElementById('gs-id')?.value.trim();
+        if (gsUrl && gsUrl.startsWith('https://script.google.com/') && gsConnected) {
+          fetch(gsUrl, { method:'POST',
+            headers: {'Content-Type':'text/plain'}, redirect: 'follow',
+            body: JSON.stringify({ action: 'deletePendingBesok', doc_nos: [docNo], status: 'EMERGENCY_RESTORED' })
+          }).catch(e => console.warn('[v4.47.3] Gagal clear pending di GAS:', e.message));
+        }
+      }
+      renderRouting(); renderKPI(); renderVendor && renderVendor(); renderLuarKotaPending(); renderBiaya();
+    }
+  });
+}
+
 function renderLuarKotaPending(){
   const pendingAuto   = luarKotaPending.filter(r => r.defer_type === 'auto');
   const pendingManual = luarKotaPending.filter(r => r.defer_type !== 'auto');
@@ -7890,10 +8227,16 @@ function renderLuarKotaPending(){
       </td>
       <td style="color:var(--muted);font-size:9px">${(r.pending_reason||'').slice(0,80)}</td>
       <td>
-        <button onclick="batalkanPendingBesok('${r.doc_no}')"
-          style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:4px;
-                 padding:2px 8px;font-size:9px;cursor:pointer;font-weight:600"
-          title="Batalkan dan kembalikan ke DO Unplot">↩ Batal</button>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button onclick="emergencyRestoreToToday('${r.doc_no}','luar_kota')"
+            style="background:#fef3c7;color:#b91c1c;border:1px solid #fca5a5;border-radius:4px;
+                   padding:2px 8px;font-size:9px;cursor:pointer;font-weight:700"
+            title="Emergency — pulihkan ke routing hari ini, assign ke kendaraan/vendor">🚨 Emergency</button>
+          <button onclick="batalkanPendingBesok('${r.doc_no}')"
+            style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:4px;
+                   padding:2px 8px;font-size:9px;cursor:pointer;font-weight:600"
+            title="Batalkan dan kembalikan ke DO Unplot">↩ Batal</button>
+        </div>
       </td>
     </tr>`;
   }).join('');
@@ -7915,6 +8258,12 @@ function renderLuarKotaPending(){
           <td style="font-family:var(--mono);font-size:10px">${(r.total_vol||0).toFixed(3)}</td>
           <td style="font-size:10px;color:var(--muted)">${r.previous_plat||'-'} ${r.previous_driver||''}</td>
           <td style="color:var(--muted);font-size:9px">${(r.pending_reason||'').slice(0,80)}</td>
+          <td>
+            <button onclick="emergencyRestoreToToday('${r.doc_no}','low_util')"
+              style="background:#fef3c7;color:#b91c1c;border:1px solid #fca5a5;border-radius:4px;
+                     padding:2px 8px;font-size:9px;cursor:pointer;font-weight:700"
+              title="Emergency — pulihkan ke routing hari ini, assign ke kendaraan/vendor">🚨 Emergency</button>
+          </td>
         </tr>`;
       }).join('');
     } else {
