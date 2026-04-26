@@ -2042,6 +2042,9 @@ function startMuatAll() {
     lat            : pos.lat,
     lng            : pos.lng,
   });
+
+  // Re-render → tampilkan phase loading
+  loadTasks(false);
 }
 
 async function selesaiMuatAll() {
