@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.47.4</title>
+<title>Routing Optimizer v4.47.5</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.47.4</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.47.5</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -6437,6 +6437,8 @@ function toggleDispatchMode(){
   if(btn) btn.textContent=dispatchMode?'🔴 Exit Dispatch':'🚛 Dispatch';
   updateDispatchBar();
   renderRouting(); // re-render untuk tampil/sembunyikan tombol aksi
+  // v4.47.5: re-render Pending tab supaya tombol Emergency follow Dispatch Mode
+  if (typeof renderLuarKotaPending === 'function') renderLuarKotaPending();
 }
 
 function updateDispatchBar(){
@@ -6793,13 +6795,31 @@ function exportDispatchLog(){
 // ── Print SJ Revisi ───────────────────────────────────────────────────────────
 function printSJRevisi(){
   if(!dispatchLog.length){alert('Tidak ada perubahan untuk dicetak');return;}
-  // Ambil route yang terkena perubahan
-  const affectedIds=[...new Set(dispatchLog.map(l=>l.route_id))];
+  // v4.47.5: Filter — skip log dengan route_id=null (emergency-to-vendor) dan is_vendor=true
+  const internalLogs = dispatchLog.filter(l => l.route_id != null && !l.is_vendor);
+  const vendorLogs   = dispatchLog.filter(l => l.is_vendor === true);
+
+  // Ambil route yang terkena perubahan internal
+  const affectedIds=[...new Set(internalLogs.map(l=>l.route_id))];
   const rList=affectedIds.map(id=>routes.find(r=>r.id===id)).filter(Boolean);
-  // Tandai sebagai REVISI
+
+  if (rList.length === 0 && vendorLogs.length === 0) {
+    alert('Tidak ada perubahan internal maupun vendor untuk dicetak');
+    return;
+  }
+
+  // Tandai sebagai REVISI + simpan vendor logs ke window untuk banner
   rList.forEach(r=>{r._is_revisi=true;});
+  // Banner data — ditampilkan di top print page kalau ada emergency-to-vendor
+  if (vendorLogs.length > 0) {
+    window._sjRevisiVendorBanner = vendorLogs;
+  } else {
+    delete window._sjRevisiVendorBanner;
+  }
+
   buildSJPrint(rList);
   rList.forEach(r=>{delete r._is_revisi;});
+  setTimeout(()=>window.print(),400);
 }
 
 // ── WA Blast Generator ────────────────────────────────────────────────────────
@@ -7067,6 +7087,45 @@ function printAll(){
 function buildSJPrint(rList){
   const pw=document.getElementById('print-wrap');
   const pages=[];
+
+  // v4.47.5: Banner halaman pertama kalau ada emergency-to-vendor
+  const vendorLogs = window._sjRevisiVendorBanner || [];
+  if (vendorLogs.length > 0) {
+    // Group by vendor
+    const byVendor = {};
+    vendorLogs.forEach(l => {
+      const key = l.target_vendor_nama || l.target_vendor || '?';
+      if (!byVendor[key]) byVendor[key] = [];
+      byVendor[key].push(l);
+    });
+    const vendorRows = Object.entries(byVendor).map(([nama, items]) => {
+      const itemList = items.map(i => `${i.doc_no} (${i.customer||'-'} → ${i.kota||'-'})`).join('<br>');
+      return `<tr>
+        <td style="padding:6px 10px;border:1px solid #fca5a5;font-weight:700;color:#b91c1c">${nama}</td>
+        <td style="padding:6px 10px;border:1px solid #fca5a5;font-size:11px">${itemList}</td>
+        <td style="padding:6px 10px;border:1px solid #fca5a5;text-align:center;font-weight:700">${items.length} DO</td>
+      </tr>`;
+    }).join('');
+    pages.push(`<div class="print-page" style="background:#fef2f2">
+      <div style="padding:30px">
+        <div style="font-size:24px;font-weight:800;color:#991b1b;margin-bottom:8px">🚨 EMERGENCY DISPATCH — DIALIHKAN KE VENDOR</div>
+        <div style="font-size:11px;color:#64748b;margin-bottom:20px">Halaman ini ringkasan DO yang dialihkan ke vendor sub-kontrak. SJ untuk vendor di-handle terpisah via printSJVendor.</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #fca5a5">
+          <thead><tr style="background:#fee2e2">
+            <th style="padding:8px 10px;border:1px solid #fca5a5;text-align:left">Vendor</th>
+            <th style="padding:8px 10px;border:1px solid #fca5a5;text-align:left">DO Emergency</th>
+            <th style="padding:8px 10px;border:1px solid #fca5a5;text-align:center">Total</th>
+          </tr></thead>
+          <tbody>${vendorRows}</tbody>
+        </table>
+        <div style="margin-top:20px;padding:10px;background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;font-size:11px;color:#92400e">
+          <b>Tindakan dispatcher:</b> kirim WA Order Vendor ke PIC vendor untuk handle emergency DO ini.
+          Vendor akan menerbitkan SJ mereka sendiri saat pickup di gudang.
+        </div>
+      </div>
+    </div>`);
+  }
+
   for(let i=0;i<rList.length;i+=2){
     pages.push(`<div class="print-page">
       ${buildSJ(rList[i])}
@@ -7963,6 +8022,11 @@ DO akan dikembalikan ke DO Unplot.`)) return;
 //
 // source: 'luar_kota' (luarKotaPending array) atau 'low_util' (pendingTomorrowItems)
 async function emergencyRestoreToToday(docNo, source){
+  // v4.47.5: Guard — Emergency hanya boleh dipakai saat Dispatch Mode AKTIF
+  if (!dispatchMode) {
+    alert('🚨 Emergency hanya bisa dipakai saat Dispatch Mode AKTIF.\n\nKlik tombol "🚛 Dispatch" di pojok kanan atas untuk aktifkan dispatch mode dulu.');
+    return;
+  }
   // Cari item di pending list yang sesuai
   let item = null; let pendingIdx = -1; let pendingArr = null;
   if (source === 'luar_kota') {
@@ -8057,6 +8121,7 @@ async function emergencyRestoreToToday(docNo, source){
           ...item,
           manual_vendor_kode: kode,
           is_manual_vendor: true,
+          is_emergency_to_vendor: true, // v4.47.5: marker khusus emergency-to-vendor
           vendor_reason: `🚨 Emergency: ${alasan}`,
           vendor_trigger_reason: `🚨 Emergency: ${alasan}`,
           is_pending_carryover: false,
@@ -8068,14 +8133,19 @@ async function emergencyRestoreToToday(docNo, source){
             vendor.assigned_dos.push(lastItem);
           }
         }
+        // v4.47.5: dispatchLog dengan is_vendor=true marker.
+        // route_id=null supaya printSJRevisi skip (vendor punya SJ sendiri).
+        // Banner di SJ Revisi akan tampilkan ringkasan emergency-to-vendor.
         dispatchLog.push({
-          route_id: 0, doc_no: item.doc_no, action: 'emergency_restore_vendor',
+          route_id: null, is_vendor: true,
+          doc_no: item.doc_no, action: 'emergency_restore_vendor',
           target_vendor: kode, target_vendor_nama: vendor.nama,
+          customer: item.customer || '', kota: item.kota_tujuan || item.kota || item.luar_kota_area || '',
           alasan: alasan, source_pending: source,
           waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
         });
         setRoutesDirty(true);
-        toast(`✅ DO ${item.doc_no} dipulihkan ke vendor ${vendor.nama}`);
+        toast(`✅ DO ${item.doc_no} dipulihkan ke vendor ${vendor.nama} — gunakan WA Order Vendor untuk kirim ke PIC`);
       } else if (target.startsWith('KEND:')) {
         // Tambah ke existing route
         const routeId = parseInt(target.replace('KEND:',''));
@@ -8270,10 +8340,11 @@ function renderLuarKotaPending(){
       <td style="color:var(--muted);font-size:9px">${(r.pending_reason||'').slice(0,80)}</td>
       <td>
         <div style="display:flex;gap:4px;flex-wrap:wrap">
-          <button onclick="emergencyRestoreToToday('${r.doc_no}','luar_kota')"
+          ${dispatchMode ? `<button onclick="emergencyRestoreToToday('${r.doc_no}','luar_kota')"
             style="background:#fef3c7;color:#b91c1c;border:1px solid #fca5a5;border-radius:4px;
                    padding:2px 8px;font-size:9px;cursor:pointer;font-weight:700"
-            title="Emergency — pulihkan ke routing hari ini, assign ke kendaraan/vendor">🚨 Emergency</button>
+            title="Emergency — pulihkan ke routing hari ini, assign ke kendaraan/vendor">🚨 Emergency</button>`
+            : `<span style="font-size:9px;color:#94a3b8;font-style:italic" title="Aktifkan Dispatch Mode untuk pakai Emergency">🚨 (dispatch mode)</span>`}
           <button onclick="batalkanPendingBesok('${r.doc_no}')"
             style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:4px;
                    padding:2px 8px;font-size:9px;cursor:pointer;font-weight:600"
@@ -8301,10 +8372,11 @@ function renderLuarKotaPending(){
           <td style="font-size:10px;color:var(--muted)">${r.previous_plat||'-'} ${r.previous_driver||''}</td>
           <td style="color:var(--muted);font-size:9px">${(r.pending_reason||'').slice(0,80)}</td>
           <td>
-            <button onclick="emergencyRestoreToToday('${r.doc_no}','low_util')"
+            ${dispatchMode ? `<button onclick="emergencyRestoreToToday('${r.doc_no}','low_util')"
               style="background:#fef3c7;color:#b91c1c;border:1px solid #fca5a5;border-radius:4px;
                      padding:2px 8px;font-size:9px;cursor:pointer;font-weight:700"
-              title="Emergency — pulihkan ke routing hari ini, assign ke kendaraan/vendor">🚨 Emergency</button>
+              title="Emergency — pulihkan ke routing hari ini, assign ke kendaraan/vendor">🚨 Emergency</button>`
+              : `<span style="font-size:9px;color:#94a3b8;font-style:italic" title="Aktifkan Dispatch Mode untuk pakai Emergency">🚨 (dispatch mode)</span>`}
           </td>
         </tr>`;
       }).join('');
