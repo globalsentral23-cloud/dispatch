@@ -6,8 +6,36 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>GST Logistics — Driver App v4.2.3</title>
+<title>GST Logistics — Driver App v4.2.4</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<!-- Eruda Mobile DevTools — opt-in via ?debug=1 (sticky di localStorage HP) -->
+<!-- Cara pakai:                                                              -->
+<!--   ?debug=1 → aktifkan (tetap aktif sampai dimatikan)                     -->
+<!--   ?debug=0 → matikan dan hapus dari HP                                   -->
+<script>
+(function(){
+  try {
+    var qs = location.search || '';
+    if (qs.indexOf('debug=1') > -1) localStorage.setItem('eruda_on', '1');
+    if (qs.indexOf('debug=0') > -1) { localStorage.removeItem('eruda_on'); return; }
+    if (localStorage.getItem('eruda_on') !== '1') return;
+  } catch(e) { return; }
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/eruda@3';
+  s.onload = function(){
+    try {
+      window.eruda && eruda.init({
+        tool       : ['console','network','elements','resources','info'],
+        useShadowDom: true,
+        autoScale  : true,
+        defaults   : { displaySize: 50, transparency: 0.95, theme: 'Dark' }
+      });
+      console.log('%c[Eruda] DevTools aktif — URL ?debug=0 untuk matikan','color:#10b981;font-weight:bold');
+    } catch(e) { /* silent */ }
+  };
+  document.head.appendChild(s);
+})();
+</script>
 <style>
 :root{
   --nav:#0b1f3a;--accent:#2563eb;--bg:#f4f7fb;--border:#dbe3f0;
@@ -780,7 +808,7 @@ const CURRENT_BUILD = 'v3914-20260414';
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v4.2.3';
+const APP_VERSION    = 'v4.2.4';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -1717,6 +1745,12 @@ function openSelesaiOrGrup(docNo, qty, customer) {
 // ── GRUP MODAL STATE ──────────────────────────────────
 let grupCtx = []; // array of { doc_no, qty_kirim, qty_terima, qty_rusak, foto_do, foto_rusak, customer, alamat }
 let grupActiveIdx = 0; // index DO yang sedang difoto
+// FIX v4.2.4: deklarasi eksplisit. Sebelumnya cuma di-set implicit di openGrupCamera,
+// kalau driver test single-DO duluan → _grupCam undeclared → ReferenceError di
+// processAndSetPhoto/setPhotoResult/capturePhoto saat baca `_grupCam ? ... : ...`
+let _grupCam = null;
+// grupDoNos ditrack di openSelesaiGrup, default array kosong
+let grupDoNos = [];
 
 function openSelesaiGrup(docNos) {
   // Build grupCtx dari currentTasks
