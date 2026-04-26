@@ -6,7 +6,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>GST Logistics — Driver App v4.2.4</title>
+<title>GST Logistics — Driver App v4.3.0</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <!-- Eruda Mobile DevTools — opt-in via ?debug=1 (sticky di localStorage HP) -->
 <!-- Cara pakai:                                                              -->
@@ -236,14 +236,7 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
 .btn-back{width:100%;padding:9px;border:none;background:none;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;margin-top:6px}
 .btn-submit:disabled{opacity:.6;cursor:not-allowed}
 
-/* ── BULK SELECT ── */
-.bulk-bar{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;
-  padding:10px 14px;margin-bottom:10px;display:none;align-items:center;gap:10px}
-.bulk-bar.show{display:flex}
-.bulk-count{font-size:12px;font-weight:700;color:#1d4ed8;flex:1}
-.bulk-btn{background:#16a34a;color:#fff;border:none;border-radius:8px;
-  padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer}
-.do-checkbox{width:20px;height:20px;cursor:pointer;accent-color:#2563eb}
+/* ── BULK SELECT (DIHAPUS v4.3.0) ── */
 
 /* ALERTS */
 .alert{padding:9px 12px;border-radius:8px;font-size:11px;margin:8px 0;line-height:1.5}
@@ -364,13 +357,6 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
     <div class="section-title">
       Tugas Aktif
       <button class="refresh-btn" onclick="loadTasks(true)"><i class="fas fa-sync-alt"></i> Refresh</button>
-    </div>
-    <!-- Bulk complete bar -->
-    <div class="bulk-bar" id="bulk-bar">
-      <span class="bulk-count" id="bulk-count">0 DO dipilih</span>
-      <button class="bulk-btn" onclick="openBulkSelesai()">
-        <i class="fas fa-check-circle"></i> Selesai Semua
-      </button>
     </div>
     <div id="task-list">
       <div class="empty-state">
@@ -808,7 +794,7 @@ const CURRENT_BUILD = 'v3914-20260414';
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v4.2.4';
+const APP_VERSION    = 'v4.3.0';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -865,6 +851,17 @@ let modalCtx = {
 
 let strukPhotos = { tol:null, parkir:null, bensin:null };
 let wakeLock = null;  // Wake Lock API — cegah layar mati saat trip
+
+// ═══════════════════════════════════════════════════════
+// v4.3.0: OPTIMISTIC SUBMIT STATE
+// ═══════════════════════════════════════════════════════
+// submittedDOs = DO yang sudah klik Submit (Selesai/Gagal). Langsung hilang dari list.
+//   - Kalau loadTasks() return DO ini masih On Process (server lambat sync), tetap difilter out.
+//   - Setelah server confirm status='Selesai'/'Gagal Kirim', DO tidak akan muncul lagi (filter status),
+//     dan entry di submittedDOs jadi stale yang tidak masalah.
+// failedSubmits = DO yang gasPost-nya gagal/timeout. DO muncul lagi di list + notif merah.
+let submittedDOs = new Set();
+let failedSubmits = []; // [{doc_no, action, payload, error, ts}]
 
 // ═══════════════════════════════════════════════════════
 // INIT
@@ -1325,7 +1322,29 @@ async function loadTasks(showSpinner = true) {
       </div>`;
   }
 
-  document.getElementById('task-list').innerHTML = summaryHTML + globalMuatHTML + allTasks.map(t => buildCard(t)).join('');
+  // ── v4.3.0: Filter out DO yang sudah disubmit lokal (optimistic remove) ──
+  // submittedDOs berisi doc_no yang baru di-submit dan masih nunggu konfirmasi server.
+  // Cegah DO muncul lagi sebentar saat loadTasks jalan tapi GAS belum sync.
+  const _renderTasks = allTasks.filter(t => {
+    if (!submittedDOs.has(t.doc_no)) return true;
+    // DO sudah disubmit. Kalau server sudah set status terminal → boleh ditampilkan
+    // (tapi biasanya tidak akan tampil di Tugas Aktif karena filter status di sini).
+    // Kalau status masih Muat Kargo/On Process di server (lambat sync) → SKIP.
+    const isTerminal = ['Selesai','Done','Gagal Kirim','Batal'].indexOf(t.status) > -1;
+    if (isTerminal) {
+      submittedDOs.delete(t.doc_no); // server sudah catch up, lepas ban-list
+      return true;
+    }
+    return false; // masih On Process di server tapi sudah disubmit lokal → sembunyikan
+  });
+
+  // ── v4.3.0: Group multi-DO 1 alamat jadi 1 card ──
+  const _groupedRender = groupTasksByAlamat(_renderTasks);
+  const _renderHTML = _groupedRender.map(g =>
+    g.isGroup ? buildGroupCard(g.tasks) : buildCard(g.tasks[0])
+  ).join('');
+
+  document.getElementById('task-list').innerHTML = summaryHTML + globalMuatHTML + _renderHTML;
 
   // Jika ada DO baru masuk saat semua sudah selesai → scroll ke atas otomatis
   if (activeDO2.length > 0 && !summaryHTML) {
@@ -1376,8 +1395,6 @@ function buildCard(t) {
   <div class="do-card" id="card-${t.doc_no}">
     <div class="do-card-head">
       <div style="display:flex;align-items:center;gap:10px">
-        ${isProc?`<input type="checkbox" class="do-checkbox" id="chk-${t.doc_no}"
-          onchange="toggleBulkSelect('${escHtml(t.doc_no)}')" title="Pilih untuk selesai bersama">`:''}
         <div>
           <div class="do-no">DO: ${t.doc_no||'—'}</div>
           <div class="do-sub">${t.gudang||''}</div>
@@ -1422,6 +1439,120 @@ function buildCard(t) {
 function toggleDetail(docNo) {
   const el = document.getElementById('detail-'+docNo);
   if (el) el.style.display = el.style.display==='none' ? 'block' : 'none';
+}
+
+// ═══════════════════════════════════════════════════════
+// v4.3.0: GROUP DETECTION & GROUP CARD RENDERING
+// ═══════════════════════════════════════════════════════
+function _normAddr(s) {
+  return String(s||'').toLowerCase()
+    .replace(/[.,\-\/\\()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Input: array of tasks. Output: array of { isGroup: bool, tasks: [task] }
+// Multi-DO 1 alamat (status On Process semua) → 1 entry isGroup=true
+// Single DO atau status non-On Process → 1 entry isGroup=false
+function groupTasksByAlamat(tasks) {
+  const out = [];
+  const seenKeys = new Set();
+  // Hitung kandidat group: cuma DO On Process dengan alamat non-empty
+  const groupable = tasks.filter(t => t.status === 'On Process' && (t.alamat||'').trim());
+  const groupMap = {};
+  groupable.forEach(t => {
+    const k = _normAddr(t.alamat);
+    if (!k) return;
+    (groupMap[k] = groupMap[k] || []).push(t);
+  });
+  // Iterasi tasks original (jaga urutan asli)
+  tasks.forEach(t => {
+    const k = _normAddr(t.alamat||'');
+    if (t.status === 'On Process' && k && groupMap[k] && groupMap[k].length > 1) {
+      if (seenKeys.has(k)) return; // sudah dirender sebagai bagian grup sebelumnya
+      seenKeys.add(k);
+      out.push({ isGroup: true, tasks: groupMap[k] });
+    } else {
+      out.push({ isGroup: false, tasks: [t] });
+    }
+  });
+  return out;
+}
+
+function buildGroupCard(tasks) {
+  const docNos    = tasks.map(t => t.doc_no);
+  const docNoCsv  = docNos.join(',');
+  const customer  = tasks[0].customer || '—';
+  const alamat    = tasks[0].alamat   || '—';
+  const gudang    = tasks[0].gudang   || '';
+  const totalQty  = tasks.reduce((a,t) => a + (parseInt(t.qty)||0), 0);
+  const mapsUrl   = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(alamat)}`;
+
+  // Header label: "30005 + 30007 + 30013" kalau ≤4, "30005 + 3 lainnya" kalau >4
+  let headerLabel;
+  if (docNos.length <= 4) {
+    headerLabel = docNos.join(' + ');
+  } else {
+    headerLabel = docNos[0] + ' + ' + (docNos.length - 1) + ' lainnya';
+  }
+
+  const detailKey = 'group-' + docNos[0]; // unique key untuk toggle
+  // List per DO untuk detail expansion
+  const doList = tasks.map(t => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px dashed #e2e8f0">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:#0b1f3a">DO: ${escHtml(t.doc_no)}</div>
+        <div style="font-size:10px;color:#64748b">${escHtml(t.produk||'—')}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:13px;font-weight:800;color:#15803d">${t.qty||0} DUS</div>
+      </div>
+    </div>`).join('');
+
+  return `
+  <div class="do-card" style="border:2px solid #2563eb;background:#eff6ff">
+    <div class="do-card-head">
+      <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+        <div style="flex:1;min-width:0">
+          <div class="do-no" style="font-size:13px;line-height:1.4">DO: ${escHtml(headerLabel)}</div>
+          <div class="do-sub">${tasks.length} DO ke 1 alamat · ${escHtml(gudang)}</div>
+        </div>
+      </div>
+      <span class="do-badge" style="background:#2563eb;color:#fff;font-size:10px">📦 GRUP</span>
+    </div>
+    <div onclick="toggleDetail('${detailKey}')" style="padding:8px 14px;text-align:center;border-bottom:1px solid var(--border);cursor:pointer;color:var(--accent);font-size:12px;font-weight:600">
+      Detail &nbsp;<i class="fas fa-chevron-down"></i>
+    </div>
+    <div class="do-detail" id="detail-${detailKey}" style="display:none">
+      <div class="detail-section">
+        <div class="detail-label"><i class="fas fa-user"></i> Customer</div>
+        <div class="detail-value">${escHtml(customer)}</div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-label"><i class="fas fa-map-marker-alt"></i> Alamat</div>
+        <div class="detail-value addr">${escHtml(alamat)}</div>
+        <button class="btn-maps" onclick="window.open('${mapsUrl}','_blank')">
+          <i class="fas fa-map-marked-alt"></i> BUKA GOOGLE MAPS
+        </button>
+      </div>
+      <div class="detail-section">
+        <div class="detail-label"><i class="fas fa-list"></i> Daftar DO (${tasks.length})</div>
+        ${doList}
+        <div style="display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:2px solid #e2e8f0;font-weight:800">
+          <span>Total</span>
+          <span style="color:#15803d">${totalQty} DUS</span>
+        </div>
+      </div>
+    </div>
+    <div class="action-row">
+      <button class="btn-selesai" onclick="openWizardSelesaiGrup('${docNoCsv}')">
+        <i class="fas fa-check-circle"></i> SELESAI
+      </button>
+      <button class="btn-gagal" onclick="openWizardGagalGrup('${docNoCsv}')">
+        <i class="fas fa-exclamation-triangle"></i> GAGAL KIRIM
+      </button>
+    </div>
+  </div>`;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2484,8 +2615,26 @@ async function capturePhoto(type, inputEl) {
 }
 
 function setPhotoResult(type, b64) {
-  console.log('[setPhotoResult] type='+type+' b64 len='+(b64?b64.length:0)+' grupMode='+(_grupCam?'YES('+_grupCam.docNo+')':'no'));
-  // v4.2: jika dalam mode grup camera, dispatch ke grupCtx
+  console.log('[setPhotoResult] type='+type+' b64 len='+(b64?b64.length:0)+' grupMode='+(_grupCam?'YES('+_grupCam.docNo+')':'no')+' wizMode='+(_wizCam?'YES(step '+_wizCam.stepIdx+')':'no')+' gagalGrupMode='+(_wizGagalCam?'YES':'no'));
+
+  // v4.3.0: WIZARD SELESAI GRUP mode — simpan ke wizCtx.docs[stepIdx]
+  if (_wizCam && _wizCam.type === type) {
+    const idx = _wizCam.stepIdx;
+    if (wizCtx.docs[idx]) wizCtx.docs[idx]['foto_'+type] = b64;
+    _wizCam = null;
+    if (wizCtx.active) renderWizardStep();
+    return;
+  }
+
+  // v4.3.0: WIZARD GAGAL GRUP mode — simpan 1 foto_gagal untuk semua DO
+  if (_wizGagalCam && _wizGagalCam.type === type) {
+    wizGagalCtx.foto_gagal = b64;
+    _wizGagalCam = null;
+    if (wizGagalCtx.active) renderWizardGagalGrup();
+    return;
+  }
+
+  // v4.2: jika dalam mode grup camera (legacy m-selesai-grup), dispatch ke grupCtx
   if (_grupCam && _grupCam.type === type) {
     setGrupPhotoResult(_grupCam.docNo, type, b64);
     _grupCam = null;
@@ -2579,12 +2728,12 @@ async function submitSelesai() {
     timestamp   : new Date().toISOString(),
   };
 
-  // ── FIRE AND FORGET: langsung lanjut, tidak tunggu response ──────────────
-  // Kirim di background — driver tidak perlu nunggu upload foto selesai
-  gasPost(payload); // no await
-
-  // Update UI langsung tanpa tunggu server
-  lastTasksSnap[modalCtx.doc_no] = 'Selesai';
+  // ── v4.3.0 OPTIMISTIC SUBMIT ──────────────────────────────────────────
+  const docNo = modalCtx.doc_no;
+  submittedDOs.add(docNo);
+  // Hapus dari currentTasks supaya re-render langsung tanpa fetch GAS
+  currentTasks = currentTasks.filter(t => t.doc_no !== docNo);
+  lastTasksSnap[docNo] = 'Selesai';
   stopsDone++;
   btn.disabled = false;
   closeModal('m-selesai');
@@ -2593,12 +2742,18 @@ async function submitSelesai() {
   addNotification({
     type:'self', icon:'change',
     title:'✅ Laporan Dikirim',
-    msg:`DO ${modalCtx.doc_no} — ${modalCtx.qty_terima} DUS · mengirim ke server...`,
-    doc_no: modalCtx.doc_no,
+    msg:`DO ${docNo} — ${modalCtx.qty_terima} DUS · mengirim ke server...`,
+    doc_no: docNo,
   });
 
-  // Reload tugas langsung (optimistic — anggap sukses)
-  await loadTasks(false);
+  // Re-render dari memory (tanpa fetch). Optimistic remove instan.
+  document.getElementById('task-list').innerHTML = currentTasks.map(t => buildCard(t)).join('') || '<div style="text-align:center;padding:40px;color:#64748b">Tidak ada tugas aktif</div>';
+
+  // Background submit + handle gagal
+  _trySubmit(payload, docNo);
+
+  // Sync ke GAS dalam 5 detik (verify status sebenarnya)
+  setTimeout(() => loadTasks(false), 5000);
   checkAllDone();
 }
 
@@ -2890,21 +3045,29 @@ async function submitGagal() {
     is_urgent    : alasan==='Kendaraan Rusak'||alasan==='Bencana Alam/Banjir'?'1':'0',
   };
 
-  // ── FIRE AND FORGET ──────────────────────────────────────────────────────
-  gasPost(payload); // no await — tidak tunggu server
-
-  lastTasksSnap[modalCtx.doc_no] = 'Gagal Kirim';
+  // ── v4.3.0 OPTIMISTIC SUBMIT ──────────────────────────────────────────
+  const docNo = modalCtx.doc_no;
+  submittedDOs.add(docNo);
+  currentTasks = currentTasks.filter(t => t.doc_no !== docNo);
+  lastTasksSnap[docNo] = 'Gagal Kirim';
   btn.disabled = false;
   closeModal('m-gagal');
 
   addNotification({
     type:'self', icon: payload.is_urgent==='1'?'alert':'change',
     title: payload.is_urgent==='1'?'🚨 Alert Urgent Dikirim':'✅ Laporan Gagal Dikirim',
-    msg: `DO ${modalCtx.doc_no} — ${alasan} · mengirim ke server...`,
-    doc_no: modalCtx.doc_no,
+    msg: `DO ${docNo} — ${alasan} · mengirim ke server...`,
+    doc_no: docNo,
   });
 
-  await loadTasks(false);
+  // Re-render dari memory tanpa fetch
+  document.getElementById('task-list').innerHTML = currentTasks.map(t => buildCard(t)).join('') || '<div style="text-align:center;padding:40px;color:#64748b">Tidak ada tugas aktif</div>';
+
+  // Background submit + handle fail
+  _trySubmit(payload, docNo);
+
+  // Sync ke GAS dalam 5 detik
+  setTimeout(() => loadTasks(false), 5000);
 }
 
 async function submitStruk() {
@@ -3432,6 +3595,37 @@ function queueOffline(payload) {
   localStorage.setItem('offline_q', JSON.stringify(offlineQueue));
 }
 
+// ═══════════════════════════════════════════════════════
+// v4.3.0: SUBMIT WRAPPER untuk Optimistic Remove
+// ═══════════════════════════════════════════════════════
+// Pakai gasPost biasa, tapi handle outcome:
+// - Success → diam (sync timer di setTimeout caller akan confirm)
+// - Fail    → restore DO ke list + notif kuning supaya driver tau & bisa retry
+async function _trySubmit(payload, docNo) {
+  try {
+    const ok = await gasPost(payload);
+    if (!ok) {
+      // Submit gagal (offline/error) — gasPost sudah queue dan alert.
+      // Restore DO ke daftar Tugas Aktif supaya driver bisa coba ulang.
+      submittedDOs.delete(docNo);
+      failedSubmits.push({ doc_no: docNo, action: payload.action, ts: Date.now() });
+      addNotification({
+        type:'self', icon:'warning',
+        title:'⚠ Submit Belum Terkirim',
+        msg:`DO ${docNo} — laporan masuk antrian offline. Periksa sinyal lalu coba lagi.`,
+        doc_no: docNo,
+      });
+      // Re-fetch supaya DO muncul lagi
+      await loadTasks(false);
+    }
+  } catch(e) {
+    console.error('[_trySubmit] error:', e);
+    submittedDOs.delete(docNo);
+    failedSubmits.push({ doc_no: docNo, action: payload.action, error: e.message, ts: Date.now() });
+    await loadTasks(false);
+  }
+}
+
 async function flushOfflineQueue() {
   if (!offlineQueue.length || !navigator.onLine) return;
   const url = GAS_URL || localStorage.getItem('gps_gas_url');
@@ -3831,127 +4025,390 @@ function closeCamera() {
 // ═══════════════════════════════════════════════════════
 // BULK SELESAI — 1 foto untuk beberapa DO sekaligus
 // ═══════════════════════════════════════════════════════
-let bulkSelected = new Set();
+// ═══════════════════════════════════════════════════════
+// v4.3.0: Bulk select feature DIHAPUS.
+// Driver wajib foto per-DO. Multi-DO 1 alamat handled by Wizard Grup di bawah.
+// ═══════════════════════════════════════════════════════
 
-function toggleBulkSelect(docNo) {
-  const chk = document.getElementById('chk-'+docNo);
-  if (chk && chk.checked) {
-    bulkSelected.add(docNo);
-  } else {
-    bulkSelected.delete(docNo);
+// ═══════════════════════════════════════════════════════
+// v4.3.0: WIZARD SELESAI GRUP — step-by-step per-DO foto+qty
+// ═══════════════════════════════════════════════════════
+let wizCtx = { active: false, step: 0, docs: [] };
+let _wizCam = null; // { stepIdx, type } — context for camera capture in wizard
+
+let wizGagalCtx = { active: false, doc_nos: [], alasan: '', keterangan: '', foto_gagal: null };
+let _wizGagalCam = null; // { type }
+
+function openWizardSelesaiGrup(docNoCsv) {
+  const docNos = docNoCsv.split(',').filter(Boolean);
+  if (docNos.length < 2) {
+    // Tidak cukup untuk wizard, fallback ke single
+    const t = currentTasks.find(x => x.doc_no === docNos[0]);
+    if (t) openSelesai(t.doc_no, t.qty||0, t.customer||'');
+    return;
   }
-  renderBulkBar();
-}
-
-function renderBulkBar() {
-  const bar = document.getElementById('bulk-bar');
-  const cnt = document.getElementById('bulk-count');
-  if (bulkSelected.size > 0) {
-    bar.classList.add('show');
-    cnt.textContent = bulkSelected.size + ' DO dipilih';
-  } else {
-    bar.classList.remove('show');
-  }
-}
-
-function openBulkSelesai() {
-  if (bulkSelected.size === 0) return;
-  // Ambil DO pertama sebagai referensi QTY
-  const firstTask = currentTasks.find(t => bulkSelected.has(t.doc_no));
-  if (!firstTask) return;
-
-  // Hitung total QTY semua DO yang dipilih
-  const totalQty = currentTasks
-    .filter(t => bulkSelected.has(t.doc_no))
-    .reduce((a,t) => a + (t.qty||0), 0);
-
-  const customerList = currentTasks
-    .filter(t => bulkSelected.has(t.doc_no))
-    .map(t => t.customer).join(', ');
-
-  // Set modalCtx untuk bulk — doc_no = semua yang dipilih dipisah koma
-  modalCtx = {
-    doc_no      : Array.from(bulkSelected).join(','),
-    qty_kirim   : totalQty,
-    qty_terima  : totalQty,
-    qty_rusak   : 0,
-    foto_do     : null, foto_rusak:null, foto_sj:null,
-    gps_coords  : modalCtx.gps_coords||'',
-    is_bulk     : true,
-    bulk_docs   : Array.from(bulkSelected),
-  };
-
-  document.getElementById('m-selesai-info').textContent =
-    bulkSelected.size + ' DO · ' + totalQty + ' DUS total';
-  document.getElementById('qty-kirim').textContent      = totalQty;
-  document.getElementById('qty-terima-disp').textContent = totalQty;
-  document.getElementById('qty-rusak-disp').textContent  = 0;
-  document.getElementById('group-foto-rusak').style.display = 'none';
-  document.getElementById('titip-sj').value  = 'Tidak';
-  document.getElementById('titip-extra').classList.remove('show');
-  document.getElementById('catatan-selesai').value = '';
-  // Reset foto
-  ['do','rusak','sj'].forEach(k => {
-    const prev=document.getElementById('prev-foto-'+k);
-    const icon=document.getElementById('icon-foto-'+k);
-    const txt =document.getElementById('txt-foto-'+k);
-    const wrap=document.getElementById('wrap-foto-'+k);
-    if (prev){prev.style.display='none';prev.src='';}
-    if (wrap) wrap.classList.remove('has-photo');
-    if (icon) icon.innerHTML='<i class="fas fa-camera" style="font-size:28px;color:#94a3b8"></i>';
-    if (txt)  txt.textContent = k==='do'?'Tap untuk ambil foto DO':'Tap untuk ambil foto';
-  });
-  openModal('m-selesai');
-}
-
-// Override submitSelesai untuk handle bulk
-const _origSubmitSelesai = submitSelesai;
-submitSelesai = async function() {
-  if (!modalCtx.is_bulk || !modalCtx.bulk_docs || modalCtx.bulk_docs.length <= 1) {
-    return _origSubmitSelesai();
-  }
-  // Bulk submit — kirim 1 per 1 dengan foto yang sama
-  if (!modalCtx.foto_do) { alert('Foto DO wajib diambil'); return; }
-  const btn = document.getElementById('btn-submit-selesai');
-  btn.disabled = true;
-  showSubmitOverlay('Mengirim ' + modalCtx.bulk_docs.length + ' laporan...');
-
-  const titipSJ  = document.getElementById('titip-sj').value;
-  const catatan  = document.getElementById('catatan-selesai').value;
-  const taskList = currentTasks.filter(t => modalCtx.bulk_docs.includes(t.doc_no));
-
-  for (const task of taskList) {
-    const payload = {
-      action:'submitSelesai', plat:driverState.plat, driver:driverState.driver,
-      doc_no:task.doc_no, date:driverState.date,
-      qty_kirim:task.qty||0, qty_terima:task.qty||0, qty_rusak:0,
-      catatan:catatan, titip_sj:titipSJ,
-      nama_spg:'', jabatan_spg:'SPG',
-      gps_coords:modalCtx.gps_coords,
-      foto_do:modalCtx.foto_do,
-      timestamp:new Date().toISOString(),
+  wizCtx.active = true;
+  wizCtx.step   = 0;
+  wizCtx.docs   = docNos.map(dn => {
+    const t = currentTasks.find(x => x.doc_no === dn) || {};
+    return {
+      doc_no    : dn,
+      qty_kirim : parseInt(t.qty)||0,
+      qty_terima: parseInt(t.qty)||0,
+      qty_rusak : 0,
+      foto_do   : null,
+      foto_rusak: null,
+      customer  : t.customer || '',
+      produk    : t.produk   || '',
     };
-    await gasPost(payload);
-    // Update snapshot
-    lastTasksSnap[task.doc_no] = 'Selesai';
+  });
+  renderWizardStep();
+  openModal('m-wiz-selesai');
+}
+
+function renderWizardStep() {
+  if (!wizCtx.active) return;
+  const total    = wizCtx.docs.length;
+  const isReview = wizCtx.step >= total;
+
+  const progressEl = document.getElementById('wiz-progress');
+  const bodyEl     = document.getElementById('wiz-body');
+  const backBtn    = document.getElementById('wiz-back');
+  const nextBtn    = document.getElementById('wiz-next');
+  if (!bodyEl) return;
+
+  if (isReview) {
+    // Review screen
+    progressEl.textContent = '✓ Konfirmasi Kirim';
+    bodyEl.innerHTML = `
+      <div style="background:#fef3c7;border-left:4px solid #d97706;padding:10px 14px;border-radius:8px;margin-bottom:12px">
+        <div style="font-size:12px;color:#92400e;font-weight:700">Cek ringkasan sebelum kirim</div>
+        <div style="font-size:11px;color:#92400e;margin-top:2px">Setelah klik Kirim, ${total} laporan akan masuk antrian server.</div>
+      </div>
+      ${wizCtx.docs.map((d,i) => `
+        <div style="border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-bottom:8px;background:#f8fafc">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:800;color:#0b1f3a">DO ${escHtml(d.doc_no)}</div>
+              <div style="font-size:11px;color:#64748b">${escHtml(d.customer)}</div>
+              <div style="font-size:12px;margin-top:4px">
+                <span style="color:#15803d;font-weight:700">${d.qty_terima} DUS diterima</span>
+                ${d.qty_rusak>0?`&nbsp;·&nbsp;<span style="color:#dc2626;font-weight:700">${d.qty_rusak} DUS rusak</span>`:''}
+              </div>
+            </div>
+            ${d.foto_do?`<img src="${d.foto_do}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1">`:''}
+          </div>
+        </div>`).join('')}
+      <div style="margin-top:12px">
+        <label class="form-label" style="font-size:12px">Catatan (opsional, berlaku semua DO)</label>
+        <textarea id="wiz-catatan" class="form-input" rows="2" style="height:50px;resize:none"
+          placeholder="Contoh: Diterima oleh Bpk. Budi"></textarea>
+      </div>
+    `;
+    backBtn.style.display = 'inline-flex';
+    nextBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Kirim Semua Laporan';
+    return;
   }
 
-  hideSubmitOverlay();
-  btn.disabled = false;
-  closeModal('m-selesai');
-  bulkSelected.clear();
-  renderBulkBar();
-  stopsDone += taskList.length;
+  // Step normal — render form 1 DO
+  const d = wizCtx.docs[wizCtx.step];
+  progressEl.textContent = `Langkah ${wizCtx.step+1} dari ${total}`;
+  bodyEl.innerHTML = `
+    <div style="background:#eff6ff;border-radius:10px;padding:12px;margin-bottom:12px">
+      <div style="font-size:14px;font-weight:800;color:#0b1f3a">DO ${escHtml(d.doc_no)}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:2px">${escHtml(d.customer)}</div>
+      ${d.produk?`<div style="font-size:11px;color:#64748b;margin-top:1px">${escHtml(d.produk)}</div>`:''}
+    </div>
 
+    <!-- Qty boxes -->
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <div style="flex:1;background:#f1f5f9;border-radius:10px;padding:10px;text-align:center">
+        <div style="font-size:10px;color:#64748b">DIKIRIM</div>
+        <div style="font-size:22px;font-weight:900;color:#0b1f3a">${d.qty_kirim}</div>
+      </div>
+      <div style="flex:1;background:#f0fdf4;border-radius:10px;padding:10px;text-align:center">
+        <div style="font-size:10px;color:#15803d">DITERIMA</div>
+        <div style="font-size:22px;font-weight:900;color:#15803d" id="wiz-terima-disp">${d.qty_terima}</div>
+        <div style="display:flex;gap:4px;justify-content:center;margin-top:4px">
+          <button class="qty-btn" onclick="wizAdjQty('terima',-1)">−</button>
+          <button class="qty-btn" onclick="wizAdjQty('terima',1)">+</button>
+        </div>
+      </div>
+      <div style="flex:1;background:#fff5f5;border-radius:10px;padding:10px;text-align:center">
+        <div style="font-size:10px;color:#dc2626">RUSAK</div>
+        <div style="font-size:22px;font-weight:900;color:#dc2626" id="wiz-rusak-disp">${d.qty_rusak}</div>
+        <div style="display:flex;gap:4px;justify-content:center;margin-top:4px">
+          <button class="qty-btn" onclick="wizAdjQty('rusak',-1)">−</button>
+          <button class="qty-btn" onclick="wizAdjQty('rusak',1)">+</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Foto DO -->
+    <div style="margin-bottom:12px">
+      <label class="form-label" style="font-size:12px">Foto Bukti Kirim / DO <span style="color:#dc2626">*wajib</span></label>
+      <div onclick="wizOpenCamera('do')"
+        style="border:2px dashed ${d.foto_do?'#16a34a':'#cbd5e1'};border-radius:10px;padding:14px;
+          text-align:center;cursor:pointer;background:${d.foto_do?'#f0fdf4':'#f8fafc'};position:relative;min-height:120px">
+        ${d.foto_do
+          ? `<img src="${d.foto_do}" style="max-width:100%;max-height:160px;border-radius:6px">
+             <div style="font-size:11px;color:#16a34a;margin-top:6px;font-weight:600">✓ Foto OK · Tap untuk ambil ulang</div>`
+          : `<i class="fas fa-camera" style="color:#94a3b8;font-size:30px"></i>
+             <div style="font-size:11px;color:#64748b;margin-top:6px">Tap untuk ambil foto DO</div>`
+        }
+      </div>
+    </div>
+
+    <!-- Foto Rusak (kalau qty_rusak > 0) -->
+    ${d.qty_rusak>0 ? `
+    <div style="margin-bottom:12px">
+      <label class="form-label" style="font-size:12px;color:#dc2626">Foto Kerusakan <span style="color:#dc2626">*wajib</span></label>
+      <div onclick="wizOpenCamera('rusak')"
+        style="border:2px dashed ${d.foto_rusak?'#dc2626':'#fca5a5'};border-radius:10px;padding:14px;
+          text-align:center;cursor:pointer;background:${d.foto_rusak?'#fff5f5':'#f8fafc'};position:relative;min-height:120px">
+        ${d.foto_rusak
+          ? `<img src="${d.foto_rusak}" style="max-width:100%;max-height:160px;border-radius:6px">
+             <div style="font-size:11px;color:#dc2626;margin-top:6px;font-weight:600">✓ Foto kerusakan OK</div>`
+          : `<i class="fas fa-camera" style="color:#f87171;font-size:30px"></i>
+             <div style="font-size:11px;color:#dc2626;margin-top:6px">Tap untuk foto kerusakan</div>`
+        }
+      </div>
+    </div>` : ''}
+  `;
+  backBtn.style.display = wizCtx.step > 0 ? 'inline-flex' : 'none';
+  nextBtn.innerHTML = wizCtx.step === total - 1
+    ? 'Lanjut ke Konfirmasi <i class="fas fa-arrow-right"></i>'
+    : 'Lanjut <i class="fas fa-arrow-right"></i>';
+}
+
+function wizAdjQty(field, delta) {
+  const d = wizCtx.docs[wizCtx.step];
+  if (!d) return;
+  const max = d.qty_kirim;
+  if (field === 'terima') {
+    d.qty_terima = Math.max(0, Math.min(max, d.qty_terima + delta));
+    d.qty_rusak  = Math.max(0, max - d.qty_terima);
+  } else {
+    d.qty_rusak  = Math.max(0, Math.min(max, d.qty_rusak + delta));
+    d.qty_terima = Math.max(0, max - d.qty_rusak);
+  }
+  // Re-render full step (gampang, foto preview tetap karena dari state)
+  renderWizardStep();
+}
+
+function wizOpenCamera(type) {
+  _wizCam = { stepIdx: wizCtx.step, type };
+  openCamera(type);
+}
+
+function wizNext() {
+  const total = wizCtx.docs.length;
+  if (wizCtx.step >= total) {
+    // Sudah di review → submit
+    wizSubmitAll();
+    return;
+  }
+  // Validate current step
+  const d = wizCtx.docs[wizCtx.step];
+  if (!d.foto_do)            { alert(`DO ${d.doc_no}: Foto DO wajib diambil`); return; }
+  if (d.qty_rusak>0 && !d.foto_rusak) { alert(`DO ${d.doc_no}: Foto kerusakan wajib`); return; }
+  wizCtx.step++;
+  renderWizardStep();
+}
+
+function wizBack() {
+  if (wizCtx.step > 0) {
+    wizCtx.step--;
+    renderWizardStep();
+  }
+}
+
+async function wizSubmitAll() {
+  const catatan = (document.getElementById('wiz-catatan')?.value)||'';
+  const total = wizCtx.docs.length;
+  const docNos = wizCtx.docs.map(d => d.doc_no);
+
+  // Optimistic remove semua DO grup
+  docNos.forEach(dn => {
+    submittedDOs.add(dn);
+    currentTasks = currentTasks.filter(t => t.doc_no !== dn);
+    lastTasksSnap[dn] = 'Selesai';
+  });
+  stopsDone += total;
+
+  // Tutup wizard
+  wizCtx.active = false;
+  closeModal('m-wiz-selesai');
+
+  // Notif gabungan
   addNotification({
     type:'self', icon:'change',
-    title:'✅ ' + taskList.length + ' DO Selesai',
-    msg: taskList.map(t=>t.doc_no).join(', '),
+    title:`✅ Grup ${total} DO Dikirim`,
+    msg: `${docNos.join(', ')} · mengirim ke server...`,
   });
 
-  await loadTasks(false);
+  // Re-render dari memory
+  document.getElementById('task-list').innerHTML = currentTasks.map(t => buildCard(t)).join('') || '<div style="text-align:center;padding:40px;color:#64748b">Tidak ada tugas aktif</div>';
+
+  // Submit per-DO sequential di background
+  for (const d of wizCtx.docs) {
+    const payload = {
+      action      : 'submitSelesai',
+      plat        : driverState.plat,
+      driver      : driverState.driver,
+      doc_no      : d.doc_no,
+      date        : driverState.date,
+      qty_kirim   : d.qty_kirim,
+      qty_terima  : d.qty_terima,
+      qty_rusak   : d.qty_rusak,
+      catatan     : catatan,
+      titip_sj    : 'Tidak',
+      nama_spg    : '',
+      jabatan_spg : '',
+      gps_coords  : modalCtx.gps_coords || '',
+      foto_do     : d.foto_do,
+      foto_rusak  : d.qty_rusak>0 ? d.foto_rusak : null,
+      foto_sj     : null,
+      timestamp   : new Date().toISOString(),
+    };
+    _trySubmit(payload, d.doc_no); // fire and forget
+  }
+
+  // Sync ke GAS dalam 7 detik (lebih lama karena banyak submit)
+  setTimeout(() => loadTasks(false), 7000);
   checkAllDone();
-};
+}
+
+// ═══════════════════════════════════════════════════════
+// v4.3.0: WIZARD GAGAL KIRIM GRUP — 1 step, 1 alasan + 1 foto untuk semua DO
+// ═══════════════════════════════════════════════════════
+function openWizardGagalGrup(docNoCsv) {
+  const docNos = docNoCsv.split(',').filter(Boolean);
+  if (docNos.length < 2) {
+    if (docNos[0]) openGagal(docNos[0]);
+    return;
+  }
+  wizGagalCtx.active     = true;
+  wizGagalCtx.doc_nos    = docNos;
+  wizGagalCtx.alasan     = '';
+  wizGagalCtx.keterangan = '';
+  wizGagalCtx.foto_gagal = null;
+  renderWizardGagalGrup();
+  openModal('m-wiz-gagal');
+}
+
+function renderWizardGagalGrup() {
+  const bodyEl = document.getElementById('wiz-gagal-body');
+  if (!bodyEl) return;
+  const docs = wizGagalCtx.doc_nos;
+  bodyEl.innerHTML = `
+    <div style="background:#fef3c7;border-left:4px solid #d97706;padding:10px 14px;border-radius:8px;margin-bottom:12px">
+      <div style="font-size:12px;color:#92400e;font-weight:700">${docs.length} DO akan ditandai Gagal Kirim</div>
+      <div style="font-size:11px;color:#92400e;margin-top:2px">${docs.join(', ')}</div>
+    </div>
+
+    <!-- Alasan -->
+    <div style="margin-bottom:14px">
+      <label class="form-label">1. Alasan Gagal Kirim <span style="color:#dc2626">*wajib</span></label>
+      <select id="wiz-gagal-alasan" class="form-input" onchange="wizGagalSetAlasan(this.value)">
+        <option value="">-- Pilih Alasan --</option>
+        <option ${wizGagalCtx.alasan==='Toko Tutup'?'selected':''}>Toko Tutup</option>
+        <option ${wizGagalCtx.alasan==='Alamat Salah'?'selected':''}>Alamat Salah</option>
+        <option ${wizGagalCtx.alasan==='Penerima Tidak Ada'?'selected':''}>Penerima Tidak Ada</option>
+        <option ${wizGagalCtx.alasan==='Waktu Tidak Cukup'?'selected':''}>Waktu Tidak Cukup</option>
+        <option ${wizGagalCtx.alasan==='Akses Truk Dilarang'?'selected':''}>Akses Truk Dilarang</option>
+        <option ${wizGagalCtx.alasan==='Kendaraan Rusak'?'selected':''}>Kendaraan Rusak</option>
+        <option ${wizGagalCtx.alasan==='Bencana Alam/Banjir'?'selected':''}>Bencana Alam/Banjir</option>
+        <option ${wizGagalCtx.alasan==='Lain-lain'?'selected':''}>Lain-lain</option>
+      </select>
+    </div>
+
+    ${wizGagalCtx.alasan==='Lain-lain' ? `
+    <div style="margin-bottom:14px">
+      <label class="form-label">Keterangan</label>
+      <input type="text" id="wiz-gagal-ket" class="form-input"
+        value="${escHtml(wizGagalCtx.keterangan)}"
+        oninput="wizGagalCtx.keterangan = this.value"
+        placeholder="Tulis alasan...">
+    </div>` : ''}
+
+    <!-- Foto bukti -->
+    <div style="margin-bottom:12px">
+      <label class="form-label">2. Foto Bukti Gagal Kirim <span style="color:#dc2626">*wajib</span></label>
+      <div onclick="wizGagalOpenCamera()"
+        style="border:2px dashed ${wizGagalCtx.foto_gagal?'#dc2626':'#cbd5e1'};border-radius:10px;padding:14px;
+          text-align:center;cursor:pointer;background:${wizGagalCtx.foto_gagal?'#fff5f5':'#f8fafc'};min-height:120px">
+        ${wizGagalCtx.foto_gagal
+          ? `<img src="${wizGagalCtx.foto_gagal}" style="max-width:100%;max-height:160px;border-radius:6px">
+             <div style="font-size:11px;color:#dc2626;margin-top:6px;font-weight:600">✓ Foto OK · Tap untuk ambil ulang</div>`
+          : `<i class="fas fa-camera" style="color:#94a3b8;font-size:30px"></i>
+             <div style="font-size:11px;color:#64748b;margin-top:6px">Tap untuk foto kondisi lokasi</div>`
+        }
+      </div>
+    </div>
+  `;
+}
+
+function wizGagalSetAlasan(val) {
+  wizGagalCtx.alasan = val;
+  renderWizardGagalGrup();
+}
+
+function wizGagalOpenCamera() {
+  _wizGagalCam = { type: 'gagal' };
+  openCamera('gagal');
+}
+
+async function wizGagalSubmit() {
+  if (!wizGagalCtx.alasan)        { alert('Alasan wajib dipilih'); return; }
+  if (!wizGagalCtx.foto_gagal)    { alert('Foto bukti wajib diambil'); return; }
+  if (wizGagalCtx.alasan==='Lain-lain' && !wizGagalCtx.keterangan.trim()) {
+    alert('Keterangan wajib diisi untuk alasan Lain-lain'); return;
+  }
+
+  const docs = wizGagalCtx.doc_nos;
+  const isUrgent = (wizGagalCtx.alasan==='Kendaraan Rusak'||wizGagalCtx.alasan==='Bencana Alam/Banjir')?'1':'0';
+
+  // Optimistic remove semua DO
+  docs.forEach(dn => {
+    submittedDOs.add(dn);
+    currentTasks = currentTasks.filter(t => t.doc_no !== dn);
+    lastTasksSnap[dn] = 'Gagal Kirim';
+  });
+
+  // Tutup wizard
+  wizGagalCtx.active = false;
+  closeModal('m-wiz-gagal');
+
+  addNotification({
+    type:'self', icon: isUrgent==='1'?'alert':'change',
+    title: isUrgent==='1'?'🚨 Alert Urgent — Grup Gagal':`✅ ${docs.length} DO Ditandai Gagal`,
+    msg: `${docs.join(', ')} · ${wizGagalCtx.alasan} · mengirim...`,
+  });
+
+  // Re-render
+  document.getElementById('task-list').innerHTML = currentTasks.map(t => buildCard(t)).join('') || '<div style="text-align:center;padding:40px;color:#64748b">Tidak ada tugas aktif</div>';
+
+  // Submit per-DO di background
+  for (const dn of docs) {
+    const payload = {
+      action     : 'submitGagal',
+      plat       : driverState.plat,
+      driver     : driverState.driver,
+      doc_no     : dn,
+      date       : driverState.date,
+      alasan     : wizGagalCtx.alasan,
+      keterangan : wizGagalCtx.keterangan,
+      gps_coords : modalCtx.gps_coords || '',
+      foto_gagal : wizGagalCtx.foto_gagal,
+      timestamp  : new Date().toISOString(),
+      is_urgent  : isUrgent,
+    };
+    _trySubmit(payload, dn);
+  }
+
+  setTimeout(() => loadTasks(false), 7000);
+}
 
 // Close overlays on outside tap
 document.addEventListener('click', function(e) {
@@ -3991,7 +4448,7 @@ document.addEventListener('click', function(e) {
   <canvas id="camera-canvas" style="display:none"></canvas>
 </div>
 
-<!-- MODAL: SELESAI GRUP (v4.2) -->
+<!-- MODAL: SELESAI GRUP (v4.2 legacy — masih ada untuk backward compat tapi v4.3 pakai wizard) -->
 <div class="modal-overlay" id="m-selesai-grup">
   <div class="modal-box" style="max-height:90vh;overflow-y:auto">
     <button class="modal-close" onclick="closeModal('m-selesai-grup')">×</button>
@@ -4009,6 +4466,56 @@ document.addEventListener('click', function(e) {
       <i class="fas fa-check-circle"></i> Kirim Semua Laporan
     </button>
     <button class="btn-back" onclick="closeModal('m-selesai-grup')">Kembali</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- v4.3.0: MODAL WIZARD SELESAI GRUP — step-by-step per DO  -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="m-wiz-selesai">
+  <div class="modal-box" style="max-height:92vh;overflow-y:auto;display:flex;flex-direction:column;padding:0">
+    <!-- Header -->
+    <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;background:#f8fafc;border-radius:14px 14px 0 0">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:16px;font-weight:800;color:#0b1f3a">Selesai Grup</div>
+        <button onclick="if(confirm('Batal lapor grup? Foto yang sudah diambil akan hilang.')){wizCtx.active=false;closeModal('m-wiz-selesai');}"
+          style="background:none;border:none;font-size:22px;color:#64748b;cursor:pointer;padding:0 4px">×</button>
+      </div>
+      <div id="wiz-progress" style="font-size:12px;color:#64748b;margin-top:4px;font-weight:600">Langkah 1 dari 1</div>
+    </div>
+    <!-- Body (di-render dinamis oleh renderWizardStep) -->
+    <div id="wiz-body" style="padding:14px 18px;flex:1;overflow-y:auto"></div>
+    <!-- Footer -->
+    <div style="padding:12px 18px;border-top:1px solid #e2e8f0;background:#fff;border-radius:0 0 14px 14px;display:flex;gap:8px">
+      <button id="wiz-back" onclick="wizBack()"
+        style="display:none;flex:0 0 auto;padding:12px 16px;background:#f1f5f9;border:1px solid #cbd5e1;
+          border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;color:#0b1f3a;align-items:center;gap:6px">
+        <i class="fas fa-arrow-left"></i> Kembali
+      </button>
+      <button id="wiz-next" onclick="wizNext()"
+        style="flex:1;padding:12px 16px;background:#15803d;color:#fff;border:none;border-radius:10px;
+          font-size:14px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">
+        Lanjut <i class="fas fa-arrow-right"></i>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- v4.3.0: MODAL WIZARD GAGAL KIRIM GRUP — 1 step semua DO  -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="m-wiz-gagal">
+  <div class="modal-box" style="max-height:90vh;overflow-y:auto">
+    <button class="modal-close" onclick="if(confirm('Batal lapor gagal grup?')){wizGagalCtx.active=false;closeModal('m-wiz-gagal');}">×</button>
+    <div class="modal-title" style="color:#dc2626">Gagal Kirim Grup</div>
+    <div class="modal-sub" style="margin-bottom:12px">1 alasan + 1 foto berlaku untuk semua DO di grup</div>
+    <div id="wiz-gagal-body"></div>
+    <button onclick="wizGagalSubmit()"
+      style="width:100%;padding:14px;background:#dc2626;color:#fff;border:none;border-radius:10px;
+        font-size:15px;font-weight:800;cursor:pointer;margin-top:8px;display:flex;align-items:center;justify-content:center;gap:8px">
+      <i class="fas fa-paper-plane"></i> Kirim Laporan Grup
+    </button>
+    <button class="btn-back" onclick="if(confirm('Batal lapor gagal grup?')){wizGagalCtx.active=false;closeModal('m-wiz-gagal');}">Kembali</button>
   </div>
 </div>
 
