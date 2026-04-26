@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Data Curator v1.1 — GST Logistics</title>
+<title>Data Curator v1.2 — GST Logistics</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root {
@@ -155,7 +155,7 @@ body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--t
 
 <div class="app-header">
   <div class="app-logo">📋 DATA CURATOR</div>
-  <div class="app-version">v1.1</div>
+  <div class="app-version">v1.2</div>
   <div class="app-tagline">Pre-flight check & cleaning data SAP/PG sebelum dispatch besok</div>
   <div class="app-date" id="hdr-date">—</div>
 </div>
@@ -253,6 +253,11 @@ body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--t
     </div>
 
     <div class="card">
+      <div class="card-title">📦 Distribusi siap export per Gudang Internal</div>
+      <div id="wh-export-distribution">—</div>
+    </div>
+
+    <div class="card">
       <div class="card-title">Top issue patterns</div>
       <div id="top-issues">—</div>
     </div>
@@ -322,10 +327,25 @@ body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--t
 
 <!-- ACTION BAR (bottom sticky) -->
 <div class="action-bar" id="action-bar" style="display:none">
+  <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;user-select:none">
+    <input type="checkbox" id="toggle-split-wh" onchange="toggleSplitMode()" style="cursor:pointer">
+    <span>Pisah per gudang</span>
+  </label>
   <div class="summary-text" id="action-summary">—</div>
   <button class="btn" onclick="downloadAuditJSON()">📋 Audit JSON</button>
+  <!-- Mode default: 1 file gabung -->
   <button class="btn btn-success" id="btn-export" onclick="exportCleaned()" disabled>
     ⬇ Export Cleaned Data
+  </button>
+  <!-- Mode split: 3 tombol per gudang (di-show via toggleSplitMode) -->
+  <button class="btn btn-success" id="btn-export-dm" onclick="exportPerWarehouse('DAAN MOGOT')" style="display:none" disabled>
+    ⬇ DM (<span id="cnt-dm">0</span>)
+  </button>
+  <button class="btn btn-success" id="btn-export-dy" onclick="exportPerWarehouse('DOYONG')" style="display:none" disabled>
+    ⬇ DOYONG (<span id="cnt-dy">0</span>)
+  </button>
+  <button class="btn btn-success" id="btn-export-ck" onclick="exportPerWarehouse('CIKUDA')" style="display:none" disabled>
+    ⬇ CIKUDA (<span id="cnt-ck">0</span>)
   </button>
 </div>
 
@@ -546,11 +566,21 @@ function resetAll() {
   document.getElementById('file-pg').value = '';
   document.getElementById('btn-validate').disabled = true;
   document.getElementById('btn-export').disabled = true;
+  document.getElementById('btn-export-dm').disabled = true;
+  document.getElementById('btn-export-dy').disabled = true;
+  document.getElementById('btn-export-ck').disabled = true;
   document.getElementById('action-bar').style.display = 'none';
   document.getElementById('summary-empty').style.display = 'block';
   document.getElementById('summary-content').style.display = 'none';
+  // Reset toggle ke OFF (default = gabung)
+  const toggle = document.getElementById('toggle-split-wh');
+  if (toggle) { toggle.checked = false; toggleSplitMode(); }
   ['critical','warning','autofix','dropped'].forEach(k => {
     document.getElementById('cnt-'+k).textContent = '0';
+  });
+  ['cnt-dm','cnt-dy','cnt-ck'].forEach(k => {
+    const el = document.getElementById(k);
+    if (el) el.textContent = '0';
   });
   toast('Reset selesai');
 }
@@ -629,7 +659,15 @@ async function runValidation() {
     document.getElementById('summary-empty').style.display = 'none';
     document.getElementById('summary-content').style.display = 'block';
     document.getElementById('action-bar').style.display = 'flex';
-    document.getElementById('btn-export').disabled = (issues.filter(i => i.severity==='critical' && i.status!=='resolved').length > 0);
+    // v1.2: Disable button kalau critical open. Per-gudang counter sudah di-set di renderSummary().
+    const stillCritical = issues.filter(i => i.severity==='critical' && i.status!=='resolved').length;
+    const exportLocked = stillCritical > 0;
+    document.getElementById('btn-export').disabled = exportLocked;
+    if (exportLocked) {
+      document.getElementById('btn-export-dm').disabled = true;
+      document.getElementById('btn-export-dy').disabled = true;
+      document.getElementById('btn-export-ck').disabled = true;
+    }
     updateActionSummary();
 
     btn.textContent = '🔍 Run Validation';
@@ -966,6 +1004,41 @@ function renderSummary() {
   document.getElementById('s-dropped').textContent = dropped;
   document.getElementById('s-dropped-sub').textContent = `${droppedRows.filter(d=>d.reason.includes('AS')).length} AS, ${droppedRows.filter(d=>d.reason.includes('non-Jabo')).length} non-Jabo`;
 
+  // v1.2: Distribusi siap export per Gudang Internal (DM / DOYONG / CIKUDA)
+  const internalWHCount = { 'DAAN MOGOT': 0, 'DOYONG': 0, 'CIKUDA': 0 };
+  sapRows.forEach(r => {
+    if (r._drop) return;
+    if (r._final_warehouse in internalWHCount) {
+      internalWHCount[r._final_warehouse]++;
+    }
+  });
+  const totalInternal = Object.values(internalWHCount).reduce((a,b) => a+b, 0);
+  const exportDistEl = document.getElementById('wh-export-distribution');
+  if (exportDistEl) {
+    exportDistEl.innerHTML = totalInternal > 0 ?
+      `<table class="tbl"><thead><tr><th>Gudang Internal</th><th style="text-align:right">Rows</th><th style="text-align:right">%</th><th>Bar</th></tr></thead><tbody>${
+        Object.entries(internalWHCount).map(([wh, cnt]) => {
+          const pct = totalInternal > 0 ? (cnt/totalInternal*100) : 0;
+          const barW = Math.max(2, pct * 2.5); // scale untuk visual
+          return `<tr>
+            <td><strong>${escapeHtml(wh)}</strong></td>
+            <td style="text-align:right;font-family:var(--mono);font-weight:700">${cnt}</td>
+            <td style="text-align:right;color:var(--muted);font-family:var(--mono)">${pct.toFixed(0)}%</td>
+            <td><div style="background:linear-gradient(90deg,var(--accent),var(--accent));width:${barW}px;height:10px;border-radius:3px;display:inline-block"></div></td>
+          </tr>`;
+        }).join('')
+      }<tr style="background:#f8fafc;border-top:2px solid var(--border)"><td><strong>TOTAL</strong></td><td style="text-align:right;font-family:var(--mono);font-weight:700">${totalInternal}</td><td style="text-align:right;font-family:var(--mono);color:var(--muted)">100%</td><td></td></tr></tbody></table>` :
+      '<div class="empty">Belum ada data siap export.</div>';
+  }
+  // v1.2: Update counter di tombol export per gudang
+  document.getElementById('cnt-dm').textContent = internalWHCount['DAAN MOGOT'];
+  document.getElementById('cnt-dy').textContent = internalWHCount['DOYONG'];
+  document.getElementById('cnt-ck').textContent = internalWHCount['CIKUDA'];
+  // Disable tombol kalau gudang itu 0 row
+  document.getElementById('btn-export-dm').disabled = (internalWHCount['DAAN MOGOT'] === 0);
+  document.getElementById('btn-export-dy').disabled = (internalWHCount['DOYONG'] === 0);
+  document.getElementById('btn-export-ck').disabled = (internalWHCount['CIKUDA'] === 0);
+
   // Top issue patterns
   const issueCount = {};
   issues.filter(i => i.status !== 'resolved').forEach(i => {
@@ -1210,9 +1283,17 @@ function rerenderAfterChange() {
   renderCritical();
   renderWarning();
   renderDropped();
-  // Update export button: enabled jika tidak ada critical open
+  // v1.2: Disable semua 4 tombol export kalau ada critical open.
+  // Counter per-gudang di-update oleh renderSummary().
   const stillCritical = issues.filter(i => i.severity === 'critical' && i.status === 'open').length;
-  document.getElementById('btn-export').disabled = stillCritical > 0;
+  const exportLocked = stillCritical > 0;
+  document.getElementById('btn-export').disabled = exportLocked;
+  // Per-gudang button: lock kalau critical, ATAU kalau gudang itu kosong (yang di-set di renderSummary)
+  if (exportLocked) {
+    document.getElementById('btn-export-dm').disabled = true;
+    document.getElementById('btn-export-dy').disabled = true;
+    document.getElementById('btn-export-ck').disabled = true;
+  }
   updateActionSummary();
 }
 
@@ -1235,6 +1316,16 @@ function updateActionSummary() {
 // EXPORT CLEANED DATA
 // ═══════════════════════════════════════════════════════════════════════════
 function exportCleaned() {
+  return _exportRows('all');
+}
+
+// v1.2: Export hanya rows untuk 1 gudang internal tertentu (DAAN MOGOT / DOYONG / CIKUDA)
+function exportPerWarehouse(targetWH) {
+  return _exportRows(targetWH);
+}
+
+// Internal helper — _filter='all' atau nama gudang specific
+function _exportRows(_filter) {
   const stillCritical = issues.filter(i => i.severity === 'critical' && i.status === 'open').length;
   if (stillCritical > 0) {
     alert(`Masih ada ${stillCritical} critical issue. Fix dulu di tab Critical.`);
@@ -1243,45 +1334,58 @@ function exportCleaned() {
 
   // Build new sheet from sapRaw, hanya keep row yang tidak _drop
   const exportRows = [sapHeaders]; // header tetap
+  let exportedCount = 0;
   sapRows.forEach(r => {
     if (r._drop) return;
-    // Build row: clone original, lalu apply final values
-    const orig = r._origRow.slice(); // shallow copy
+    // v1.2: filter per gudang kalau bukan 'all'
+    if (_filter !== 'all' && r._final_warehouse !== _filter) return;
 
-    // Apply final warehouse (mapped: PASAR KEMIS 2 → DOYONG, dll)
-    if (r._final_warehouse) {
-      orig[COL.WAREHOUSE - 1] = r._final_warehouse;
-    }
-    // Apply final kecamatan (extracted)
-    if (r._final_kecamatan) {
-      orig[COL.KECAMATAN - 1] = r._final_kecamatan;
-    }
-    // Apply KIRIM:
-    //   priority 1: _final_kirim (dari manual user override / fallback merge)
-    //   priority 2: r.kirim (sudah cleaned di runRules: stripped city suffix + trim)
+    const orig = r._origRow.slice();
+    if (r._final_warehouse) orig[COL.WAREHOUSE - 1] = r._final_warehouse;
+    if (r._final_kecamatan) orig[COL.KECAMATAN - 1] = r._final_kecamatan;
     if (r._final_kirim) {
       orig[COL.KIRIM - 1] = r._final_kirim;
     } else {
       orig[COL.KIRIM - 1] = r.kirim;
     }
-    // Apply qty + customer kalau diubah manual
     orig[COL.QTY - 1] = r.qty;
     orig[COL.CUSTOMER - 1] = r.customer;
-
     exportRows.push(orig);
+    exportedCount++;
   });
+
+  if (exportedCount === 0) {
+    alert(`Tidak ada row untuk gudang ${_filter}.`);
+    return;
+  }
 
   // Build workbook
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(exportRows);
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
 
-  // Filename: sap_clean_YYYY-MM-DD.xlsx
-  const today = new Date();
-  const fname = `sap_clean_${today.toISOString().slice(0,10)}.xlsx`;
+  // Filename pattern
+  const today = new Date().toISOString().slice(0, 10);
+  let fname;
+  if (_filter === 'all') {
+    fname = `sap_clean_${today}.xlsx`;
+  } else {
+    // Replace spasi dengan underscore untuk filename
+    const whSlug = _filter.replace(/\s+/g, '_');
+    fname = `sap_clean_${today}_${whSlug}.xlsx`;
+  }
   XLSX.writeFile(wb, fname);
 
-  toast(`✅ ${exportRows.length - 1} row di-export ke ${fname}`);
+  toast(`✅ ${exportedCount} row di-export ke ${fname}`);
+}
+
+// v1.2: Toggle UI between mode "gabung 1 file" vs "pisah per gudang"
+function toggleSplitMode() {
+  const isOn = document.getElementById('toggle-split-wh').checked;
+  document.getElementById('btn-export').style.display = isOn ? 'none' : '';
+  document.getElementById('btn-export-dm').style.display = isOn ? '' : 'none';
+  document.getElementById('btn-export-dy').style.display = isOn ? '' : 'none';
+  document.getElementById('btn-export-ck').style.display = isOn ? '' : 'none';
 }
 
 function downloadAuditJSON() {
