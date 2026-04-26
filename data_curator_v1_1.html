@@ -983,13 +983,16 @@ function renderSummary() {
   sapRows.forEach(r => { whCount[r.warehouse || '(kosong)'] = (whCount[r.warehouse || '(kosong)'] || 0) + 1; });
   const whSorted = Object.entries(whCount).sort((a,b) => b[1]-a[1]);
   document.getElementById('wh-distribution').innerHTML =
-    `<table class="tbl"><thead><tr><th>Warehouse</th><th style="text-align:right">Rows</th><th>Status</th></tr></thead><tbody>${
+    `<table class="tbl"><thead><tr><th>Warehouse SAP</th><th style="text-align:right">Rows</th><th>Status</th><th>Mapped to</th></tr></thead><tbody>${
       whSorted.map(([wh, cnt]) => {
-        const allowed = ALLOWED_WAREHOUSES.some(a => wh === a || wh.startsWith('GUDANG KEMENANGAN JAYA CIKUDA'));
+        const whUpper = String(wh).toUpperCase().trim();
+        const mapped = WH_MAPPING[whUpper];
+        const allowed = !!mapped;
         return `<tr>
-          <td>${wh}</td>
+          <td>${escapeHtml(wh)}</td>
           <td style="text-align:right;font-family:var(--mono);font-weight:700">${cnt}</td>
           <td>${allowed ? '<span style="color:var(--success)">✓ Diproses</span>' : '<span style="color:var(--muted)">drop</span>'}</td>
+          <td style="font-family:var(--mono);font-size:11px">${allowed ? escapeHtml(mapped) : '—'}</td>
         </tr>`;
       }).join('')
     }</tbody></table>`;
