@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Data Curator v1.2 — GST Logistics</title>
+<title>Data Curator v1.3 — GST Logistics</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root {
@@ -155,8 +155,8 @@ body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--t
 
 <div class="app-header">
   <div class="app-logo">📋 DATA CURATOR</div>
-  <div class="app-version">v1.2</div>
-  <div class="app-tagline">Pre-flight check & cleaning data SAP/PG sebelum dispatch besok</div>
+  <div class="app-version">v1.3</div>
+  <div class="app-tagline">Pre-flight check & cleaning SAP DO + PG (Pindah Gudang) sebelum dispatch besok</div>
   <div class="app-date" id="hdr-date">—</div>
 </div>
 
@@ -167,6 +167,7 @@ body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--t
   <button class="tab-btn" data-tab="warning">🟡 Warning <span class="badge warning" id="cnt-warning">0</span></button>
   <button class="tab-btn" data-tab="autofix">🟢 Auto-fixed <span class="badge success" id="cnt-autofix">0</span></button>
   <button class="tab-btn" data-tab="dropped">🗑 Dropped <span class="badge info" id="cnt-dropped">0</span></button>
+  <button class="tab-btn" data-tab="pg">🔄 PG (Pindah Gudang) <span class="badge info" id="cnt-pg">0</span></button>
   <button class="tab-btn" data-tab="history">📊 History</button>
 </div>
 
@@ -183,11 +184,11 @@ body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--t
   </div>
 
   <div class="card">
-    <div class="card-title">📥 Upload File PG (Picking — opsional)</div>
+    <div class="card-title">📥 Upload File PG (Pindah Gudang — opsional)</div>
     <div class="upload-zone" id="upload-pg">
-      <div class="upload-icon">📋</div>
+      <div class="upload-icon">🔄</div>
       <div class="upload-title" id="pg-filename">Klik atau drag file PG di sini (opsional)</div>
-      <div class="upload-sub">Akan auto-merge dengan SAP berdasarkan No DO</div>
+      <div class="upload-sub">Transfer antar gudang internal HG. Hanya Reason PGO/PGI yang diproses.</div>
     </div>
     <input type="file" id="file-pg" accept=".xlsx,.xls" style="display:none">
   </div>
@@ -257,6 +258,11 @@ body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--t
       <div id="wh-export-distribution">—</div>
     </div>
 
+    <div class="card" id="card-pg-distribution">
+      <div class="card-title">🔄 Distribusi PG (Pindah Gudang) per Gudang Asal</div>
+      <div id="pg-export-distribution">—</div>
+    </div>
+
     <div class="card">
       <div class="card-title">Top issue patterns</div>
       <div id="top-issues">—</div>
@@ -313,6 +319,20 @@ body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--t
   </div>
 </div>
 
+<!-- TAB: PG (Pindah Gudang) -->
+<div class="pane" id="pane-pg">
+  <div class="filter-bar">
+    <div style="font-size:12px;color:var(--muted)">Pindah Gudang — transfer antar gudang internal HG. Hanya Reason PGO/PGI yang diproses.</div>
+  </div>
+  <div id="pg-content">
+    <div class="empty">
+      <div class="empty-icon">📂</div>
+      Belum ada file PG di-upload.<br>
+      <small>Upload file PG di tab Upload untuk lihat data transfer.</small>
+    </div>
+  </div>
+</div>
+
 <!-- TAB: HISTORY -->
 <div class="pane" id="pane-history">
   <div class="card">
@@ -325,28 +345,57 @@ body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--t
   </div>
 </div>
 
-<!-- ACTION BAR (bottom sticky) -->
-<div class="action-bar" id="action-bar" style="display:none">
+<!-- ACTION BAR (bottom sticky) - v1.3 -->
+<div class="action-bar" id="action-bar" style="display:none;flex-wrap:wrap;gap:8px">
   <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;user-select:none">
     <input type="checkbox" id="toggle-split-wh" onchange="toggleSplitMode()" style="cursor:pointer">
     <span>Pisah per gudang</span>
   </label>
-  <div class="summary-text" id="action-summary">—</div>
+  <div class="summary-text" id="action-summary" style="flex:1;min-width:200px">—</div>
   <button class="btn" onclick="downloadAuditJSON()">📋 Audit JSON</button>
-  <!-- Mode default: 1 file gabung -->
-  <button class="btn btn-success" id="btn-export" onclick="exportCleaned()" disabled>
-    ⬇ Export Cleaned Data
-  </button>
-  <!-- Mode split: 3 tombol per gudang (di-show via toggleSplitMode) -->
-  <button class="btn btn-success" id="btn-export-dm" onclick="exportPerWarehouse('DAAN MOGOT')" style="display:none" disabled>
-    ⬇ DM (<span id="cnt-dm">0</span>)
-  </button>
-  <button class="btn btn-success" id="btn-export-dy" onclick="exportPerWarehouse('DOYONG')" style="display:none" disabled>
-    ⬇ DOYONG (<span id="cnt-dy">0</span>)
-  </button>
-  <button class="btn btn-success" id="btn-export-ck" onclick="exportPerWarehouse('CIKUDA')" style="display:none" disabled>
-    ⬇ CIKUDA (<span id="cnt-ck">0</span>)
-  </button>
+
+  <!-- SAP exports — Mode default (gabung) -->
+  <span id="sap-export-row-default" style="display:flex;gap:6px;align-items:center">
+    <span style="font-size:10px;color:var(--muted);font-weight:700">SAP:</span>
+    <button class="btn btn-success" id="btn-export" onclick="exportCleaned()" disabled>
+      ⬇ SAP Cleaned
+    </button>
+  </span>
+
+  <!-- SAP exports — Mode split (3 tombol per gudang) -->
+  <span id="sap-export-row-split" style="display:none;gap:6px;align-items:center">
+    <span style="font-size:10px;color:var(--muted);font-weight:700">SAP:</span>
+    <button class="btn btn-success" id="btn-export-dm" onclick="exportPerWarehouse('DAAN MOGOT')" disabled>
+      ⬇ DM (<span id="cnt-dm">0</span>)
+    </button>
+    <button class="btn btn-success" id="btn-export-dy" onclick="exportPerWarehouse('DOYONG')" disabled>
+      ⬇ DOYONG (<span id="cnt-dy">0</span>)
+    </button>
+    <button class="btn btn-success" id="btn-export-ck" onclick="exportPerWarehouse('CIKUDA')" disabled>
+      ⬇ CIKUDA (<span id="cnt-ck">0</span>)
+    </button>
+  </span>
+
+  <!-- PG exports — visible kalau ada PG file -->
+  <span id="pg-export-row-default" style="display:none;gap:6px;align-items:center">
+    <span style="font-size:10px;color:var(--muted);font-weight:700;margin-left:8px">PG:</span>
+    <button class="btn" id="btn-export-pg" onclick="exportPGCleaned()" style="background:#7c3aed;color:#fff;border-color:#7c3aed" disabled>
+      ⬇ PG Cleaned
+    </button>
+  </span>
+
+  <span id="pg-export-row-split" style="display:none;gap:6px;align-items:center">
+    <span style="font-size:10px;color:var(--muted);font-weight:700;margin-left:8px">PG:</span>
+    <button class="btn" id="btn-export-pg-dm" onclick="exportPGPerWarehouse('DAAN MOGOT')" style="background:#7c3aed;color:#fff;border-color:#7c3aed" disabled>
+      ⬇ DM (<span id="cnt-pg-dm">0</span>)
+    </button>
+    <button class="btn" id="btn-export-pg-dy" onclick="exportPGPerWarehouse('DOYONG')" style="background:#7c3aed;color:#fff;border-color:#7c3aed" disabled>
+      ⬇ DY (<span id="cnt-pg-dy">0</span>)
+    </button>
+    <button class="btn" id="btn-export-pg-ck" onclick="exportPGPerWarehouse('CIKUDA')" style="background:#7c3aed;color:#fff;border-color:#7c3aed" disabled>
+      ⬇ CK (<span id="cnt-pg-ck">0</span>)
+    </button>
+  </span>
 </div>
 
 <!-- Toast -->
@@ -388,6 +437,64 @@ Object.entries(MASTER_KECAMATAN.kecamatan).forEach(([name, info]) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// MASTER GUDANG (v1.3) — dari Data_Gudang.xlsx (237 entries)
+// Format: { "A11": {name: "DAAN MOGOT", street: "..."}, ... }
+// Code → name lookup untuk PG file (SAP pakai kode 3-4 char di From/To Warehouse)
+// ═══════════════════════════════════════════════════════════════════════════
+const MASTER_GUDANG = {"A01":{"name":"MUARA KARANG","street":"MUARA KARANG BLOK L IX SELATAN NO. 1-7 ;JAKARTA UTARA"},"A01C":{"name":"SALE CORNER MUARA KARANG","street":"MUARA KARANG BLOK L IX SELATAN NO. 1-7 ;JAKARTA UTARA"},"A02":{"name":"SAMARINDA","street":"JL. P. SURYANATA - AIR PUTIH RING ROAD 3"},"A03":{"name":"PASAR KEMIS","street":"JL. ZONA INDUSTRI PASAR KEMIS ;TANGERANG"},"A06":{"name":"BALI","street":"MOUDING INDAH IX NO. 2 GATOT SUBROTO BARAT"},"A07":{"name":"BALI 2","street":"JL. RAYA PERANG NO. 88 LUKLUK,  KEC. MENGWI  KAB. BADUNG - BALI"},"A08":{"name":"MEDAN","street":"KOMP. PERGUDANGAN MAS KARIMUN BLOK C NO. 22"},"A09":{"name":"MEDAN 2","street":"KIM 3 BLOK A NO. 12A"},"A11":{"name":"DAAN MOGOT","street":"JL DAAN MOGOT KAWASAN INDUSTRI KM. 19,8 BLOK G NO. 1 PORIS GAGA BATUCEPER TANGERANG 15122 ;TANGERANG"},"A21":{"name":"MAKASSAR 2","street":"KOMP. PERGUDANGAN PATENE BUSINESS PARK BLOK F NO. 9"},"A24":{"name":"DOYONG","street":"JL. KH. EZ. MUTTAQIEN 85 ;TANGERANG"},"A26":{"name":"RUNGKUT SAWAH","street":"JL. TAMBAK REJO NO. 36"},"A32":{"name":"SEMARANG CANDI","street":"KAWASAN INDUSTRI CANDI BLOK 8E NO. 1"},"A33":{"name":"BANDUNG GEDE BAGE","street":"JL. GEDE BAGE NO.165A, RT.03 / RW.05 KEL. CISARANTEUN KIDUL KEC. GEDE BAGE ;BANDUNG"},"A34":{"name":"SURABAYA TAMBAK JABON","street":"PERGUDANGAN SURYA INTI (TAMBAK JABON) BLOK G. NO. 6"},"A35":{"name":"PASAR KEMIS 2","street":"JL. BARU ZONA INDUSTRI KERONCONG RT. 01/02 ;TANGERANG"},"B04":{"name":"BAZAR-MEGAH SENTRAL BANGUNAN","street":"KAWASAN PUSAT NIAGA TERBARU BLOK E NO. 8 DAAN MOGOT"},"B09":{"name":"BAZAR-KEMENANGAN JAYA","street":"JL. PERCETAKAN NEGARA RAYA C261-C263 ;JAKARTA PUSAT"},"B11":{"name":"BAZAR-DUTA BANGUNAN","street":"JL. PANGLIMA POLIM NO. 42 RT. 9/7 PULO, KEBAYORAN BARU ;JAKARTA SELATAN"},"B33":{"name":"BAZAR-BAZAR BANGUNAN BEKASI","street":"JL. SULTAN HASANUDIN NO. 86 TAMBUN ;BEKASI"},"B36":{"name":"BAZAR-METRO 10 CILEDUG","street":"JL. CILEDUG RAYA NO. 10 ;TANGERANG"},"B38":{"name":"BAZAR-DUNIA BANGUNAN BSD","street":"KAV. SUNBURST BLOK CBD II NO. 12 BSD CITY ;TANGERANG"},"B39":{"name":"BAZAR-GRAHA DEKORAMIK","street":"JL. HAJI NAJAMUDIN NO. 333, KENTEN SURABAYA SIMPANG BANDARA"},"B40":{"name":"BAZAR-SEHATI BANGUNAN","street":"JL. RAYA PONDOK KACANG RT. 003/004 ;TANGERANG"},"B41":{"name":"BAZAR-PELITA HARAPAN","street":"PERTOKOAN HARAPAN INDAH BLOK EB NO. 24-25 ;BEKASI"},"B42":{"name":"BAZAR-RUMAH MAHARDIKA KARYA","street":"JL. PINANGSIA RAYA NO. 42 KEC. TAMAN SARI ;JAKARTA BARAT"},"B43":{"name":"BAZAR-KERAMIK JAKARTA","street":"JL. PERCETAKAN NEGARA D764 ;JAKARTA PUSAT"},"B44":{"name":"BAZAR-TIRTA BANGUNAN CIBINONG","street":"JL. RAYA JAKARTA BOGOR KM. 39,9 NO. 6 CIBINONG ;BOGOR"},"B45":{"name":"BAZAR-PRATAMA MANDIRI PRIMA","street":"JL. RAYA LEMAH ABANG NO. 27 SIMPANG TIGA ;BEKASI"},"B46":{"name":"BAZAR-ARTHA JAYA GROUP","street":"JL. HM MUSLIH NO. 08 CIKULUR BARU ;BANTEN"},"B47":{"name":"BAZAR-PESONA BANGUNAN","street":"JL. RAYA PEKAYON NO. 51A RT. 02/08 ;BEKASI"},"B48":{"name":"BAZAR-SINAR REMAJA","street":"JL. RAYA JATI BENING RT.01/01 KEC. PONDOK GEDE KEL. JATI BENING ;BEKASI"},"B49":{"name":"BAZAR-METRO 10 MERUYA","street":"JL. MERUYA SELATAN NO. 19 KEMBANGAN ;JAKARTA BARAT"},"B50":{"name":"BAZAR-METRO 10 PETUKANGAN","street":"JL. CILEDUG RAYA NO. 88 RT. 07/04 PETUKANGAN UTARA ;JAKARTA SELATAN"},"B51":{"name":"BAZAR-ARTHA MANDIRI KERAMINDO","street":"JL. PERCETAKAN NEGARA NO. 721 RT. 010/10 ;JAKARTA PUSAT"},"B52":{"name":"BAZAR-KASPEA BANGUNAN JATI ASIH","street":"PERTIGAAN KOMSEN, JL. RAYA JATI ASIH NO. 8 RT. 3/4 ;BEKASI"},"B53":{"name":"BAZAR-CAHAYA 99","street":"JL. IR. H. JUANDA NO. 99 / A3 BEKASI TIMUR ;BEKASI"},"B54":{"name":"BAZAR-PURI MANSION","street":"KOMP. RUKO PURI MANSION BLOK A NO. 25/NO. 26, RT.2/RW.1 ;JAKARTA BARAT"},"BD01":{"name":"BACK DOOR DALAM KOTA A11 (HASAN)","street":""},"BD02":{"name":"BACK DOOR DALAM KOTA A03 (HASAN)","street":""},"BD03":{"name":"BACK DOOR DALAM KOTA A24 (HASAN)","street":""},"BD04":{"name":"BACK DOOR PROYEK A11 (GO SIOE HING)","street":""},"BD05":{"name":"BACK DOOR PROYEK A03 (GO SIOE HING)","street":""},"BD06":{"name":"BACK DOOR PROYEK A24 (GO SIOE HING)","street":""},"BD07":{"name":"BACK DOOR SHOWROOM A11 (CHIE2)","street":""},"BD08":{"name":"BACK DOOR SHOWROOM A03 (CHIE2)","street":""},"BD09":{"name":"BACK DOOR SHOWROOM A24 (CHIE2)","street":""},"BD10":{"name":"BACK DOOR DALAM KOTA A35 (HASAN)","street":""},"BD11":{"name":"BACK DOOR PROYEK A35 (GO SIOE HING)","street":""},"BD12":{"name":"BACK DOOR SHOWROOM A35 (CHIE2)","street":""},"C04":{"name":"FLOOR DISPLAY SINAR ABADI (BOGOR)","street":"JL. PAHLAWAN NO. 175 BONDONGAN ;BOGOR"},"C100":{"name":"FLOOR DISPLAY GLOBAL BANGUNAN JAYA (NANGKA)","street":"JL. TUANKU TAMBUSAI NO. 299"},"C101":{"name":"FLOOR DISPLAY QHOME SUKSES ABADI","street":"JL. RAYA JANTI RING ROAD TIMUR NO. 96"},"C102":{"name":"FLOOR DISPLAY CEMERLANG JAYA","street":"JL. SULTAN MAHMUD BAHARUDIN 2 NO. 728"},"C103":{"name":"FLOOR DISPLAY WISKA KARYA DJAJA","street":"JL. ALANG-ALANG LEBAR"},"C104":{"name":"FLOOR DISPLAY GLOBAL BANGUNAN JAYA (PANAM)","street":"JL. HR. SUBRANTAS NO. 98 (DEPAN GIANT)"},"C106":{"name":"FLOOR DISPLAY ARTHA BANGUNAN","street":"JL. HM. MUSLIH NO. 08 CIKULUR BARU SERANG ;BANTEN"},"C107":{"name":"FLOOR DISPLAY MEGAH SENTRAL BANGUNAN (DUNIA BANGUNAN)","street":"KOTA WISATA COMMPARK BLOK E NO.1-3, ;CIBUBUR"},"C109":{"name":"FLOOR DISPLAY SUPERMARKET MULTI DEPO","street":"JL. R. SOEPRAPTO NO. 12 RT. 002/005"},"C11":{"name":"FLOOR DISPLAY BNS UNLIMITED","street":"JL. PANGLIMA POLIM RAYA NO. 41 ;JAKARTA BARAT"},"C110":{"name":"FLOOR DISPLAY PALEMBANG","street":""},"C111":{"name":"FLOOR DISPLAY SEHATI BANGUNAN ABADI","street":"JL. RAYA PONDOK KACANG RT. 003/004 ;TANGERANG"},"C112":{"name":"FLOOR DISPLAY TEKNIK ANDHALAN NUSANTARA GLOBAL","street":"JL. KARTINI NO. 41-45"},"C113":{"name":"FDR VERONIKA","street":"JL. AMIR MACHMUD NO. 819 CIMAHI"},"C115":{"name":"FLOOR DISPLAY NUSANTARA JAYA","street":"JL. GATOT SUBROTO TIMUR NO.72"},"C116":{"name":"FLOOR DISPLAY SUMBER MAS TERANG","street":"JL. IMAM BONJOL NO.347"},"C118":{"name":"FLOOR DISPLAY CV. NEO","street":"JL. TRUNOJOYO NO. 169"},"C12":{"name":"FLOOR DISPLAY MAJU (KM), TOKO","street":"JL. RAYA KALIMALANG NO. 36 KP. 2 ;BEKASI"},"C120":{"name":"FLOOR DISPLAY GUNUNG MANDIRI INTERNUSA","street":"JL. RAYA MERDEKA NO. 16 A-B ;TANGERANG"},"C121":{"name":"FLOOR DISPLAY UD ANGGA","street":"JL. WIBISANA BARAT IIIX"},"C122":{"name":"FLOOR DISPLAY BAZAR BANGUNAN TAMBUN","street":"JL. SULTAN HASANUDIN NO. 86 TAMBUN ;BEKASI"},"C123":{"name":"FLOOR DISPLAY PELITA HARAPAN","street":"PERTOKOAN HARAPAN INDAH BLOK EB NO. 24-25 ;BEKASI"},"C124":{"name":"FLOOR DISPLAY GRAHA BANGUNAN","street":"JL. CEMARA NO. 238"},"C125":{"name":"FLOOR DISPLAY MITRA ADIPUTRO BANGUN BERSAMA","street":"JL. MAYJEND. SUNGKONO NO. 8"},"C126":{"name":"FLOOR DISPLAY CAHAYA 99","street":"JL. IR. JUANDA NO. 99 - 102 ;BEKASI"},"C127":{"name":"FLOOR DISPLAY BANGUN INDAH GRAHA","street":"JL. LAKSDA ADI SUCIPTO 319B"},"C128":{"name":"FLOOR DISPLAY ARTHA JAYA GROUP","street":"JL. TEMU PUTIH RT. 01/09 TAMAN BARU CITANGKIL ;BANTEN"},"C129":{"name":"CHINA HARBOUR JAKARTA REAL ESTATE DEVELOPMENT, PT","street":"JL. DAAN MOGOT KM.16 SEMANAN, KALIDERES ;JAKARTA BARAT"},"C130":{"name":"FLOOR DISPLAY CAHAYA KERAMIK","street":"JL. VETERAN UTARA NO. 392 ;JAKARTA SELATAN"},"C131":{"name":"FLOOR DISPLAY ROYAL BANGUNAN","street":"JL. RAYA CURUG KM. 02 NO. 138 KP KONTRAKAN RT. 001/008 ;BOGOR"},"C132":{"name":"FDR MAHKOTA SEJAHTERA MANDIRI","street":"JL. PAMEDAN NO. 6 B RT. 04/02"},"C133":{"name":"FLOOR DISPLAY PESONA BANGUNAN PEKAYON","street":"JL. RAYA PEKAYON NO. 51A RT. 002/001 ;BEKASI"},"C134":{"name":"FLOOR DISPLAY RUMAHKU ALAM SUTERA","street":"JL. JALUR SUTERA, PAKU ALAM, SERPONG UTARA, PANUNGGANGAN ;TANGERANG"},"C135":{"name":"FLOOR DISPLAY KASPEA BANGUNAN JATIMEKAR","street":"JL. RAYA JATIKRAMAT NO. 89 RT. 1/17 JATIKRAMAT, JATIASIH ;BEKASI"},"C136":{"name":"FLOOR DISPLAY KERAMIK JAKARTA","street":"JL. PERCETAKAN NEGARA D764 ;JAKARTA PUSAT"},"C137":{"name":"FLOOR DISPLAY MURAH KUDUS","street":"JL. JEPARA NO. 433 PRAMBATAN KIDUL-KALIWUNGU KUDUS"},"C138":{"name":"FLOOR DISPLAY TIRTA BANGUNAN CIBINONG","street":"JL. RAYA JAKARTA BOGOR KM. 39,9 NO. 6 CIBINONG ;BOGOR"},"C139":{"name":"FLOOR DISPLAY SUKSES MAKMUR","street":"PAKOJAN NO. 67A RT. 001/001 PURWODINATAN"},"C14":{"name":"FLOOR DISPLAY MITRA 10 CIBUBUR","street":"JL. RAYA ALTERNATIF CIBUBUR - CILEUNGSI KM. 4 ;BOGOR"},"C140":{"name":"FLOOR DISPLAY TIRTA BANGUNAN SENTUL","street":"JL. RAYA BABAKAN MADANG NO. 88 DESA CITARINGGUL ;BOGOR"},"C141":{"name":"FLOOR DISPLAY PRATAMA MANDIRI PRIMA SUKATANI","street":"JL. PILAR SUKATANI NO. 204 SUKARAYA, KARANGBAHAGIA ;BEKASI"},"C142":{"name":"FLOOR DISPLAY PRATAMA MANDIRI CIBARUSAH","street":"JL. RAYA CIKARANG - CIBARUSAH NO. 1 SERANG ;BEKASI"},"C143":{"name":"FDR MAHKOTA SEJAHTERA MANDIRI II","street":"JL. DR. RAJIMAN 672 PAJANG"},"C144":{"name":"FLOOR DISPLAY SINAR BARU 2 POLIM","street":"JL. PANGLIMA POLIM RAYA NO. 46B ;JAKARTA SELATAN"},"C145":{"name":"FLOOR DISPLAY CAHAYA TIMUR PINANGSIA","street":"JL. PINANGSIA RAYA NO. 73 A-B RT. 001/005 ;JAKARTA BARAT"},"C146":{"name":"FLOOR DISPLAY INDO KERAMIK DADAP","street":"JL. DADAP RAYA BLOK A NO. 12 ;JAKARTA BARAT"},"C147":{"name":"FLOOR DISPLAY POS BAHAN BANGUNAN","street":"JL. RAYA CEGER JURANG MANGU RUKO C2 (SEBELAH PASAR BERSIH CEGER)"},"C148":{"name":"FLOOR DISPLAY GRAHA DEKORAMIK","street":"JL. HAJI NAJAMUDIN NO. 333, KENTEN SURABAYA SIMPANG BANDARA"},"C149":{"name":"FDR ROMA BANGUNAN I","street":"JL. TUPAREV NO. 244 KARAWANG BARAT"},"C15":{"name":"FLOOR DISPLAY BAZAR BANGUNAN","street":"JL. IR. H. JUANDA NO. 68 RT. 004/006 ;BEKASI"},"C150":{"name":"FDR ROMA BANGUNAN II","street":"JL. WIRASABA NO. 78 (DEPAN PINDODELI 1 ADIARSA) ;KARAWANG"},"C151":{"name":"FDR BANGUNAN MART","street":"JL. MARGA CINTA NO. 118"},"C152":{"name":"FDR JAYA SENTOSA MULIA I (JSM)","street":"JL. RAYA LASWI NO. 22-23"},"C153":{"name":"FDR JAYA SENTOSA MULIA II (JSM)","street":"JL. TERUSAN KOPO KM. 11 NO. 1-5"},"C154":{"name":"FDR JAYA SENTOSA MULIA III (JSM)","street":"JL. TKI III RUKO A NO. 5-6"},"C155":{"name":"FLOOR DISPLAY BINTANG BARU","street":"JL. PINANGSIA RAYA NO. 24E TAMAN SARI ;JAKARTA BARAT"},"C156":{"name":"FLOOR DISPLAY DUNIA BANGUNAN BSD","street":"KAV. SUNBURST BLOK CBD II NO. 12 BSD CITY ;TANGERANG"},"C157":{"name":"FDR BERDIKARI INDO SUPER GROSIR","street":"JL. RA. KOSASIH NO. 37 RT. 002 RW. 009"},"C158":{"name":"FDR KAWAN BARU CIANJUR","street":"JL. RAYA BANDUNG NO. 3 BOJONG KARANG TENGAH ;CIANJUR"},"C159":{"name":"FDR INDO GROUP CIANJUR","street":"JL. ARIF RAHMAN HAKIM NO. 27 ;CIANJUR"},"C16":{"name":"FLOOR DISPLAY MITRA 10 KALIMALANG","street":"JL. KALIMALANG RAYA NO. 7 ;BEKASI"},"C160":{"name":"FLOOR DISPLAY HERO BANGUNAN","street":"JL. RAYA DELTA MAS NO. 89 SUKAMAHI CIKARANG PUSAT ;CIKARANG"},"C161":{"name":"FDR ARTHA BANGUNAN","street":"JL. HM. MUSLIH NO. 08 CIKULUR BARU SERANG ;BANTEN"},"C164":{"name":"FDR ARTHA JAYA MAS CIWARU","street":"JL. RAYA PANDEGLANG LINK KAHURIPAN NO. 6-9 SERANG ;BANTEN"},"C165":{"name":"FLOOR DISPLAY GRAHA BANGUNAN II","street":"JL. PANGLIMA SUDIRMAN NO.20-22"},"C166":{"name":"FLOOR DISPLAY SENTRAL ABADI BANGUNAN","street":"JL. RAYA KARANGLO NO.131 RT.001 / RW.004"},"C167":{"name":"FDR BANGUNAN MART II","street":"JL. SOEKARNO HATTA NO. 503 B ;BANDUNG"},"C168":{"name":"PERUNDING GESTIAN, PT","street":"JL. ISKANDARSYAH RAYA NO. 66C GRAHA ISKANDARSYAH LT. 4"},"C169":{"name":"FLOOR DISPLAY ANUGERAH PINANGSIA","street":"JL. PINANGSIA RAYA NO.46 ;JAKARTA BARAT"},"C17":{"name":"FLOOR DISPLAY DUNIA BANGUNAN (DM)","street":"KAWASAN PUSAT NIAGA TERPADU BLOK E NO. 8 ;JAKARTA BARAT"},"C170":{"name":"FLOOR DISPLAY RENOTOP MERUYA","street":"JL. MERUYA SELATAN NO.19 ;JAKARTA BARAT"},"C171":{"name":"FLOOR DISPLAY RENOTOP GOTONG ROYONG","street":"JL. CILEDUG RAYA NO.10 ;TANGERANG"},"C172":{"name":"FLOOR DISPLAY RENOTOP PETUKANGAN","street":"JL. CILEDUG RAYA NO.88 RT.07 / RW.04 ;TANGERANG"},"C173":{"name":"FLOOR DISPLAY SINAR 88","street":"JL. RAYA DUKUH KUPANG NO.89-91 RT.008 / RW.009"},"C174":{"name":"FDR ARTHA JAYA MAS CILEGON","street":"JL. RAYA CILEGON KEC. KRAMATWATU RT.06/RW.03 ;BANTEN"},"C175":{"name":"FLOOR DISPLAY ROYAL BANGUNAN CILEUNGSI","street":"JL. RAYA JONGGOL NO. 177A KM2, CILEUNGSI KIDUL ;BOGOR"},"C176":{"name":"FLOOR DISPLAY SUMBER ALAM JEMBER","street":"JL. TRUNOJOYO NO. 156, TEMBAAN, KEPATIHAN, KEC. KALIWATES"},"C177":{"name":"FLOOR DISPLAY GRIYO LANGGENG LUMAJANG","street":"JL. LETKOL SLAMET WARDOYO NO. 17 LABRUK, KEC. LUMAJANG, KAB. LUMAJANG"},"C178":{"name":"FDR BENOA MAS","street":"JL. TEUKU UMAR NO.20"},"C179":{"name":"FLOOR DISPLAY ANEKA JAYA BANGUN INDO","street":"JL. SULTAN ALAUDDIN NO. 36/10"},"C18":{"name":"FLOOR DISPLAY DUNIA BANGUNAN (SERPONG)","street":"BSD JUNCTION LT. DASAR SEKTOR BARAT 2 ;TANGERANG"},"C180":{"name":"FDR PRO HOME","street":"JL. SOEKARNO HATTA NO.359 RT.005 RW.004 KOPO BOJONG, LOA KALER ;BANDUNG"},"C181":{"name":"FDR DEWATA MAKMUR","street":"PERUM NINDYA INDAH NO.5 BANJAR KEDATON TONJA"},"C182":{"name":"FDR DETA BANGUNAN","street":"JL. GATOT SUBROTO BARAT NO.301"},"C183":{"name":"FDR DEPO BAGOES BANGUNAN","street":"JL. RAYA SEMABAUNG NO.18 KEL. BELAHBATU KEC. BEDULU GIANYAR"},"C184":{"name":"FDR SUMBER CAHAYA KERAMIK","street":"JL. GATOT SUBROTO BARAT NO.419"},"C185":{"name":"FLOOR DISPLAY UTAMA JAYA MANDIRI","street":"JL. ALTERNATIF NO.78"},"C186":{"name":"FLOOR DISPLAY TALI KERAMIK","street":"JL. PINANGSIA RAYA NO. 76 ;JAKARTA BARAT"},"C187":{"name":"FLOOR DISPLAY GOLDEN CITY","street":"JL. HAYAM WURUK NO. 157"},"C188":{"name":"FDR BERDIKARI INDO SUPER GROSIR CIANJUR","street":"JL. ARIF RAHMAN HAKIM NO. 28, MUKA, KABUPATEN ;CIANJUR"},"C189":{"name":"FDR GRAHA KERAMIK II SUKABUMI","street":"JL. LINGKAR SELATAN / JALUR LINGKAR SELATAN KEL. DAYEUHLUHUR KEC. WARUDOYONG ;SUKABUMI"},"C19":{"name":"FLOOR DISPLAY KEMENANGAN JAYA (PN)","street":"JL. PERCETAKAN NEGARA RAYA C261-C263 ;JAKARTA PUSAT"},"C190":{"name":"FLOOR DISPLAY SURYA PERKASA MANDIRI","street":"JL. TENTARA PELAJAR NO.5 WIROGUNAN, KARTASURA, KAB. SUKOHARJO"},"C191":{"name":"FLOOR DISPLAY RAVEN CAESAR FAJARIANO","street":"JL. JEND. AHMAD YANI NO.427, MAGELANG"},"C192":{"name":"FLOOR DISPLAY CAHAYA BANGUNAN","street":"JL. PURI KEMBANGAN NO. 168 ;JAKARTA BARAT"},"C193":{"name":"FLOOR DISPLAY MITRA ADIPUTRO BANGUN BERSAMA NGANTRU","street":"JL. RAYA NGANTRU, TULUNGAGUNG  DS, PULEREJO RT.01 RW.01 KEC. NGANTRU, TULUNGAGUNG"},"C194":{"name":"FLOOR DISPLAY MITRA ADIPUTRO BANGUN BERSAMA TULUNG AGUNG","street":"JL. PANGERAN DIPONEGORO NO. 92 TAMANAN KEC. TULUNG AGUNG"},"C195":{"name":"FDR PRATAMA MANDIRI PRIMA CIKARANG","street":"JL. RAYA LEMAH ABANG NO.27 SIMPANG TIGA ;CIKARANG"},"C196":{"name":"FDR PRATAMA MANDIRI PRIMA SUKATANI","street":"JL. PILAR SUKATANI NO. 204 SUKARAYA, KARANG BAHAGIA ;BEKASI"},"C197":{"name":"FLOOR DISPLAY SUKSES BANGUNAN","street":"JL. PERINTIS KEMERDEKAAN KM 17"},"C198":{"name":"FLOOR DISPLAY HOME CENTRAL BOGOR","street":"JL. RAYA TAJUR NO.263, RT.02 / RW.07 MURASARI"},"C199":{"name":"FLOOR DISPLAY BJ HOME SERPONG","street":"JL. PAHLAWAN SERIBU BLOK VI 1/17 BSD SERPONG TANGERANG SELATAN BSD CITY ;TANGERANG"},"C20":{"name":"FLOOR DISPLAY MITRA 10 BINTARO","street":"JL. PONDOK BETUNG RAYA RT/RW: 12/03 ;TANGERANG"},"C200":{"name":"FDR ROMA BANGUNAN SUBANG","street":"JL. OTISTA NO. 121 RT.013 RW.048 KARANGANYAR ;SUBANG"},"C201":{"name":"FLOOR DISPLAY BINTANG KERAMIK ANGKE","street":"JL. PANGERAN TUBAGUS ANGKE RAYA RT.16 / RW.10, JELAMBAR BARU, KEC. GROGOL PETAMBURAN ;JAKARTA BARAT"},"C202":{"name":"FLOOR DISPLAY RENOTOP PINANG","street":"JL. HASYIM ASHARI NO.176 ;TANGERANG"},"C203":{"name":"FLOOR DISPLAY TANJUNG JAYA BANGUNAN","street":"JL. HOS. COKROAMINOTO NO.4 ;TANGERANG"},"C204":{"name":"FDR HAKA ANUGRAH JAYA","street":"JL. PELABUHAN II NO. 59, RT. 001/002 ;SUKABUMI"},"C205":{"name":"FLOOR DISPLAY ISTANA KERAMIK INDAH","street":"JL. AYIP USMAN 1 RT. 003/11, SERANG ;BANTEN"},"C206":{"name":"FDR INDO BANGUNAN HOME","street":""},"C207":{"name":"FDR GRAHA KITA 18","street":""},"C208":{"name":"FDR KARYA SEJATI","street":""},"C209":{"name":"FLOOR DISPLAY KASPEA KERAMIKA","street":"JL. RAYA JATIMEKAR NO. 89 ;BEKASI"},"C210":{"name":"FDR MAHKOTA SEJAHTERA MANDIRI III","street":"JL. VETERAN NO. 108 ;JAKARTA SELATAN"},"C211":{"name":"FLOOR DISPLAY IKON GLOBALINDO PRATAMA","street":"JL. VETERAN SELATAN NO. 71 E, MARICAYA SELATAN"},"C212":{"name":"FLOOR DISPLAY CV SEMPURNA","street":"JL. DHARMAWANGSA NO.162 JAWA TIMUR"},"C213":{"name":"FDR SANIPRADA","street":"JL. RAYA SANGGINGAN UBUD GIANYAR"},"C214":{"name":"FDR CASAUMA","street":"JL. TEUKU UMAR BARAT NO.789X DENPASAR"},"C215":{"name":"FLOOR DISPLAY SARANA UTAMA","street":"JL. VETERAN SELATAN NO. 29C, MARICAYA BARU"},"C216":{"name":"FDR KENCANA BALI GRAHA","street":"DESA PUJUNGAN, JL. RAYA PUPUAN, TABANAN BALI"},"C217":{"name":"FLOOR DISPLAY GRAHA SA","street":"BRAWIJAYA NO. 36, RT. 000/RW. 000, TUNGGALPAGER PUNGGING"},"C218":{"name":"FLOOR DISPLAY BINTANG BANGUNAN","street":"WAE MATA RT. 003 / RW. 002, WAE KELAMBU KOMODO, KAB. MANGGARAI BARAT, NUSA TENGGARA TIMUR"},"C219":{"name":"FLOOR DISPLAY PERKASA MAKMUR SEJAHTERA","street":"JL. MUSTIKA JAYA NO.36, RT.002/RW.012, MUSTIKA JAYA, KEC. MUSTIKA JAYA ;BEKASI"},"C22":{"name":"FLOOR DISPLAY MITRA 10 (PN)","street":"JL. PERCETAKAN NEGARA NO. 189 ;JAKARTA PUSAT"},"C220":{"name":"FLOOR DISPLAY KARYA INDAH KERAMIK","street":"Jl. VETERAN NO. 7 ;JAKARTA SELATAN"},"C221":{"name":"FDR DILA ABADI","street":"JL. CARGO PERMAI NO 888"},"C222":{"name":"FDR KAWI GRAHA","street":"JL. RAJAWALI NO. 58 A LINGK SATRIA JEMBRANA"},"C223":{"name":"FLOOR DISPLAY CV PUTRA REJEKI BERSINERGI","street":"JL. PAHLAWAN NO.1 AREA SAWAH WANUTENGAH KEC. PARAKAN KAB. TEMANGGUNG JAWA TENGAH 56254"},"C224":{"name":"FLOOR DISPLAY CV ARCHITILE","street":"JL. TEUKU UMAR KOMPLEK PONTIANAK MALL BLOK A, PONTIANAK, KALIMANTAN BARAT"},"C225":{"name":"FLOOR DISPLAY UD CEDOX MAKMUR BANGUNAN","street":"JL. JALA SUCI NO 8 LUMBUNG SARI"},"C226":{"name":"FLOOR DISPLAY SEHATI BANGUNAN ABADI II","street":"JL. RAYA SERANG, CIKANDE RAYA, KECAMATAN JAYANTI ;BANTEN"},"C227":{"name":"FLOOR DISPLAY MAJU MAPAN JAYA UTAMA","street":"JL. RAYA 67 DUSUN KEBONSARI RT 03 / RW 16, PEMALANG, JAWA TENGAH"},"C228":{"name":"FLOOR DISPLAY TIRTA BANGUNAN BOGOR","street":"JL. RAYA TAJUR NO. 109 RT 01/RW 05, GRAHA MANDIRI, KOTA BOGOR, JAWA BARAT ;BOGOR"},"C229":{"name":"FLOOR DISPLAY CAKRAWALA BANGUNAN INDONESIA MAKASSAR","street":"JL. PERINTIS KEMERDEKAAN KM 17"},"C230":{"name":"FLOOR DISPLAY ROMA BANGUNAN PURWAKARTA","street":"JL. VETERAN, CISEUREUH, KEC. PURWAKARTA, KABUPATEN PURWAKARTA, JAWA BARAT ;PURWAKARTA"},"C231":{"name":"FDR DEPO BAGOES BANGUNAN CELUK","street":"JALAN RAYA CELUK, SUKAWATI, GIANYAR, BALI"},"C232":{"name":"FLOOR DISPLAY KEMENANGAN JAYA CIKUDA","street":"JL. RAYA CIKUDA WANAHERANG NO. 152-153, RT.2/RW.5, WANAHERANG, KEC. GN. PUTRI, JAWA BARAT ;BOGOR"},"C233":{"name":"FLOOR DISPLAY KEMENANGAN JAYA BOGOR","street":"JL. SHOLEH ISKANDAR NO. KM 4, RT. 03/RW. 05, CIBADAK, KEC. TANAH SEREAL, JAWA BARAT ;BOGOR"},"C234":{"name":"FLOOR DISPLAY KEMENANGAN JAYA SAWANGAN","street":"JL. RAYA BOJONGSARI NO.1 RW. 2, BOJONGSARI LAMA, KEC. BOJONGSARI, JAWA BARAT ;DEPOK"},"C235":{"name":"FLOOR DISPLAY KEMENANGAN JAYA KARAWANG","street":"RUKO SENTRALAND BUSINESS PARK BLOK KA 6, SUKALUYU, TELUK JAMBE TIMUR, JAWA BARAT ;KARAWANG"},"C236":{"name":"FLOOR DISPLAY KEMENANGAN JAYA BANDUNG","street":"JL. SURAPATI NO. 120 CIAHAUR GEULIS, BANDUNG, JAWA BARAT ;BANDUNG"},"C237":{"name":"FLOOR DISPLAY INDO BANGUNAN KEDIRI","street":"JL. YOS SUDARSO NO.89, PAKELAN, KOTA KEDIRI, JAWA TIMUR"},"C238":{"name":"FLOOR DISPLAY MITRA MEGAH BANGUNAN","street":"JL. RAYA SUMBERGEMPOL NO. 100 A RT. 002 RW. 001"},"C239":{"name":"FLOOR DISPLAY HOME MATERIAL","street":"JL. RAYA MUSTIKA JAYA NO. 53A, RT 001 RW 020 ;BEKASI"},"C242":{"name":"FLOOR DISPLAY SINAR JAYA BANGUNAN HARAPAN INDAH","street":"JL RAYA HARAPAN INDAH MEDAN SATRIA ;BEKASI"},"C243":{"name":"FLOOR DISPLAY SINAR JAYA BANGUNAN ZAMBRUD","street":"JL. RAYA BANTAR GEBANG SET CIMUNING MSTIKA JAYA ;BEKASI"},"C245":{"name":"FLOOR DISPLAY GADING JAYA BANGUNAN","street":"JL MUTIARA GADING CITY SENTRA SETIA ASIH ;BEKASI"},"C249":{"name":"FLOOR DISPLAY TIRTA BANGUNAN SILIWANGI","street":"JL SILIWANGI NO 28A ;BOGOR SELATAN"},"C251":{"name":"FLOOR DISPLAY TIRTA BANGUNAN BEKASI","street":"JL RAYA BANTAR GEBANG SETU MUSTIKA JAYA ;BEKASI"},"C255":{"name":"FLOOR DISPLAY SAIDOV INDO DJAYA","street":"PERCETAKAN NEGARA ;JAKARTA PUSAT"},"C257":{"name":"FLOOR DISPLAY KASPEA KARANG SATRIA","street":"JL KARANG SATRIA TAMBUN UTARA KABUPATEN ;BEKASI"},"C258":{"name":"FLOOR DISPLAY SINAR JAYA SETU","street":"JL RAYA BANTAR GEBANG SETU NO 08 PEDURENAN KOTA ;BEKASI"},"C269":{"name":"","street":"JL. PROF DR. HAMKA GG. SUMUR MAGGA 1 RT001/RW01 ;TANGERANG"},"C270":{"name":"FLOOR DISPLAY DEPO KERAMIK","street":"JL. WIJAYA KUSUMA UJUNG CLESTER GAPURA ;TANGERANG SELATAN"},"C24":{"name":"FLOOR DISPLAY SUPER HOME","street":"CIBUBUR TIMES SQUARE BLOK B1 NO. 4-5 ;CIBUBUR"},"C32":{"name":"FLOOR DISPLAY DEPO BANGUNAN (SERPONG)","street":"JL. RAYA SERPONG KM. 2 KP. BARU UTARA ;TANGERANG"},"C34":{"name":"FLOOR DISPLAY DEPO BANGUNAN (BANDUNG)","street":"JL. RAYA SOEKARNO HATTA (SAMPING MACRO) ;BANDUNG"},"C36":{"name":"FLOOR DISPLAY MITRA 10 (DEPOK)","street":"JL. MARGONDA RAYA RT.02 RW.18 ;DEPOK"},"C38":{"name":"FLOOR DISPLAY KRISCHEN INTERNATIONAL","street":"JL. ARENGKA II KOMP. AVIANT BLOK D NO. 16"},"C42":{"name":"FLOOR DISPLAY MITRA BANGUNAN SUPERMRKT","street":"JL. IR. JUANDA NO. 99 E-G BULAK KAPAL ;BEKASI"},"C43":{"name":"FLOOR DISPLAY SINAR REMAJA BEKASI","street":"JL. RAYA JATIBENING RT. 011/001 KEC. PONDOK GEDE KEL. JATIBENING ;BEKASI"},"C44":{"name":"FLOOR DISPLAY SUPERMARKET TOILETKU","street":"JL. LINGKAR LUAR BARAT NO. 1A-1C DURI KOSAMBI ;JAKARTA BARAT"},"C45":{"name":"FLOOR DISPLAY CAHAYA TIMUR POLIM","street":"JL. PANGLIMA POLIM NO. 52 MELAWAI ;JAKARTA SELATAN"},"C52":{"name":"FLOOR DISPLAY TIRTA BARU (DEPOK)","street":"JL. RAYA SAWANGAN NO 88 ;DEPOK"},"C58":{"name":"FLOOR DISPLAY TIRTA BANGUNAN (DEPOK)","street":"JL. TOLE ISKANDAR RAYA RUKO GRIYA ;DEPOK"},"C61":{"name":"FLOOR DISPLAY LESTARI JAYA","street":"JL. PERCETAKAN NEGARA D769"},"C62":{"name":"FLOOR DISPLAY MANDIRI JAYA","street":"JL. PERCETAKAN NEGARA NO. 721"},"C64":{"name":"FLOOR DISPLAY HOME CENTRA (MEDAN)","street":"JL. RINGROAD SETIA BUDI II NO. 99"},"C66":{"name":"FLOOR DISPLAY MITRA 10 (BOGOR)","street":"JL. KH. SHOLEH ISKANDAR RT.08/09 KEL. KEDUNG BADAK ;BOGOR"},"C69":{"name":"FLOOR DISPLAY MITRA 10 CAKUNG","street":"JL. SULTAN HAMENGKUBUWONO IX KM. 25 ;BEKASI"},"C74":{"name":"FLOOR DISPLAY AJBS (SEMARANG)","street":"JL. BRIGJEND. SOEDIARTO NO. 256-258"},"C75":{"name":"FLOOR DISPLAY ANANDA JATAKA BAYU SEJAHTERA","street":"JL. RATNA NO. 14"},"C80":{"name":"FLOOR DISPLAY SURYA UTAMA MAKASSAR","street":"JL. VETERAN UTARA NO. 301"},"C82":{"name":"FLOOR DISPLAY SUMBER MAS GEMILANG BALI","street":"JL. SUNSET ROAD NO. 12"},"C91":{"name":"FLOOR DISPLAY TUJUH DELAPAN MAKMUR ABADI","street":"JL. T. AMIR HAMZAH NO. 312"},"C92":{"name":"FLOOR DISPLAY SINGARAJA BUILDING CENTRE","street":"JL. NGURAH RAI NO. 58"},"C94":{"name":"FLOOR DISPLAY PRATAMA MANDIRI PRIMA","street":"JL. RAYA LEMAH ABANG NO. 27 SIMPANG TIGA ;BEKASI"},"C96":{"name":"FLOOR DISPLAY KASPEA BANGUNAN","street":"JL. JATI ASIH RAYA NO. 8-9 ;BEKASI"},"C97":{"name":"FLOOR DISPLAY BINA JAYA PINANGSIA","street":"JL. PINANGSIA RAYA NO. 4 ;JAKARTA BARAT"},"C99":{"name":"FLOOR DISPLAY WIJAYA PN","street":"KOMP. RAWASARI MAS BLOK B NO. 8 ;JAKARTA PUSAT"},"RO1":{"name":"GUDANG CIKUDA","street":"JL. RAYA CIKUDA WANAHERANG NO. 152, WANAHERANG, KEC. GN. PUTRI, JAWA BARAT ;BOGOR"},"RO2":{"name":"GUDANG CIKUDA","street":"JL. RAYA CIKUDA WANAHERANG NO. 152, WANAHERANG, KEC. GN. PUTRI, JAWA BARAT ;BOGOR"},"R03":{"name":"GUDANG CIKUDA","street":"JL. RAYA CIKUDA WANAHERANG NO. 152, WANAHERANG, KEC. GN. PUTRI, JAWA BARAT ;BOGOR"},"SH01":{"name":"DISPLAY MUARA KARANG","street":"MUARA KARANG BLOK L IX SELATAN NO. 1-7 ;JAKARTA UTARA"},"SH05":{"name":"SHC PROPAN BALI","street":"GATOT SUBROTO BARAT NO. 688"},"SH11":{"name":"DISPLAY MEDAN","street":"JL. GATOT SUBROTO NO. 152 D-E"},"SH12":{"name":"SHC SEMARANG 2","street":"JL. DR. CIPTO NO. 105"}};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WH_CODE_MAPPING (v1.3) — kode SAP → 3 gudang internal HG
+// HG konfirmasi:
+//   A11 = DAAN MOGOT
+//   A03/A24/A35 = DOYONG (Pasar Kemis variants juga ke DOYONG)
+//   R01/R02/R03/C232 = CIKUDA
+// ═══════════════════════════════════════════════════════════════════════════
+const WH_CODE_MAPPING = {
+  'A11' : 'DAAN MOGOT',
+  'A03' : 'DOYONG', 'A24' : 'DOYONG', 'A35' : 'DOYONG',
+  'R01' : 'CIKUDA', 'R02' : 'CIKUDA', 'R03' : 'CIKUDA', 'C232': 'CIKUDA',
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SCOPE_DEFINITION (v1.3) — 4-tier scope delivery HG (konfirmasi 26 Apr 2026)
+//   core      : Jabodetabek classic + Cikarang (auto-keep, no flag)
+//   extended  : Karawang/Cikampek/Subang/Bandung/Banten (keep, info "Luar Kota")
+//   outofscope: luar pulau / jauh (auto-drop dengan reason)
+//   unknown   : lainnya (keep, flag warning untuk koreksi manual)
+// ═══════════════════════════════════════════════════════════════════════════
+const SCOPE_DEFINITION = {
+  core: new Set([
+    'JAKBAR','JAKTIM','JAKSEL','JAKPUS','JAKUT','JAKARTA',
+    'BEKASI','DEPOK','BOGOR','TANGERANG','TANGSEL',
+    'CIBUBUR','CIKARANG','LIPPO CIKARANG',
+    'JAKARTA PUSAT','JAKARTA BARAT','JAKARTA SELATAN','JAKARTA TIMUR','JAKARTA UTARA',
+    'TANGERANG SELATAN','KABUPATEN BOGOR','KAB. BOGOR','BANTEN',
+    'JAK BAR','JAK TIM','JAK SEL','JAK PUS','JAK UT'
+  ]),
+  extended: new Set([
+    'KARAWANG','CIKAMPEK','SUBANG','PURWAKARTA',
+    'SERANG','CILEGON','BANDUNG'
+  ]),
+  outofscope: new Set([
+    'MEDAN','SURABAYA','SEMARANG','BALI','DENPASAR',
+    'MAKASSAR','SAMARINDA','BALIKPAPAN','BANJARMASIN',
+    'PALEMBANG','YOGYAKARTA','SOLO','MALANG','MAGELANG',
+    'CIREBON','MANADO','PALU','PEKANBARU','JAMBI',
+    'PADANG','LAMPUNG','BANDA ACEH','PONTIANAK','MATARAM','KUPANG'
+  ]),
+};
+
+function classifyCity(city) {
+  if (!city) return 'unknown';
+  const c = String(city).toUpperCase().trim();
+  if (SCOPE_DEFINITION.core.has(c))       return 'core';
+  if (SCOPE_DEFINITION.extended.has(c))   return 'extended';
+  if (SCOPE_DEFINITION.outofscope.has(c)) return 'outofscope';
+  return 'unknown';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // CONFIG
 // ═══════════════════════════════════════════════════════════════════════════
 // v1.1: WH mapping table — SAP warehouse code → internal warehouse name
@@ -403,6 +510,7 @@ const WH_MAPPING = {
   'GUDANG KEMENANGAN JAYA CIKUDA 2'        : 'CIKUDA',
   'GUDANG KEMENANGAN JAYA CIKUDA 3'        : 'CIKUDA',
   // SAP-specific aliases for internal Jabodetabek warehouses (v1.1, konfirmasi HG)
+  'PASAR KEMIS'                            : 'DOYONG',
   'PASAR KEMIS 2'                          : 'DOYONG',
   'KOMP PASAR KEMIS 2'                     : 'DOYONG',
   'DIRECT'                                 : 'DAAN MOGOT',
@@ -412,11 +520,10 @@ const WH_MAPPING = {
 // v1.1: kota suffix yang menandakan alamat luar Jabodetabek.
 // Kalau muncul setelah `;` di KIRIM, biasanya bukan tujuan Jabo — tapi sesuai
 // keputusan HG (Q3=keep), kita TIDAK drop berdasarkan ini, hanya FLAG sebagai warning.
-const NON_JABO_CITY_SUFFIXES = new Set([
-  'BANDUNG', 'MEDAN', 'SURABAYA', 'SEMARANG', 'BALI', 'MAKASSAR',
-  'SAMARINDA', 'CIKAMPEK', 'KARAWANG', 'CILEGON', 'SERANG',
-  'CIREBON', 'YOGYAKARTA', 'SOLO', 'MALANG', 'PALEMBANG'
-]);
+// v1.3: Scope sudah didefine di SCOPE_DEFINITION (4-tier: core/extended/outofscope/unknown).
+// JABO_CITY_ALIASES tetap dipakai untuk normalisasi (JAKBAR → JAKARTA BARAT).
+// Suffix recognition: city dianggap valid kalau muncul di JABO_CITY_ALIASES OR
+// muncul di salah satu tier scope (core/extended/outofscope) — selain itu jangan strip.
 
 // v1.1: kota suffix yang valid Jabodetabek — untuk normalisasi
 const JABO_CITY_ALIASES = {
@@ -430,7 +537,7 @@ const JABO_CITY_ALIASES = {
   'DEPOK'       : 'DEPOK',
   'TANGERANG'   : 'TANGERANG',
   'BOGOR'       : 'BOGOR',
-  'CIBUBUR'     : 'JAKARTA TIMUR',  // Cibubur masuk Jaktim
+  'CIBUBUR'     : 'JAKARTA TIMUR',
   'CIKARANG'    : 'BEKASI',
   'LIPPO CIKARANG': 'BEKASI',
   'KABUPATEN BOGOR': 'BOGOR',
@@ -454,29 +561,37 @@ const COL = {
   KIRIM: 35, KECAMATAN: 36, NO_CP: 37,
 };
 
+// PG Column indices (1-based, sesuai dengan struktur file pg_*.xlsx)
+const PG_COL = {
+  DOC_NO: 1, POSTING_DATE: 2, CUST_VEND_CODE: 3, BP_NAME: 4,
+  REASON: 5, TYPE: 6, FROM_WAREHOUSE: 7, TO_WAREHOUSE: 8,
+  LINE_NUM: 9, ITEM_CODE: 10, ITEM_DESC: 11, COLOUR: 12,
+  SHADING: 13, SIZE: 14, QTY: 15, JOURNAL_REMARKS: 16, REMARKS: 17,
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
-// KIRIM PARSER (v1.1) — parse format "JL ABC ;JAKBAR" atau "JL ABC, BEKASI"
+// KIRIM PARSER (v1.3) — parse format "JL ABC ;JAKBAR" atau "JL ABC ;BANDUNG"
 // ═══════════════════════════════════════════════════════════════════════════
-// Return: { addr: <alamat tanpa suffix>, city_suffix: <kota uppercase>, raw: <input>, has_suffix: bool }
+// Return: { addr, city_suffix, city_normalized, scope_tier, has_suffix, raw }
+//   scope_tier: 'core' | 'extended' | 'outofscope' | 'unknown'
 function parseKirim(raw) {
-  if (!raw) return { addr: '', city_suffix: null, raw: '', has_suffix: false };
+  if (!raw) return { addr: '', city_suffix: null, raw: '', has_suffix: false, scope_tier: 'unknown' };
   const s = String(raw).trim();
-  // Split by ; only — koma terlalu umum di alamat (RT/RW, dll)
   const parts = s.split(/[;]/);
   if (parts.length < 2) {
-    return { addr: s, city_suffix: null, raw: s, has_suffix: false };
+    return { addr: s, city_suffix: null, raw: s, has_suffix: false, scope_tier: 'unknown' };
   }
-  // Last part = kota suffix (mungkin trailing ", ID" atau " SY")
   let last = parts[parts.length - 1].trim();
   last = last.replace(/,\s*ID\s*$/i, '').replace(/\s+SY\s*$/i, '').trim();
   const cityUpper = last.toUpperCase();
 
-  const isJaboCity = cityUpper in JABO_CITY_ALIASES;
-  const isNonJabo = NON_JABO_CITY_SUFFIXES.has(cityUpper);
+  // Recognized kalau muncul di JABO_CITY_ALIASES, atau di salah satu tier scope
+  const tier = classifyCity(cityUpper);
+  const isJaboAlias = cityUpper in JABO_CITY_ALIASES;
+  const isRecognized = isJaboAlias || tier !== 'unknown';
 
-  if (!isJaboCity && !isNonJabo) {
-    // Bukan suffix kota yang dikenali — jangan split
-    return { addr: s, city_suffix: null, raw: s, has_suffix: false };
+  if (!isRecognized) {
+    return { addr: s, city_suffix: null, raw: s, has_suffix: false, scope_tier: 'unknown' };
   }
 
   const addr = parts.slice(0, -1).join(';').trim();
@@ -486,7 +601,10 @@ function parseKirim(raw) {
     city_normalized: JABO_CITY_ALIASES[cityUpper] || cityUpper,
     raw: s,
     has_suffix: true,
-    is_non_jabo_suffix: isNonJabo,
+    scope_tier: tier,
+    // Keep backward-compat: is_non_jabo_suffix sekarang true untuk extended OR outofscope
+    is_non_jabo_suffix: (tier === 'extended' || tier === 'outofscope'),
+    is_outofscope: (tier === 'outofscope'),
   };
 }
 
@@ -502,6 +620,14 @@ let issues = [];          // {type, severity, doc_no, field, msg, suggest, rowId
 let autoFixLog = [];      // {doc_no, field, before, after, rule}
 let droppedRows = [];     // {rowIdx, doc_no, customer, wh, kirim, reason}
 let warningFilter = 'all';
+
+// v1.3: PG (Pindah Gudang) state
+let pgRaw = [];           // array of arrays dari sheet PG
+let pgRows = [];          // parsed PG objects
+let pgHeaders = [];       // header row (17 cols)
+let pgIssues = [];        // PG-specific issues
+let pgAutoFix = [];       // PG auto-fix log
+let pgDropped = [];       // PG row yg di-drop (bukan PGO/PGI, atau dari WH non-HG, atau outofscope)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INIT
@@ -557,7 +683,10 @@ function checkValidateButton() {
 }
 
 function resetAll() {
-  sapFile = pgFile = null; sapRaw = []; sapRows = []; issues = []; autoFixLog = []; droppedRows = [];
+  sapFile = pgFile = null;
+  sapRaw = []; sapRows = []; issues = []; autoFixLog = []; droppedRows = [];
+  // v1.3: reset PG state
+  pgRaw = []; pgRows = []; pgIssues = []; pgAutoFix = []; pgDropped = [];
   document.getElementById('upload-sap').classList.remove('has-file');
   document.getElementById('upload-pg').classList.remove('has-file');
   document.getElementById('sap-filename').textContent = 'Klik atau drag file SAP DO di sini';
@@ -569,16 +698,28 @@ function resetAll() {
   document.getElementById('btn-export-dm').disabled = true;
   document.getElementById('btn-export-dy').disabled = true;
   document.getElementById('btn-export-ck').disabled = true;
+  // v1.3: reset PG buttons
+  ['btn-export-pg', 'btn-export-pg-dm', 'btn-export-pg-dy', 'btn-export-pg-ck'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = true;
+  });
   document.getElementById('action-bar').style.display = 'none';
   document.getElementById('summary-empty').style.display = 'block';
   document.getElementById('summary-content').style.display = 'none';
-  // Reset toggle ke OFF (default = gabung)
+  // Reset toggle ke OFF
   const toggle = document.getElementById('toggle-split-wh');
   if (toggle) { toggle.checked = false; toggleSplitMode(); }
-  ['critical','warning','autofix','dropped'].forEach(k => {
-    document.getElementById('cnt-'+k).textContent = '0';
+  // Reset PG export rows visibility
+  const pgDef = document.getElementById('pg-export-row-default');
+  const pgSplit = document.getElementById('pg-export-row-split');
+  if (pgDef) pgDef.style.display = 'none';
+  if (pgSplit) pgSplit.style.display = 'none';
+  // Reset counters
+  ['critical','warning','autofix','dropped','pg'].forEach(k => {
+    const el = document.getElementById('cnt-'+k);
+    if (el) el.textContent = '0';
   });
-  ['cnt-dm','cnt-dy','cnt-ck'].forEach(k => {
+  ['cnt-dm','cnt-dy','cnt-ck','cnt-pg-dm','cnt-pg-dy','cnt-pg-ck'].forEach(k => {
     const el = document.getElementById(k);
     if (el) el.textContent = '0';
   });
@@ -646,6 +787,53 @@ async function runValidation() {
     // 3. Run rule engine per row
     runRules();
 
+    // v1.3: Read & process PG file (kalau di-upload)
+    pgRaw = []; pgRows = []; pgIssues = []; pgAutoFix = []; pgDropped = [];
+    if (pgFile) {
+      btn.textContent = '⏳ Reading PG file...';
+      await sleep(50);
+      try {
+        const pgBuf = await pgFile.arrayBuffer();
+        const pgWb = XLSX.read(pgBuf, { type: 'array' });
+        const pgWs = pgWb.Sheets[pgWb.SheetNames[0]];
+        pgRaw = XLSX.utils.sheet_to_json(pgWs, { header: 1, defval: null });
+        if (pgRaw.length >= 2) {
+          pgHeaders = pgRaw[0];
+          for (let i = 1; i < pgRaw.length; i++) {
+            const r = pgRaw[i];
+            if (!r || !r.length) continue;
+            const docNo = r[PG_COL.DOC_NO - 1];
+            if (!docNo) continue;
+            pgRows.push({
+              _idx: i, _origRow: r,
+              doc_no: String(docNo).trim(),
+              posting_date: r[PG_COL.POSTING_DATE - 1],
+              reason: String(r[PG_COL.REASON - 1] || '').trim().toUpperCase(),
+              type: String(r[PG_COL.TYPE - 1] || '').trim().toUpperCase(),
+              from_wh: String(r[PG_COL.FROM_WAREHOUSE - 1] || '').trim().toUpperCase(),
+              to_wh: String(r[PG_COL.TO_WAREHOUSE - 1] || '').trim().toUpperCase(),
+              line_num: r[PG_COL.LINE_NUM - 1],
+              item_code: String(r[PG_COL.ITEM_CODE - 1] || '').trim(),
+              item_desc: String(r[PG_COL.ITEM_DESC - 1] || '').trim(),
+              size: String(r[PG_COL.SIZE - 1] || '').trim(),
+              qty: r[PG_COL.QTY - 1],
+              remarks: String(r[PG_COL.REMARKS - 1] || '').trim(),
+              // Final values
+              _final_from_internal: '',  // mapped: DAAN MOGOT / DOYONG / CIKUDA
+              _final_to_name: '',         // looked up dari MASTER_GUDANG
+              _drop: false, _drop_reason: '',
+            });
+          }
+          btn.textContent = '⏳ PG validation...';
+          await sleep(50);
+          runPGRules();
+        }
+      } catch (pgErr) {
+        console.error('PG file error:', pgErr);
+        alert('⚠ Gagal parse file PG:\n' + pgErr.message + '\n\nLanjut tanpa PG.');
+      }
+    }
+
     // 4. Aggregate per DO untuk display & summary
     aggregateResults();
 
@@ -655,6 +843,7 @@ async function runValidation() {
     renderWarning();
     renderAutoFix();
     renderDropped();
+    renderPG();
 
     document.getElementById('summary-empty').style.display = 'none';
     document.getElementById('summary-content').style.display = 'block';
@@ -744,14 +933,26 @@ function runRules() {
         before: parsed.raw, after: parsed.addr,
         rule: 'strip_city_suffix'
       });
-      // Kalau suffix non-Jabo (BANDUNG, MEDAN, dll) — flag warning, jangan drop (HG decision Q3)
-      if (parsed.is_non_jabo_suffix) {
+      // v1.3: 4-tier scope handling
+      //   core: keep, no flag
+      //   extended (Karawang/Cikampek/Subang/Bandung dll): keep, flag info "Luar Kota"
+      //   outofscope (Medan/Surabaya/Bali dll): flag warning + suggest verifikasi/drop
+      if (parsed.scope_tier === 'extended') {
         issues.push({
-          type: 'addr_non_jabo', severity: 'warning',
+          type: 'addr_extended', severity: 'warning',
           doc_no: row.doc_no, field: 'KIRIM',
           rowIdx: row._idx, status: 'open',
-          msg: `Alamat tujuan luar Jabodetabek (suffix: ${parsed.city_suffix})`,
-          suggest: `Verifikasi — apakah ada armada khusus / vendor untuk ${parsed.city_suffix}? Atau salah input?`,
+          msg: `Alamat tujuan area extended (${parsed.city_suffix}) — masih scope HG`,
+          suggest: `Verifikasi armada / arrangement untuk ${parsed.city_suffix}. Routing optimizer akan flag sebagai "Luar Kota".`,
+          row: row
+        });
+      } else if (parsed.scope_tier === 'outofscope') {
+        issues.push({
+          type: 'addr_outofscope', severity: 'warning',
+          doc_no: row.doc_no, field: 'KIRIM',
+          rowIdx: row._idx, status: 'open',
+          msg: `⚠ Alamat tujuan luar scope HG (${parsed.city_suffix})`,
+          suggest: `Kemungkinan ekspedisi pihak luar / typo. Verify dengan sales atau exclude DO.`,
           row: row
         });
       }
@@ -968,6 +1169,129 @@ function fuzzyMatchKecamatan(text) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PG RULE ENGINE (v1.3) — proses Pindah Gudang
+// ═══════════════════════════════════════════════════════════════════════════
+// Rules:
+//   1. Filter Reason — hanya PGO + PGI (Transfer). Skip RETURN/DAMAGE/FOUND/RECEIPT.
+//   2. From WH harus salah satu kode HG (A11/A03/A24/A35/R01/R02/R03/C232) → mapped ke DM/DOYONG/CIKUDA.
+//      Kalau bukan → drop (transfer dari gudang non-HG, bukan tanggung jawab dispatcher).
+//   3. To WH lookup di MASTER_GUDANG. Kalau ditemukan, classify scope-nya.
+//      Tier outofscope (luar pulau) → drop.
+//      Tier core/extended → keep.
+//      Unknown code → KEEP dengan flag warning (HG koreksi manual).
+function runPGRules() {
+  pgRows.forEach(row => {
+    // (1) Filter Reason — hanya transfer murni
+    if (!['PGO', 'PGI'].includes(row.reason)) {
+      row._drop = true;
+      row._drop_reason = `Reason "${row.reason}" bukan transfer (skip — biasanya damage/return/receipt)`;
+      pgDropped.push({
+        rowIdx: row._idx, doc_no: row.doc_no,
+        from_wh: row.from_wh, to_wh: row.to_wh,
+        item: row.item_desc, qty: row.qty,
+        reason: row._drop_reason
+      });
+      return;
+    }
+
+    // (2) Map From WH ke gudang internal HG
+    const fromInternal = WH_CODE_MAPPING[row.from_wh];
+    if (!fromInternal) {
+      row._drop = true;
+      // Cek apakah kode-nya ada di master (untuk pesan lebih informatif)
+      const fromMaster = MASTER_GUDANG[row.from_wh];
+      if (fromMaster) {
+        row._drop_reason = `From "${row.from_wh}" = ${fromMaster.name} (bukan gudang HG, skip)`;
+      } else {
+        row._drop_reason = `From "${row.from_wh}" tidak dikenali (tidak ada di master & bukan gudang HG)`;
+      }
+      pgDropped.push({
+        rowIdx: row._idx, doc_no: row.doc_no,
+        from_wh: row.from_wh, to_wh: row.to_wh,
+        item: row.item_desc, qty: row.qty,
+        reason: row._drop_reason
+      });
+      return;
+    }
+    row._final_from_internal = fromInternal;
+
+    // (3) Cek QTY
+    const qty = Number(row.qty);
+    if (!qty || qty <= 0) {
+      pgIssues.push({
+        type: 'pg_no_qty', severity: 'critical',
+        doc_no: row.doc_no, field: 'Quantity1',
+        rowIdx: row._idx, status: 'open',
+        msg: `PG quantity 0 atau kosong (qty=${row.qty})`,
+        suggest: `Cek SAP — kemungkinan input error. Edit qty atau exclude.`,
+        row: row
+      });
+    }
+
+    // (4) Lookup To Warehouse di master
+    const toMaster = MASTER_GUDANG[row.to_wh];
+    if (!toMaster) {
+      // Kode unknown — KEEP, flag warning (HG koreksi manual)
+      pgIssues.push({
+        type: 'pg_unknown_wh_code', severity: 'warning',
+        doc_no: row.doc_no, field: 'To Warehouse',
+        rowIdx: row._idx, status: 'open',
+        msg: `Kode tujuan "${row.to_wh}" tidak ada di master Data Gudang`,
+        suggest: `Update master Data_Gudang.xlsx dengan kode ${row.to_wh}, atau exclude row ini.`,
+        row: row
+      });
+      row._final_to_name = `(Unknown: ${row.to_wh})`;
+    } else {
+      row._final_to_name = toMaster.name;
+
+      // Detect city dari street master untuk classify scope
+      let detectedCity = null;
+      const streetUpper = (toMaster.street || '').toUpperCase();
+      const nameUpper = (toMaster.name || '').toUpperCase();
+      // Coba parse "; CITY" dari street
+      const streetParsed = parseKirim(toMaster.street || '');
+      if (streetParsed.has_suffix && streetParsed.scope_tier !== 'unknown') {
+        detectedCity = streetParsed.city_suffix;
+      } else {
+        // Fallback: scan street + name untuk known city keywords
+        for (const c of [...SCOPE_DEFINITION.outofscope, ...SCOPE_DEFINITION.extended]) {
+          if (streetUpper.includes(c) || nameUpper.includes(c)) {
+            detectedCity = c;
+            break;
+          }
+        }
+      }
+
+      const tier = detectedCity ? classifyCity(detectedCity) : 'unknown';
+
+      if (tier === 'outofscope') {
+        // Drop — luar pulau / jauh
+        row._drop = true;
+        row._drop_reason = `Tujuan "${toMaster.name}" di ${detectedCity} (luar scope HG)`;
+        pgDropped.push({
+          rowIdx: row._idx, doc_no: row.doc_no,
+          from_wh: row.from_wh, to_wh: `${row.to_wh} (${toMaster.name})`,
+          item: row.item_desc, qty: row.qty,
+          reason: row._drop_reason
+        });
+        return;
+      } else if (tier === 'extended') {
+        // Keep, flag info "extended scope"
+        pgIssues.push({
+          type: 'pg_extended_scope', severity: 'warning',
+          doc_no: row.doc_no, field: 'To Warehouse',
+          rowIdx: row._idx, status: 'open',
+          msg: `Tujuan "${toMaster.name}" di area extended (${detectedCity})`,
+          suggest: `Konfirm dispatcher: armada / jadwal untuk ${detectedCity}.`,
+          row: row
+        });
+      }
+      // tier 'core' atau 'unknown' di street → keep tanpa flag
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // AGGREGATE RESULTS — group issues per doc untuk display
 // ═══════════════════════════════════════════════════════════════════════════
 function aggregateResults() {
@@ -976,6 +1300,12 @@ function aggregateResults() {
   document.getElementById('cnt-warning').textContent = issues.filter(i => i.severity === 'warning' && i.status !== 'resolved').length;
   document.getElementById('cnt-autofix').textContent = autoFixLog.length;
   document.getElementById('cnt-dropped').textContent = droppedRows.length;
+  // v1.3: PG counter
+  const pgEl = document.getElementById('cnt-pg');
+  if (pgEl) {
+    const pgKept = pgRows.filter(r => !r._drop).length;
+    pgEl.textContent = pgKept;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1039,6 +1369,53 @@ function renderSummary() {
   document.getElementById('btn-export-dy').disabled = (internalWHCount['DOYONG'] === 0);
   document.getElementById('btn-export-ck').disabled = (internalWHCount['CIKUDA'] === 0);
 
+  // v1.3: PG distribution per gudang asal + counter
+  const pgInternalCount = { 'DAAN MOGOT':0, 'DOYONG':0, 'CIKUDA':0 };
+  if (pgRows && pgRows.length > 0) {
+    pgRows.forEach(r => {
+      if (r._drop) return;
+      if (r._final_from_internal in pgInternalCount) pgInternalCount[r._final_from_internal]++;
+    });
+  }
+  const totalPG = Object.values(pgInternalCount).reduce((a,b)=>a+b, 0);
+  // Render PG distribution card kalau elemen ada
+  const pgDistEl = document.getElementById('pg-export-distribution');
+  if (pgDistEl) {
+    if (totalPG > 0) {
+      pgDistEl.innerHTML = `<table class="tbl"><thead><tr><th>Gudang Asal</th><th style="text-align:right">Rows</th><th style="text-align:right">%</th></tr></thead><tbody>${
+        Object.entries(pgInternalCount).map(([wh, cnt]) => {
+          const pct = totalPG > 0 ? (cnt/totalPG*100) : 0;
+          return `<tr>
+            <td><strong>${escapeHtml(wh)}</strong></td>
+            <td style="text-align:right;font-family:var(--mono);font-weight:700">${cnt}</td>
+            <td style="text-align:right;color:var(--muted);font-family:var(--mono)">${pct.toFixed(0)}%</td>
+          </tr>`;
+        }).join('')
+      }<tr style="background:#f8fafc;border-top:2px solid var(--border)"><td><strong>TOTAL PG</strong></td><td style="text-align:right;font-family:var(--mono);font-weight:700">${totalPG}</td><td style="text-align:right;font-family:var(--mono);color:var(--muted)">100%</td></tr></tbody></table>`;
+    } else if (pgFile) {
+      pgDistEl.innerHTML = '<div class="empty">File PG di-upload tapi tidak ada row siap export (semua di-drop).</div>';
+    } else {
+      pgDistEl.innerHTML = '<div class="empty">Belum ada file PG di-upload.</div>';
+    }
+  }
+  // PG counter di tombol
+  ['pg-dm', 'pg-dy', 'pg-ck'].forEach((k, i) => {
+    const wh = ['DAAN MOGOT','DOYONG','CIKUDA'][i];
+    const el = document.getElementById('cnt-' + k);
+    if (el) el.textContent = pgInternalCount[wh];
+    const btn = document.getElementById('btn-export-' + k);
+    if (btn) btn.disabled = (pgInternalCount[wh] === 0);
+  });
+  const btnPG = document.getElementById('btn-export-pg');
+  if (btnPG) btnPG.disabled = (totalPG === 0);
+  // Show/hide PG row di action bar berdasarkan ada/tidaknya PG file
+  const hasPG = pgFile && pgRows.length > 0;
+  const splitOn = document.getElementById('toggle-split-wh')?.checked;
+  const pgDef = document.getElementById('pg-export-row-default');
+  const pgSplit = document.getElementById('pg-export-row-split');
+  if (pgDef)   pgDef.style.display   = (hasPG && !splitOn) ? 'flex' : 'none';
+  if (pgSplit) pgSplit.style.display = (hasPG && splitOn)  ? 'flex' : 'none';
+
   // Top issue patterns
   const issueCount = {};
   issues.filter(i => i.status !== 'resolved').forEach(i => {
@@ -1077,11 +1454,17 @@ function humanIssueType(type) {
     'kirim_empty_fallback': '🟡 KIRIM kosong (ada fallback)',
     'kirim_empty_critical': '🔴 KIRIM kosong tanpa fallback',
     'alamat_short': '🟡 Alamat terlalu pendek',
+    'addr_extended': '🟡 Alamat extended scope (Karawang/Bandung/dll)',
+    'addr_outofscope': '🔴 Alamat luar scope HG (Medan/Surabaya/dll)',
     'addr_non_jabo': '🟡 Alamat tujuan luar Jabodetabek',
     'qty_zero': '🔴 QTY = 0',
     'qty_high': '🟡 QTY anomali tinggi',
     'customer_empty': '🔴 Customer kosong',
     'doc_duplicate': '🔴 DO No duplicate (customer beda)',
+    // v1.3 PG issue types
+    'pg_unknown_wh_code': '🟡 PG: Kode warehouse unknown (cek master)',
+    'pg_to_outofscope': '🟡 PG: Tujuan luar scope (Samarinda/Surabaya/dll)',
+    'pg_no_qty': '🔴 PG: Quantity 0 atau kosong',
   })[type] || type;
 }
 
@@ -1188,6 +1571,134 @@ function renderDropped() {
       <td><span style="color:${d.reason.includes('AS') ? '#0891b2' : '#64748b'}">${escapeHtml(d.reason)}</span></td>
     </tr>
   `).join('');
+}
+
+// v1.3: render PG tab content
+function renderPG() {
+  const container = document.getElementById('pg-content');
+  if (!pgFile || pgRows.length === 0) {
+    container.innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">📂</div>
+        Belum ada file PG di-upload.<br>
+        <small>Upload file PG di tab Upload untuk lihat data transfer.</small>
+      </div>`;
+    return;
+  }
+  const kept = pgRows.filter(r => !r._drop);
+  const dropped = pgRows.filter(r => r._drop);
+  // Distribusi keep per gudang internal
+  const byInternal = { 'DAAN MOGOT':0, 'DOYONG':0, 'CIKUDA':0 };
+  kept.forEach(r => { if (r._final_from_internal in byInternal) byInternal[r._final_from_internal]++; });
+
+  // Distribusi reason di dropped
+  const dropReasons = {};
+  dropped.forEach(d => {
+    let key = 'lainnya';
+    if (d._drop_reason && d._drop_reason.includes('Reason')) key = 'bukan transfer (damage/return/dll)';
+    else if (d._drop_reason && d._drop_reason.includes('From')) key = 'gudang asal bukan HG';
+    else if (d._drop_reason && d._drop_reason.includes('luar scope')) key = 'tujuan luar scope';
+    dropReasons[key] = (dropReasons[key] || 0) + 1;
+  });
+
+  container.innerHTML = `
+    <div class="stat-grid" style="margin-bottom:14px">
+      <div class="stat-box info">
+        <div class="stat-label">Total PG rows input</div>
+        <div class="stat-value">${pgRows.length}</div>
+        <div class="stat-sub">${new Set(pgRows.map(r=>r.doc_no)).size} unique doc</div>
+      </div>
+      <div class="stat-box success">
+        <div class="stat-label">✓ Siap export</div>
+        <div class="stat-value">${kept.length}</div>
+        <div class="stat-sub">PGO + PGI dari gudang HG</div>
+      </div>
+      <div class="stat-box warning">
+        <div class="stat-label">⚠ PG warning</div>
+        <div class="stat-value">${pgIssues.filter(i => i.severity==='warning' && i.status!=='resolved').length}</div>
+        <div class="stat-sub">unknown WH / extended scope</div>
+      </div>
+      <div class="stat-box info">
+        <div class="stat-label">🗑 Dropped</div>
+        <div class="stat-value">${dropped.length}</div>
+        <div class="stat-sub">non-transfer / non-HG / outscope</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔄 Distribusi PG siap export per Gudang Asal</div>
+      <table class="tbl"><thead><tr>
+        <th>Gudang Asal</th><th style="text-align:right">Rows</th><th>Status</th>
+      </tr></thead><tbody>
+        ${Object.entries(byInternal).map(([wh, cnt]) => `
+          <tr>
+            <td><strong>${wh}</strong></td>
+            <td style="text-align:right;font-family:var(--mono);font-weight:700">${cnt}</td>
+            <td>${cnt > 0 ? '<span style="color:var(--success)">✓ ada PG</span>' : '<span style="color:var(--muted)">tidak ada</span>'}</td>
+          </tr>`).join('')}
+      </tbody></table>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📋 Detail PG yang siap export (${kept.length} rows)</div>
+      ${kept.length === 0 ? '<div class="empty">Tidak ada PG siap export.</div>' :
+        `<table class="tbl"><thead><tr>
+          <th>Doc</th><th>From (Gudang HG)</th><th>To</th><th>Item</th><th>Qty</th><th>Remarks</th>
+        </tr></thead><tbody>
+          ${kept.slice(0, 200).map(r => {
+            const issuesForRow = pgIssues.filter(i => i.rowIdx === r._idx && i.status === 'open');
+            const flagBadge = issuesForRow.length > 0 ? ` <span class="badge warning">⚠</span>` : '';
+            return `<tr>
+              <td><span class="kbd-tag">${escapeHtml(r.doc_no)}</span></td>
+              <td><strong>${escapeHtml(r._final_from_internal)}</strong> <span style="color:var(--muted);font-size:10px">(${escapeHtml(r.from_wh)})</span></td>
+              <td>${escapeHtml(r._final_to_name)} <span style="color:var(--muted);font-size:10px">(${escapeHtml(r.to_wh)})</span>${flagBadge}</td>
+              <td style="font-size:11px">${escapeHtml(String(r.item_desc).slice(0,50))}</td>
+              <td style="text-align:right;font-family:var(--mono)">${r.qty || 0}</td>
+              <td style="color:var(--muted);font-size:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(String(r.remarks||'').slice(0,80))}</td>
+            </tr>`;
+          }).join('')}
+        </tbody></table>
+        ${kept.length > 200 ? `<div style="text-align:center;padding:10px;color:var(--muted);font-size:11px">... +${kept.length - 200} rows lainnya (tidak ditampilkan demi performance)</div>` : ''}
+        `}
+    </div>
+
+    ${pgIssues.length > 0 ? `
+    <div class="card">
+      <div class="card-title">⚠ PG Issues</div>
+      <table class="tbl"><thead><tr>
+        <th>Doc</th><th>Type</th><th>Description</th><th>Suggest</th>
+      </tr></thead><tbody>
+        ${pgIssues.map(i => `<tr>
+          <td><span class="kbd-tag">${escapeHtml(i.doc_no)}</span></td>
+          <td><span class="kbd-tag">${escapeHtml(i.type)}</span></td>
+          <td>${escapeHtml(i.msg)}</td>
+          <td style="color:var(--muted);font-size:11px">${escapeHtml(i.suggest)}</td>
+        </tr>`).join('')}
+      </tbody></table>
+    </div>
+    ` : ''}
+
+    ${dropped.length > 0 ? `
+    <div class="card">
+      <div class="card-title">🗑 PG yang di-drop (${dropped.length} rows)</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">
+        Breakdown: ${Object.entries(dropReasons).map(([k,v]) => `<strong>${k}</strong>: ${v}`).join(' · ')}
+      </div>
+      <table class="tbl"><thead><tr>
+        <th>Doc</th><th>From</th><th>To</th><th>Item</th><th>Alasan Drop</th>
+      </tr></thead><tbody>
+        ${dropped.slice(0, 100).map(d => `<tr>
+          <td><span class="kbd-tag">${escapeHtml(d.doc_no)}</span></td>
+          <td>${escapeHtml(d.from_wh)}</td>
+          <td>${escapeHtml(d.to_wh)}</td>
+          <td style="font-size:10px;color:var(--muted)">${escapeHtml(String(d.item || '').slice(0,40))}</td>
+          <td style="color:var(--muted);font-size:11px">${escapeHtml(d.reason)}</td>
+        </tr>`).join('')}
+      </tbody></table>
+      ${dropped.length > 100 ? `<div style="text-align:center;padding:10px;color:var(--muted);font-size:11px">... +${dropped.length - 100} rows lainnya</div>` : ''}
+    </div>
+    ` : ''}
+  `;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1379,13 +1890,73 @@ function _exportRows(_filter) {
   toast(`✅ ${exportedCount} row di-export ke ${fname}`);
 }
 
-// v1.2: Toggle UI between mode "gabung 1 file" vs "pisah per gudang"
+// v1.2/v1.3: Toggle UI between mode "gabung 1 file" vs "pisah per gudang"
 function toggleSplitMode() {
   const isOn = document.getElementById('toggle-split-wh').checked;
-  document.getElementById('btn-export').style.display = isOn ? 'none' : '';
-  document.getElementById('btn-export-dm').style.display = isOn ? '' : 'none';
-  document.getElementById('btn-export-dy').style.display = isOn ? '' : 'none';
-  document.getElementById('btn-export-ck').style.display = isOn ? '' : 'none';
+  // SAP rows
+  const sapDefault = document.getElementById('sap-export-row-default');
+  const sapSplit = document.getElementById('sap-export-row-split');
+  if (sapDefault) sapDefault.style.display = isOn ? 'none' : 'flex';
+  if (sapSplit) sapSplit.style.display = isOn ? 'flex' : 'none';
+  // PG rows — only show kalau ada PG file di-upload
+  const hasPG = pgFile && pgRows.length > 0;
+  const pgDefault = document.getElementById('pg-export-row-default');
+  const pgSplit = document.getElementById('pg-export-row-split');
+  if (pgDefault) pgDefault.style.display = (hasPG && !isOn) ? 'flex' : 'none';
+  if (pgSplit)   pgSplit.style.display   = (hasPG && isOn) ? 'flex' : 'none';
+}
+
+// v1.3: Export PG cleaned (gabung 1 file)
+function exportPGCleaned() {
+  return _exportPGRows('all');
+}
+
+// v1.3: Export PG per gudang internal asal (DAAN MOGOT / DOYONG / CIKUDA)
+function exportPGPerWarehouse(targetWH) {
+  return _exportPGRows(targetWH);
+}
+
+function _exportPGRows(_filter) {
+  if (!pgRows || pgRows.length === 0) {
+    alert('Belum ada data PG. Upload file PG dulu.');
+    return;
+  }
+  // PG critical issues block export
+  const stillCriticalPG = pgIssues.filter(i => i.severity === 'critical' && i.status === 'open').length;
+  if (stillCriticalPG > 0) {
+    alert(`Masih ada ${stillCriticalPG} PG critical issue. Cek tab PG.`);
+    return;
+  }
+
+  const exportRows = [pgHeaders];
+  let exportedCount = 0;
+  pgRows.forEach(r => {
+    if (r._drop) return;
+    if (_filter !== 'all' && r._final_from_internal !== _filter) return;
+    // Clone original row (preserve format SAP PG asli — 17 kolom)
+    const orig = r._origRow.slice();
+    exportRows.push(orig);
+    exportedCount++;
+  });
+
+  if (exportedCount === 0) {
+    alert(`Tidak ada PG row untuk gudang ${_filter}.`);
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(exportRows);
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+
+  const today = new Date().toISOString().slice(0, 10);
+  let fname;
+  if (_filter === 'all') {
+    fname = `pg_clean_${today}.xlsx`;
+  } else {
+    fname = `pg_clean_${today}_${_filter.replace(/\s+/g, '_')}.xlsx`;
+  }
+  XLSX.writeFile(wb, fname);
+  toast(`✅ ${exportedCount} PG row di-export ke ${fname}`);
 }
 
 function downloadAuditJSON() {
