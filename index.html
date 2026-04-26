@@ -6,7 +6,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>GST Logistics — Driver App v4.3.0</title>
+<title>GST Logistics — Driver App v4.3.1</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <!-- Eruda Mobile DevTools — opt-in via ?debug=1 (sticky di localStorage HP) -->
 <!-- Cara pakai:                                                              -->
@@ -794,7 +794,7 @@ const CURRENT_BUILD = 'v3914-20260414';
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v4.3.0';
+const APP_VERSION    = 'v4.3.1';
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -1326,13 +1326,13 @@ async function loadTasks(showSpinner = true) {
   // submittedDOs berisi doc_no yang baru di-submit dan masih nunggu konfirmasi server.
   // Cegah DO muncul lagi sebentar saat loadTasks jalan tapi GAS belum sync.
   const _renderTasks = allTasks.filter(t => {
-    if (!submittedDOs.has(t.doc_no)) return true;
+    if (!submittedDOs.has(String(t.doc_no))) return true;
     // DO sudah disubmit. Kalau server sudah set status terminal → boleh ditampilkan
     // (tapi biasanya tidak akan tampil di Tugas Aktif karena filter status di sini).
     // Kalau status masih Muat Kargo/On Process di server (lambat sync) → SKIP.
     const isTerminal = ['Selesai','Done','Gagal Kirim','Batal'].indexOf(t.status) > -1;
     if (isTerminal) {
-      submittedDOs.delete(t.doc_no); // server sudah catch up, lepas ban-list
+      submittedDOs.delete(String(t.doc_no)); // server sudah catch up, lepas ban-list
       return true;
     }
     return false; // masih On Process di server tapi sudah disubmit lokal → sembunyikan
@@ -1852,7 +1852,7 @@ function normalizeAlamat(s) {
 
 function detectGroup(docNo) {
   // Cari semua DO On Process dengan alamat yang sama (normalized)
-  const thisDO = currentTasks.find(t => t.doc_no === docNo);
+  const thisDO = currentTasks.find(t => String(t.doc_no) === String(docNo));
   if (!thisDO) return [docNo];
   const normThis = normalizeAlamat(thisDO.alamat);
   if (!normThis) return [docNo]; // no alamat → single
@@ -1886,7 +1886,7 @@ let grupDoNos = [];
 function openSelesaiGrup(docNos) {
   // Build grupCtx dari currentTasks
   grupCtx = docNos.map(dn => {
-    const t = currentTasks.find(x => x.doc_no === dn) || {};
+    const t = currentTasks.find(x => String(x.doc_no) === String(dn)) || {};
     return {
       doc_no   : dn,
       qty_kirim: parseInt(t.qty)||0,
@@ -2140,7 +2140,7 @@ function startMuatAll() {
 
   // Update currentTasks di memory (optimistic)
   doNos.forEach(docNo => {
-    const idx = currentTasks.findIndex(t => t.doc_no === docNo);
+    const idx = currentTasks.findIndex(t => String(t.doc_no) === String(docNo));
     if (idx >= 0) {
       currentTasks[idx].status     = 'Muat Kargo';
       currentTasks[idx].jam_update = muatStartLabel;
@@ -2308,7 +2308,7 @@ async function startJalanAll() {
 
   // ── OPTIMISTIC UI: update semua DO → 'On Process' SEKARANG ──
   doNos.forEach(docNo => {
-    const idx = currentTasks.findIndex(t => t.doc_no === docNo);
+    const idx = currentTasks.findIndex(t => String(t.doc_no) === String(docNo));
     if (idx >= 0) {
       currentTasks[idx].status     = 'On Process';
       currentTasks[idx].jam_update = jamJalan;
@@ -2369,7 +2369,7 @@ async function submitMuatKargo(docNo, customer) {
   localStorage.setItem(muatKey, JSON.stringify(muatData));
 
   // ── Update currentTasks di memory → status jadi Muat Kargo ──────────────────
-  const taskIdx = currentTasks.findIndex(t => t.doc_no === docNo);
+  const taskIdx = currentTasks.findIndex(t => String(t.doc_no) === String(docNo));
   if (taskIdx >= 0) {
     currentTasks[taskIdx].status = 'Muat Kargo';
     currentTasks[taskIdx].jam_update = jamMuat;
@@ -2730,9 +2730,9 @@ async function submitSelesai() {
 
   // ── v4.3.0 OPTIMISTIC SUBMIT ──────────────────────────────────────────
   const docNo = modalCtx.doc_no;
-  submittedDOs.add(docNo);
+  submittedDOs.add(String(docNo));
   // Hapus dari currentTasks supaya re-render langsung tanpa fetch GAS
-  currentTasks = currentTasks.filter(t => t.doc_no !== docNo);
+  currentTasks = currentTasks.filter(t => String(t.doc_no) !== String(docNo));
   lastTasksSnap[docNo] = 'Selesai';
   stopsDone++;
   btn.disabled = false;
@@ -2770,7 +2770,7 @@ function normalizeAlamat(s) {
 
 function detectGroup(docNo) {
   // Kembalikan array task yang satu alamat (On Process, termasuk docNo sendiri)
-  const anchor = currentTasks.find(t => t.doc_no === docNo);
+  const anchor = currentTasks.find(t => String(t.doc_no) === String(docNo));
   if (!anchor || !anchor.alamat) return [anchor].filter(Boolean);
   const normAnchor = normalizeAlamat(anchor.alamat);
   return currentTasks.filter(t =>
@@ -2785,7 +2785,7 @@ function openSelesaiOrGrup(docNo, qty, customer, alamat) {
     // FIX v4.2.3: detectGroup() returns array of doc_no STRINGS, but openSelesaiGrup
     // expects array of task OBJECTS. Convert dulu sebelum dispatch.
     const grupTasks = grupDocNos.map(dn =>
-      currentTasks.find(t => t.doc_no === dn)
+      currentTasks.find(t => String(t.doc_no) === String(dn))
     ).filter(Boolean);
     if (grupTasks.length === grupDocNos.length) {
       openSelesaiGrup(grupTasks);
@@ -2992,7 +2992,7 @@ async function submitSelesaiGrup() {
 
     // Optimistic update
     lastTasksSnap[docNo] = 'Selesai';
-    const idx = currentTasks.findIndex(t => t.doc_no === docNo);
+    const idx = currentTasks.findIndex(t => String(t.doc_no) === String(docNo));
     if (idx >= 0) currentTasks[idx].status = 'Selesai';
 
     // Fire & forget (best effort)
@@ -3047,8 +3047,8 @@ async function submitGagal() {
 
   // ── v4.3.0 OPTIMISTIC SUBMIT ──────────────────────────────────────────
   const docNo = modalCtx.doc_no;
-  submittedDOs.add(docNo);
-  currentTasks = currentTasks.filter(t => t.doc_no !== docNo);
+  submittedDOs.add(String(docNo));
+  currentTasks = currentTasks.filter(t => String(t.doc_no) !== String(docNo));
   lastTasksSnap[docNo] = 'Gagal Kirim';
   btn.disabled = false;
   closeModal('m-gagal');
@@ -3607,7 +3607,7 @@ async function _trySubmit(payload, docNo) {
     if (!ok) {
       // Submit gagal (offline/error) — gasPost sudah queue dan alert.
       // Restore DO ke daftar Tugas Aktif supaya driver bisa coba ulang.
-      submittedDOs.delete(docNo);
+      submittedDOs.delete(String(docNo));
       failedSubmits.push({ doc_no: docNo, action: payload.action, ts: Date.now() });
       addNotification({
         type:'self', icon:'warning',
@@ -3620,7 +3620,7 @@ async function _trySubmit(payload, docNo) {
     }
   } catch(e) {
     console.error('[_trySubmit] error:', e);
-    submittedDOs.delete(docNo);
+    submittedDOs.delete(String(docNo));
     failedSubmits.push({ doc_no: docNo, action: payload.action, error: e.message, ts: Date.now() });
     await loadTasks(false);
   }
@@ -4043,14 +4043,15 @@ function openWizardSelesaiGrup(docNoCsv) {
   const docNos = docNoCsv.split(',').filter(Boolean);
   if (docNos.length < 2) {
     // Tidak cukup untuk wizard, fallback ke single
-    const t = currentTasks.find(x => x.doc_no === docNos[0]);
+    const t = currentTasks.find(x => String(x.doc_no) === String(docNos[0]));
     if (t) openSelesai(t.doc_no, t.qty||0, t.customer||'');
     return;
   }
   wizCtx.active = true;
   wizCtx.step   = 0;
   wizCtx.docs   = docNos.map(dn => {
-    const t = currentTasks.find(x => x.doc_no === dn) || {};
+    // FIX v4.3.0: pakai String() coercion karena t.doc_no bisa number dari GAS
+    const t = currentTasks.find(x => String(x.doc_no) === String(dn)) || {};
     return {
       doc_no    : dn,
       qty_kirim : parseInt(t.qty)||0,
@@ -4062,6 +4063,7 @@ function openWizardSelesaiGrup(docNoCsv) {
       produk    : t.produk   || '',
     };
   });
+  console.log('[openWizardSelesaiGrup] docs:', wizCtx.docs.map(d => d.doc_no+'('+d.qty_kirim+')').join(', '));
   renderWizardStep();
   openModal('m-wiz-selesai');
 }
@@ -4230,8 +4232,8 @@ async function wizSubmitAll() {
 
   // Optimistic remove semua DO grup
   docNos.forEach(dn => {
-    submittedDOs.add(dn);
-    currentTasks = currentTasks.filter(t => t.doc_no !== dn);
+    submittedDOs.add(String(dn));
+    currentTasks = currentTasks.filter(t => String(t.doc_no) !== String(dn));
     lastTasksSnap[dn] = 'Selesai';
   });
   stopsDone += total;
@@ -4371,8 +4373,8 @@ async function wizGagalSubmit() {
 
   // Optimistic remove semua DO
   docs.forEach(dn => {
-    submittedDOs.add(dn);
-    currentTasks = currentTasks.filter(t => t.doc_no !== dn);
+    submittedDOs.add(String(dn));
+    currentTasks = currentTasks.filter(t => String(t.doc_no) !== String(dn));
     lastTasksSnap[dn] = 'Gagal Kirim';
   });
 
