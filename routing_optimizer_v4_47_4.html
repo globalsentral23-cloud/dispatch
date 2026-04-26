@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.47.3</title>
+<title>Routing Optimizer v4.47.4</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.47.3</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.47.4</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -2720,6 +2720,8 @@ function getVehiclesForWH(wh){
     driver:kh.findIndex(h=>String(h).toLowerCase().includes('driver')||String(h).toLowerCase().includes('nama driver')),
     wh:kh.findIndex(h=>String(h).toLowerCase().includes('gudang')||String(h).toLowerCase().includes('warehouse')),
     tipe:kh.findIndex(h=>String(h).toLowerCase().includes('tipe')),
+    vol:kh.findIndex(h=>String(h).toLowerCase().includes('volume')),
+    wt:kh.findIndex(h=>String(h).toLowerCase().includes('weight')||String(h).toLowerCase().includes('berat')),
     status:kh.findIndex(h=>String(h).toLowerCase().includes('status')),
   };
   const result=[];
@@ -2731,7 +2733,39 @@ function getVehiclesForWH(wh){
     if(!plat||/rusak|tidak aktif|\[ISI/i.test(driver)||/tidak aktif/i.test(status)) continue;
     const tipe=String(r[ki.tipe]||'').trim();
     const whRaw=consWH(String(r[ki.wh]||'').trim());
-    if(whRaw===wh) result.push({plat,driver,tipe});
+    const vol=parseFloat(String(r[ki.vol]||'9').replace(/[^0-9.]/g,''))||9;
+    const maxKg=parseFloat(String(r[ki.wt]||'5000').replace(/[^0-9.]/g,''))||5000;
+    if(whRaw===wh) result.push({plat,driver,tipe,wh:whRaw,vol_m3:vol,max_kg:maxKg});
+  }
+  return result;
+}
+
+// v4.47.3 fix: Global accessor untuk semua kendaraan (lintas-gudang).
+// Dipakai di dropdown Pindah (DO Unplot, Unassigned, Modal Pindah, Emergency Restore).
+function getAllVehicles(){
+  const kRows=(files.masterData&&files.masterData['Kendaraan'])||[];
+  const kh=kRows[0]||[];
+  const ki={
+    plat:kh.findIndex(h=>String(h).toLowerCase().includes('plat')),
+    driver:kh.findIndex(h=>String(h).toLowerCase().includes('driver')||String(h).toLowerCase().includes('nama driver')),
+    wh:kh.findIndex(h=>String(h).toLowerCase().includes('gudang')||String(h).toLowerCase().includes('warehouse')),
+    tipe:kh.findIndex(h=>String(h).toLowerCase().includes('tipe')),
+    vol:kh.findIndex(h=>String(h).toLowerCase().includes('volume')),
+    wt:kh.findIndex(h=>String(h).toLowerCase().includes('weight')||String(h).toLowerCase().includes('berat')),
+    status:kh.findIndex(h=>String(h).toLowerCase().includes('status')),
+  };
+  const result=[];
+  for(let i=1;i<kRows.length;i++){
+    const r=kRows[i];
+    const plat=String(r[ki.plat]||'').trim();
+    const driver=String(r[ki.driver]||'').trim();
+    const status=String(r[ki.status]||'Aktif').trim();
+    if(!plat||/rusak|tidak aktif|\[ISI/i.test(driver)||/tidak aktif/i.test(status)) continue;
+    const tipe=String(r[ki.tipe]||'').trim();
+    const whRaw=consWH(String(r[ki.wh]||'').trim());
+    const vol=parseFloat(String(r[ki.vol]||'9').replace(/[^0-9.]/g,''))||9;
+    const maxKg=parseFloat(String(r[ki.wt]||'5000').replace(/[^0-9.]/g,''))||5000;
+    result.push({plat,driver,tipe,wh:whRaw,vol_m3:vol,max_kg:maxKg});
   }
   return result;
 }
@@ -5722,9 +5756,11 @@ function renderVendor(){
       .map((v,vi)=>`<option value="VENDOR:${vi}">📦 ${v.nama} [${v.tipe}]</option>`).join('');
     const svolU=CFG.safety_vol||0.85, swtU=CFG.safety_wt||0.90;
     // v4.47.2: Include idle vehicles juga (sebelumnya cuma routes)
+    // v4.47.3 fix: pakai getAllVehicles() — variable global tidak ada
+    const allVehiclesU = getAllVehicles();
     const assignedPlatsU = new Set(routes.map(r=>r.vehicle.plat));
     const optsListU = [];
-    vehicles.forEach(v => {
+    allVehiclesU.forEach(v => {
       if (assignedPlatsU.has(v.plat)) return;
       const sisaVol = (v.vol_m3 * svolU).toFixed(2);
       optsListU.push({
@@ -5789,12 +5825,14 @@ function renderVendorGroup(group, wh){
   const svol=CFG.safety_vol||0.85, swt=CFG.safety_wt||0.90;
   // v4.47.2: Include IDLE vehicles (belum ada di routes) + sudah ke-plot dengan sisa kapasitas.
   // HG insight: maksimalkan unit sendiri sebelum vendor.
+  // v4.47.3 fix: pakai getAllVehicles() — variable global tidak ada
+  const allVehiclesG = getAllVehicles();
   const assignedPlats = new Set(routes.map(r=>r.vehicle.plat));
   const whUpper = String(wh||'').toUpperCase();
   // Helper: format option dari spec kendaraan + sisa kapasitas
   const optsList = [];
   // (1) Kendaraan idle dari gudang yang sama — sisa = full capacity
-  vehicles.forEach(v => {
+  allVehiclesG.forEach(v => {
     if (assignedPlats.has(v.plat)) return;
     if (!String(v.wh||'').toUpperCase().includes(whUpper)) return;
     const sisaVol = (v.vol_m3 * svol).toFixed(2);
@@ -6491,8 +6529,10 @@ function dispatchAction(routeId,docKeyStr,action,evt){
     const otherRoutes=routes.filter(r=>r.id!==rid);
     const internalOpts=otherRoutes.map(r=>`<option value="${r.id}">🚛 ${r.vehicle.plat} / ${r.vehicle.driver} | ${r.wh.replace('GUDANG ','')} (${r.total_km||0}km)</option>`).join('');
     // v4.47.2: kendaraan idle (belum ada di routes)
+    // v4.47.3 fix: pakai getAllVehicles()
+    const allVehiclesP = getAllVehicles();
     const assignedPlats3 = new Set(routes.map(rr=>rr.vehicle.plat));
-    const idleOpts = vehicles
+    const idleOpts = allVehiclesP
       .filter(v => !assignedPlats3.has(v.plat))
       .sort((a,b) => b.vol_m3 - a.vol_m3)
       .map(v => `<option value="IDLE_PINDAH:${v.plat}|${v.wh}|${v.vol_m3}">🟢 ${v.plat} / ${v.driver} [${v.tipe}] | ${String(v.wh||'').replace('GUDANG ','')} (idle, kosong ${(v.vol_m3*0.85).toFixed(2)}m³)</option>`)
@@ -6546,8 +6586,8 @@ function dispatchAction(routeId,docKeyStr,action,evt){
           const parts = targetVal.replace('IDLE_PINDAH:','').split('|');
           const idlePlat = parts[0]; const idleWh = parts[1];
           const idleVolM3 = parseFloat(parts[2])||9;
-          // Lookup driver/tipe/maxKg dari vehicles array
-          const vIdle = vehicles.find(vv => vv.plat === idlePlat);
+          // Lookup driver/tipe/maxKg (v4.47.3 fix: pakai getAllVehicles())
+          const vIdle = getAllVehicles().find(vv => vv.plat === idlePlat);
           if (!vIdle) { alert(`Kendaraan idle ${idlePlat} tidak ditemukan di master`); return; }
           const moveItemsAll = [];
           docNos.forEach(dn=>{
@@ -7941,11 +7981,13 @@ async function emergencyRestoreToToday(docNo, source){
   const itemWh = String(item.wh_cons || item.wh || '').toUpperCase();
   const svol = CFG.safety_vol || 0.85;
   const swt = CFG.safety_wt || 0.90;
+  // v4.47.3 fix: pakai getAllVehicles() — variable global tidak ada
+  const allVehiclesE = getAllVehicles();
   const assignedPlatsE = new Set(routes.map(r=>r.vehicle.plat));
   const optsList = [];
 
   // (1) Idle vehicles dari gudang yang sama dulu
-  vehicles.forEach(v => {
+  allVehiclesE.forEach(v => {
     if (assignedPlatsE.has(v.plat)) return;
     if (itemWh && !String(v.wh||'').toUpperCase().includes(itemWh.replace('GUDANG ',''))) return;
     const sisaVol = (v.vol_m3 * svol).toFixed(2);
@@ -8075,7 +8117,7 @@ async function emergencyRestoreToToday(docNo, source){
         const parts = target.replace('IDLE:','').split('|');
         const idlePlat = parts[0]; const idleWh = parts[1];
         const idleVolM3 = parseFloat(parts[2])||9;
-        const vIdle = vehicles.find(vv => vv.plat === idlePlat);
+        const vIdle = getAllVehicles().find(vv => vv.plat === idlePlat);
         if (!vIdle) { alert(`Kendaraan ${idlePlat} tidak ditemukan di master`); return; }
         const newItem = { ...item, stop_order: 1, load_order: 1, is_pending_carryover: false };
         const kecI = getSubCluster(item.kecamatan, item.zona, item.kirim);
