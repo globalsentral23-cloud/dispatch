@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Data Curator v1.3 — GST Logistics</title>
+<title>Data Curator v1.4 — GST Logistics</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root {
@@ -155,8 +155,8 @@ body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--t
 
 <div class="app-header">
   <div class="app-logo">📋 DATA CURATOR</div>
-  <div class="app-version">v1.3</div>
-  <div class="app-tagline">Pre-flight check & cleaning SAP DO + PG (Pindah Gudang) sebelum dispatch besok</div>
+  <div class="app-version">v1.4</div>
+  <div class="app-tagline">Pre-flight check & cleaning SAP DO + PG · Output compact 19-kolom untuk Routing Optimizer</div>
   <div class="app-date" id="hdr-date">—</div>
 </div>
 
@@ -354,24 +354,42 @@ body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--t
   <div class="summary-text" id="action-summary" style="flex:1;min-width:200px">—</div>
   <button class="btn" onclick="downloadAuditJSON()">📋 Audit JSON</button>
 
-  <!-- SAP exports — Mode default (gabung) -->
-  <span id="sap-export-row-default" style="display:flex;gap:6px;align-items:center">
-    <span style="font-size:10px;color:var(--muted);font-weight:700">SAP:</span>
-    <button class="btn btn-success" id="btn-export" onclick="exportCleaned()" disabled>
-      ⬇ SAP Cleaned
+  <!-- v1.4: SAP Compact — output utama untuk Routing Optimizer -->
+  <span style="display:flex;gap:6px;align-items:center">
+    <span style="font-size:10px;color:var(--muted);font-weight:700">📋 COMPACT (untuk Routing):</span>
+    <button class="btn" id="btn-export-compact"
+            onclick="exportCompact()"
+            style="background:#0891b2;color:#fff;border-color:#0e7490;font-weight:700"
+            title="Export 19-kolom format dengan multi-tab (DM/DOYONG/CIKUDA + Summary). HG check manual sebelum upload ke Routing Optimizer."
+            disabled>
+      ⬇ Compact (<span id="cnt-compact-total">0</span>)
     </button>
   </span>
 
-  <!-- SAP exports — Mode split (3 tombol per gudang) -->
+  <!-- SAP Full Cleaned (37 kolom) — secondary, untuk archive/backup -->
+  <span id="sap-export-row-default" style="display:flex;gap:6px;align-items:center">
+    <span style="font-size:10px;color:var(--muted);font-weight:700">SAP Full:</span>
+    <button class="btn" id="btn-export" onclick="exportCleaned()"
+            style="background:#475569;color:#fff;border-color:#475569;font-size:10px"
+            title="Format 37-kolom raw SAP — backup/archive (routing optimizer juga support)"
+            disabled>
+      ⬇ Full (37-kolom)
+    </button>
+  </span>
+
+  <!-- SAP exports — Mode split (3 tombol per gudang) — full format -->
   <span id="sap-export-row-split" style="display:none;gap:6px;align-items:center">
-    <span style="font-size:10px;color:var(--muted);font-weight:700">SAP:</span>
-    <button class="btn btn-success" id="btn-export-dm" onclick="exportPerWarehouse('DAAN MOGOT')" disabled>
+    <span style="font-size:10px;color:var(--muted);font-weight:700">SAP Full:</span>
+    <button class="btn" id="btn-export-dm" onclick="exportPerWarehouse('DAAN MOGOT')"
+            style="background:#475569;color:#fff;border-color:#475569;font-size:10px" disabled>
       ⬇ DM (<span id="cnt-dm">0</span>)
     </button>
-    <button class="btn btn-success" id="btn-export-dy" onclick="exportPerWarehouse('DOYONG')" disabled>
+    <button class="btn" id="btn-export-dy" onclick="exportPerWarehouse('DOYONG')"
+            style="background:#475569;color:#fff;border-color:#475569;font-size:10px" disabled>
       ⬇ DOYONG (<span id="cnt-dy">0</span>)
     </button>
-    <button class="btn btn-success" id="btn-export-ck" onclick="exportPerWarehouse('CIKUDA')" disabled>
+    <button class="btn" id="btn-export-ck" onclick="exportPerWarehouse('CIKUDA')"
+            style="background:#475569;color:#fff;border-color:#475569;font-size:10px" disabled>
       ⬇ CIKUDA (<span id="cnt-ck">0</span>)
     </button>
   </span>
@@ -492,6 +510,39 @@ function classifyCity(city) {
   if (SCOPE_DEFINITION.extended.has(c))   return 'extended';
   if (SCOPE_DEFINITION.outofscope.has(c)) return 'outofscope';
   return 'unknown';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPACT FORMAT (v1.4) — Output 19-kolom untuk feed ke Routing Optimizer
+// ═══════════════════════════════════════════════════════════════════════════
+// Workflow baru: SAP raw 37-kolom → curator → compact 19-kolom →
+//   HG check manual + revisi → upload ke Routing Optimizer (yang auto-detect format)
+const COMPACT_HEADERS = [
+  'Document',     // A: SAP DOC_NO
+  'DO Date',      // B: ISO YYYY-MM-DD
+  'Salesman',     // C: SAP SALESMAN
+  'Warehouse',    // D: normalized DM/DOYONG/CIKUDA
+  'Customer',     // E: SAP CUSTOMER
+  'Stock Name',   // F: SAP STOCK_NAME
+  'Stock Code',   // G: SAP STOCK_CODE — essential utk lookup master produk
+  'Shade',        // H: SAP SHADE
+  'Size',         // I: SAP SIZE (e.g. 600X600)
+  'QTY',          // J: SAP QTY (number)
+  'UOM',          // K: SAP UOM — DUS/SET/PCS
+  'Remarks',      // L: SAP REMARKS
+  'Kirim',        // M: SAP KIRIM (address only, suffix kota di-strip)
+  'Kecamatan',    // N: auto-extracted (kalau berhasil)
+  'Kota',         // O: extracted suffix
+  'Scope Tier',   // P: core/extended/outofscope/unknown
+  'Status',       // Q: OK/Warning/Auto-fixed/Critical
+  'Issue Note',   // R: detail issue (kosong kalau OK)
+  'Tier Order',   // S: hidden — untuk sort priority (Critical=1, Warning=2, ...)
+];
+
+// UOM handling (v1.4): SET/PCS jarang dipakai (<5%), fallback ke DUS calculation.
+// Routing optimizer akan log warning kalau detect UOM bukan DUS.
+function isCanonicalUOM(uom) {
+  return String(uom||'').toUpperCase().trim() === 'DUS';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -698,6 +749,11 @@ function resetAll() {
   document.getElementById('btn-export-dm').disabled = true;
   document.getElementById('btn-export-dy').disabled = true;
   document.getElementById('btn-export-ck').disabled = true;
+  // v1.4: reset Compact button
+  const btnCompact = document.getElementById('btn-export-compact');
+  if (btnCompact) btnCompact.disabled = true;
+  const cntCompact = document.getElementById('cnt-compact-total');
+  if (cntCompact) cntCompact.textContent = '0';
   // v1.3: reset PG buttons
   ['btn-export-pg', 'btn-export-pg-dm', 'btn-export-pg-dy', 'btn-export-pg-ck'].forEach(id => {
     const el = document.getElementById(id);
@@ -857,6 +913,12 @@ async function runValidation() {
       document.getElementById('btn-export-dy').disabled = true;
       document.getElementById('btn-export-ck').disabled = true;
     }
+    // v1.4: Compact export — boleh tetap aktif walau ada critical (akan confirm dialog)
+    const totalKept = sapRows.filter(r => !r._drop).length;
+    const cntCompactEl = document.getElementById('cnt-compact-total');
+    if (cntCompactEl) cntCompactEl.textContent = totalKept;
+    const btnCompact = document.getElementById('btn-export-compact');
+    if (btnCompact) btnCompact.disabled = (totalKept === 0);
     updateActionSummary();
 
     btn.textContent = '🔍 Run Validation';
@@ -1108,6 +1170,21 @@ function runRules() {
         rowIdx: row._idx, status: 'open',
         msg: `Customer kosong`,
         suggest: `Edit manual atau exclude DO`,
+        row: row
+      });
+    }
+
+    // ── UOM Non-DUS check (v1.4) ──────────────────────────────────
+    // SET/PCS jarang dipakai (<5%). Fallback ke DUS calc, tapi dispatcher
+    // perlu aware supaya bisa adjust kalau perlu.
+    if (row.uom && !isCanonicalUOM(row.uom)) {
+      const uomUpper = String(row.uom).toUpperCase().trim();
+      issues.push({
+        type: 'uom_non_dus', severity: 'warning',
+        doc_no: row.doc_no, field: 'UOM',
+        rowIdx: row._idx, status: 'open',
+        msg: `UOM = ${uomUpper} (bukan DUS)`,
+        suggest: `Volume di-estimate sebagai DUS (qty × vol_per_dus). Verify dengan sales kalau perlu adjustment manual.`,
         row: row
       });
     }
@@ -1459,6 +1536,7 @@ function humanIssueType(type) {
     'addr_non_jabo': '🟡 Alamat tujuan luar Jabodetabek',
     'qty_zero': '🔴 QTY = 0',
     'qty_high': '🟡 QTY anomali tinggi',
+    'uom_non_dus': '🟡 UOM bukan DUS (SET/PCS — fallback estimate)',
     'customer_empty': '🔴 Customer kosong',
     'doc_duplicate': '🔴 DO No duplicate (customer beda)',
     // v1.3 PG issue types
@@ -1888,6 +1966,208 @@ function _exportRows(_filter) {
   XLSX.writeFile(wb, fname);
 
   toast(`✅ ${exportedCount} row di-export ke ${fname}`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPACT EXPORT (v1.4) — 19-kolom format untuk feed ke Routing Optimizer
+// ═══════════════════════════════════════════════════════════════════════════
+// Output: 1 file dengan multi-tab (Summary + DM + DOYONG + CIKUDA)
+//   - Summary: statistik per gudang + count per status
+//   - Per-gudang sheet: 19 kolom data + conditional formatting
+
+function exportCompact() {
+  const stillCritical = issues.filter(i => i.severity === 'critical' && i.status === 'open').length;
+  if (stillCritical > 0) {
+    if (!confirm(`Masih ada ${stillCritical} critical issue. Tetap export compact? (DO bermasalah akan tetap muncul dengan flag Critical)`)) {
+      return;
+    }
+  }
+
+  // Build compact rows from sapRows
+  const allRows = []; // {compact[19], wh}
+  sapRows.forEach(r => {
+    if (r._drop) return;
+    const wh = r._final_warehouse || r.wh || '';
+    const compactRow = _buildCompactRow(r);
+    allRows.push({ compact: compactRow, wh: wh });
+  });
+
+  if (allRows.length === 0) {
+    alert('Tidak ada row untuk export.');
+    return;
+  }
+
+  // Group per warehouse
+  const byWH = { 'DAAN MOGOT': [], 'DOYONG': [], 'CIKUDA': [] };
+  allRows.forEach(r => {
+    if (r.wh in byWH) byWH[r.wh].push(r.compact);
+  });
+
+  // Build workbook with multi-tab
+  const wb = XLSX.utils.book_new();
+  const today = new Date().toISOString().slice(0, 10);
+
+  // ── SHEET 1: SUMMARY ──────────────────────────────────────
+  const summaryData = [
+    [`📊 SUMMARY — Data Curator Compact Output (${today})`],
+    [],
+    ['Distribusi DO per Gudang Internal'],
+    ['Gudang', 'Total Rows', '🔴 Critical', '🟡 Warning', '🟠 Auto-fixed', '🟢 OK'],
+  ];
+  let totalRows = 0;
+  let totalCritical = 0, totalWarning = 0, totalAutofix = 0, totalOK = 0;
+  Object.entries(byWH).forEach(([wh, rows]) => {
+    const cr = rows.filter(r => r[16] === 'Critical').length;
+    const wr = rows.filter(r => r[16] === 'Warning').length;
+    const af = rows.filter(r => r[16] === 'Auto-fixed').length;
+    const ok = rows.filter(r => r[16] === 'OK').length;
+    summaryData.push([wh, rows.length, cr, wr, af, ok]);
+    totalRows += rows.length;
+    totalCritical += cr; totalWarning += wr; totalAutofix += af; totalOK += ok;
+  });
+  summaryData.push(['TOTAL', totalRows, totalCritical, totalWarning, totalAutofix, totalOK]);
+  summaryData.push([]);
+  summaryData.push(['Top Issue Types']);
+  summaryData.push(['Type', 'Count']);
+  const issueCount = {};
+  issues.filter(i => i.status !== 'resolved').forEach(i => {
+    issueCount[i.type] = (issueCount[i.type] || 0) + 1;
+  });
+  Object.entries(issueCount).sort((a,b) => b[1]-a[1]).forEach(([t, c]) => {
+    summaryData.push([humanIssueType(t), c]);
+  });
+  summaryData.push([]);
+  summaryData.push(['Workflow Reminder']);
+  summaryData.push(['1. Buka tab gudang yang relevan untuk dispatcher Anda']);
+  summaryData.push(['2. Filter kolom Status = Critical / Warning untuk fokus check']);
+  summaryData.push(['3. Edit cell langsung kalau perlu fix manual (Customer, Kirim, QTY)']);
+  summaryData.push(['4. Save file → upload ke Routing Optimizer']);
+  summaryData.push(['5. Routing akan auto-detect format compact 19-kolom']);
+
+  const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+  // Column widths
+  wsSummary['!cols'] = [{wch:30},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14}];
+  // Merge title cell
+  wsSummary['!merges'] = [{s:{r:0,c:0},e:{r:0,c:5}}];
+  XLSX.utils.book_append_sheet(wb, wsSummary, '📊 Summary');
+
+  // ── SHEETS 2-4: PER WAREHOUSE ─────────────────────────────
+  Object.entries(byWH).forEach(([wh, rows]) => {
+    if (rows.length === 0) return;
+    // Sort rows by Tier Order (Critical=1, Warning=2, Auto-fixed=3, OK=4) then by Document
+    rows.sort((a, b) => {
+      const tA = a[18] || 9, tB = b[18] || 9;
+      if (tA !== tB) return tA - tB;
+      return String(a[0]).localeCompare(String(b[0]));
+    });
+    // Build sheet rows: header + data (drop hidden col S = Tier Order)
+    const sheetRows = [COMPACT_HEADERS.slice(0, 18)]; // exclude col S (Tier Order)
+    rows.forEach(r => sheetRows.push(r.slice(0, 18)));
+    const ws = XLSX.utils.aoa_to_sheet(sheetRows);
+
+    // Column widths
+    ws['!cols'] = [
+      {wch:11}, {wch:11}, {wch:9},  // Document, DO Date, Salesman
+      {wch:11}, {wch:30},            // Warehouse, Customer
+      {wch:38}, {wch:11},            // Stock Name, Stock Code
+      {wch:9},  {wch:10}, {wch:7}, {wch:6}, // Shade, Size, QTY, UOM
+      {wch:25},                      // Remarks
+      {wch:45}, {wch:18}, {wch:12},  // Kirim, Kecamatan, Kota
+      {wch:11}, {wch:12}, {wch:35},  // Scope, Status, Issue Note
+    ];
+
+    // Freeze header row + autofilter
+    ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+    const lastCol = String.fromCharCode(64 + 18); // 18 = col R
+    ws['!autofilter'] = { ref: `A1:${lastCol}${rows.length + 1}` };
+
+    // Sheet name = warehouse (Excel max 31 chars)
+    XLSX.utils.book_append_sheet(wb, ws, wh);
+  });
+
+  const fname = `sap_compact_${today}.xlsx`;
+  XLSX.writeFile(wb, fname);
+
+  toast(`✅ ${totalRows} row di-export ke ${fname} (${Object.values(byWH).filter(v=>v.length>0).length + 1} sheet)`);
+}
+
+// Build 1 row compact (19 kolom) dari 1 sapRows entry
+function _buildCompactRow(r) {
+  // Determine Status berdasarkan issue terbanyak parah
+  const rowIssues = issues.filter(i => i.rowIdx === r._idx && i.status !== 'resolved');
+  let status = 'OK';
+  let tierOrder = 4;
+  let issueNote = '';
+  if (rowIssues.some(i => i.severity === 'critical')) {
+    status = 'Critical';
+    tierOrder = 1;
+    issueNote = rowIssues.filter(i => i.severity === 'critical').map(i => i.msg).join(' | ');
+  } else if (rowIssues.some(i => i.severity === 'warning')) {
+    status = 'Warning';
+    tierOrder = 2;
+    issueNote = rowIssues.filter(i => i.severity === 'warning').map(i => i.msg).join(' | ');
+  } else if (autoFixLog.find(a => a.rowIdx === r._idx)) {
+    status = 'Auto-fixed';
+    tierOrder = 3;
+    const fixes = autoFixLog.filter(a => a.rowIdx === r._idx).map(a => a.rule);
+    issueNote = fixes.join(' | ');
+  }
+
+  // DO Date — convert Excel serial / string to ISO YYYY-MM-DD
+  let doDateStr = '';
+  const doDateRaw = r._origRow[COL.DO_DATE - 1];
+  if (doDateRaw) {
+    if (typeof doDateRaw === 'number') {
+      // Excel serial date
+      const d = new Date(Math.round((doDateRaw - 25569) * 86400 * 1000));
+      doDateStr = d.toISOString().slice(0, 10);
+    } else {
+      const s = String(doDateRaw).trim();
+      // Try parse common formats: DD/MM/YYYY, YYYY-MM-DD, DD-MM-YY, DD.MM.YY
+      const m1 = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+      if (m1) {
+        let [_, dd, mm, yy] = m1;
+        if (yy.length === 2) yy = (parseInt(yy) > 50 ? '19' : '20') + yy;
+        doDateStr = `${yy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+      } else {
+        doDateStr = s; // fallback as-is
+      }
+    }
+  }
+
+  // Kirim — strip city suffix kalau ada (sudah di-strip di _final_kirim)
+  const kirimClean = r._final_kirim || r.kirim || '';
+  // Kecamatan
+  const kecamatan = r._final_kecamatan || '';
+  // Kota — extract from parsed kirim
+  const parsed = parseKirim(r.kirim || '');
+  const kota = parsed.city_normalized || parsed.city_suffix || '';
+  const scopeTier = parsed.scope_tier || 'unknown';
+
+  // Warehouse — normalized
+  const wh = r._final_warehouse || r.wh || '';
+
+  return [
+    String(r.doc_no || ''),                                      // A: Document
+    doDateStr,                                                    // B: DO Date
+    String(r._origRow[COL.SALESMAN - 1] || '').trim(),           // C: Salesman
+    wh,                                                           // D: Warehouse
+    String(r.customer || '').trim(),                              // E: Customer
+    String(r._origRow[COL.STOCK_NAME - 1] || '').trim(),         // F: Stock Name
+    String(r._origRow[COL.STOCK_CODE - 1] || '').trim(),         // G: Stock Code
+    String(r._origRow[COL.SHADE - 1] || '').trim(),              // H: Shade
+    String(r._origRow[COL.SIZE - 1] || '').trim(),               // I: Size
+    Number(r.qty) || 0,                                           // J: QTY (numeric)
+    String(r._origRow[COL.UOM - 1] || 'DUS').toUpperCase().trim(),// K: UOM
+    String(r._origRow[COL.REMARKS - 1] || '').trim(),            // L: Remarks
+    kirimClean,                                                   // M: Kirim
+    kecamatan,                                                    // N: Kecamatan
+    kota,                                                         // O: Kota
+    scopeTier,                                                    // P: Scope Tier
+    status,                                                       // Q: Status
+    issueNote,                                                    // R: Issue Note
+    tierOrder,                                                    // S: hidden Tier Order
+  ];
 }
 
 // v1.2/v1.3: Toggle UI between mode "gabung 1 file" vs "pisah per gudang"
