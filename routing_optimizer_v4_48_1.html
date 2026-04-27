@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.48</title>
+<title>Routing Optimizer v4.48.1</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.48</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.48.1</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.48</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.48.1</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -1908,7 +1908,19 @@ async function readExcel(file){
     reader.onload=e=>{
       try{
         const wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
-        const ws=wb.Sheets[wb.SheetNames[0]];
+        // v4.48 (sesi 2) FIX: Skip Summary sheet kalau file dari curator compact (multi-tab).
+        // Cari sheet data pertama yang bukan Summary (pakai emoji 📊 atau nama "Summary").
+        let targetSheet = wb.SheetNames[0];
+        for (const sn of wb.SheetNames) {
+          const lower = sn.toLowerCase();
+          if (lower.includes('summary') || sn.includes('📊')) continue;
+          targetSheet = sn;
+          break;
+        }
+        if (targetSheet !== wb.SheetNames[0]) {
+          console.log(`[v4.48] File multi-tab detected. Skip sheet '${wb.SheetNames[0]}', baca '${targetSheet}'.`);
+        }
+        const ws=wb.Sheets[targetSheet];
         res(XLSX.utils.sheet_to_json(ws,{header:1,defval:''}));
       }catch(err){rej(err)}
     };
