@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.47.6</title>
+<title>Routing Optimizer v4.48</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.47</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.48</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.47.6</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.48</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -1960,18 +1960,42 @@ function processData(sapRaw,pgRaw){
     'VCA':'__IGNORE__','VHQ':'__IGNORE__',
   });
 
-  // SAP headers
+  // SAP headers — v4.48: support both SAP raw (37 col) AND compact (19 col) format.
+  // Header detection by name (urutan kolom tidak penting) — kompatibel dengan curator v1.4 output.
   const sh=sapRaw[0]||[];
   const SC={};
   const sapMap={
-    doc_no:['Document Number'],do_date:['DO Date'],wh:['Warehouse'],
-    customer:['Customer'],stock_code:['Stock Code'],stock_name:['Stock Name'],
-    shade:['SHADE'],size:['SIZE'],qty:['QTY'],uom:['UOM'],
-    remarks:['REMARKS'],kirim:['KIRIM'],kecamatan:['Kecamatan','KOTA'],hp:['Cellular Customer','No CP Penerima'],
-    kota:['KOTA'],
+    doc_no    : ['Document Number','Document'],
+    do_date   : ['DO Date'],
+    wh        : ['Warehouse'],
+    customer  : ['Customer'],
+    stock_code: ['Stock Code'],
+    stock_name: ['Stock Name'],
+    shade     : ['SHADE','Shade'],
+    size      : ['SIZE','Size'],
+    qty       : ['QTY'],
+    uom       : ['UOM'],
+    remarks   : ['REMARKS','Remarks'],
+    kirim     : ['KIRIM','Kirim'],
+    kecamatan : ['Kecamatan','KOTA'],
+    hp        : ['Cellular Customer','No CP Penerima'],
+    kota      : ['KOTA','Kota'],
+    // v4.48: kolom hanya ada di compact — optional
+    salesman    : ['Salesman'],
+    scope_tier  : ['Scope Tier'],
+    status      : ['Status'],
+    issue_note  : ['Issue Note'],
   };
   for(const[k,names]of Object.entries(sapMap))
     SC[k]=names.reduce((a,n)=>a>=0?a:sh.findIndex(h=>String(h).trim()===n),-1);
+
+  // v4.48: detect compact format (presence of Status column = compact from curator v1.4)
+  const isCompactFormat = SC.status >= 0 || SC.scope_tier >= 0;
+  if (isCompactFormat) {
+    console.log('[v4.48] Detected COMPACT format (curator v1.4 output) — header count:', sh.length);
+  } else {
+    console.log('[v4.48] Detected RAW SAP format — header count:', sh.length);
+  }
 
   doDate=fmtDate(sapRaw[1]?.[SC.do_date]);
 
@@ -2552,6 +2576,20 @@ function processData(sapRaw,pgRaw){
         console.log(`  DO ${doc}: ${reason}`);
       });
     }
+  }
+
+  // v4.48: UOM warning summary (SET/PCS/dll fallback ke DUS calc)
+  const uomCounts = {};
+  active.forEach(r => {
+    const u = String(r.uom || 'DUS').toUpperCase().trim();
+    uomCounts[u] = (uomCounts[u] || 0) + 1;
+  });
+  const nonDusCount = Object.entries(uomCounts).filter(([u,_]) => u !== 'DUS').reduce((s,[_,c]) => s+c, 0);
+  if (nonDusCount > 0) {
+    const breakdown = Object.entries(uomCounts).filter(([u,_]) => u !== 'DUS')
+      .map(([u,c]) => `${u}=${c}`).join(', ');
+    console.warn(`[v4.48 UOM] ${nonDusCount} DO pakai UOM bukan DUS — fallback ke DUS calc. Breakdown: ${breakdown}`);
+    console.warn(`[v4.48 UOM] Volume kapasitas mungkin over/under-estimate. HG verify di tab Status compact.`);
   }
 
   return{active, skip, defer, transfer, vendor, conflict};
