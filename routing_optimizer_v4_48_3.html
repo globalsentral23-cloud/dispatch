@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.48.1</title>
+<title>Routing Optimizer v4.48.3</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.48.1</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.48.3</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.48.1</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.48.3</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -2039,6 +2039,8 @@ function processData(sapRaw,pgRaw){
       kirim,kecamatan:String(r[SC.kecamatan]||'').trim(),
       hp:String(r[SC.hp]||'').trim(),source:'SAP',
       kota:normalizeKota(kirim),
+      // v4.48.2: salesman dari compact (kolom C) atau SAP raw (Salesman). null kalau gak ada.
+      salesman: SC.salesman >= 0 ? String(r[SC.salesman]||'').trim() : '',
       ...getSpec(String(r[SC.size]||'').trim()),
     });
   }
@@ -5440,7 +5442,7 @@ function vcardHTML(r){
         </div>
         <div class="stop-dest">${dest.length>55?dest.slice(0,55)+'…':dest}</div>
         <div class="stop-items">${items.slice(0,2).map(i=>`${i.stock_name.slice(0,32)} (${i.qty})`).join(' · ')}${items.length>2?` +${items.length-2}`:''}</div>
-        <div class="stop-do">${items.some(i=>i.carry_over)?'<span style="background:#dc2626;color:#fff;font-family:var(--mono);font-size:8px;padding:1px 5px;border-radius:3px;margin-right:3px">CARRY OVER</span>':''} DO: ${[...new Set(items.map(i=>i.doc_no))].slice(0,3).join(', ')}${items.some(i=>i.qty_overridden)?` <span style="background:#fef3c7;color:#92400e;font-size:8px;padding:1px 4px;border-radius:3px;font-family:var(--mono)">PCS→${items.find(i=>i.qty_override_source)?.qty_override_source||'?'} DUS</span>`:''}${items.some(i=>i.qty_no_total_found)?` <span style="background:#fee2e2;color:#991b1b;font-size:8px;padding:1px 4px;border-radius:3px">⚠ PCS-cek manual</span>`:''}</div>
+        <div class="stop-do">${items.some(i=>i.carry_over)?'<span style="background:#dc2626;color:#fff;font-family:var(--mono);font-size:8px;padding:1px 5px;border-radius:3px;margin-right:3px">CARRY OVER</span>':''} DO: ${[...new Set(items.map(i=>i.doc_no))].slice(0,3).join(', ')}${(()=>{const sales=[...new Set(items.map(i=>String(i.salesman||'').trim()).filter(Boolean))];return sales.length?` <span style="background:#dbeafe;color:#1e40af;font-family:var(--mono);font-size:9px;padding:1px 5px;border-radius:3px;margin-left:4px;font-weight:600" title="Sales">👤 ${sales.slice(0,2).join(', ')}${sales.length>2?` +${sales.length-2}`:''}</span>`:'';})()}${items.some(i=>i.qty_overridden)?` <span style="background:#fef3c7;color:#92400e;font-size:8px;padding:1px 4px;border-radius:3px;font-family:var(--mono)">PCS→${items.find(i=>i.qty_override_source)?.qty_override_source||'?'} DUS</span>`:''}${items.some(i=>i.qty_no_total_found)?` <span style="background:#fee2e2;color:#991b1b;font-size:8px;padding:1px 4px;border-radius:3px">⚠ PCS-cek manual</span>`:''}</div>
         ${dBtns}
       </div>
       <div class="stop-qty">${qty}${items.some(i=>i.qty_overridden)?'<span style="font-size:8px;color:var(--amber);display:block">adj</span>':''}</div>
@@ -7388,9 +7390,12 @@ function exportExcel(){
   // v4.47 helper: cegah .slice error kalau field null/undefined
   const _s = (v, n) => String(v == null ? '' : v).slice(0, n || 9999);
 
+  // v4.48.3: Routing Plan — kolom P,Q,R (Tujuan/Kecamatan/Zona) dipindah ke setelah Remarks (jadi V,W,X).
+  // Tambah Salesman di kolom Y (mirror display badge di routing).
   const h1=['Rute','Trip','Plat','Driver','Tipe','Gudang','Stop','Urutan Muat','DO No',
-    'Customer','Nama Barang','Shade','Size','QTY','UOM','Tujuan Kirim','Kecamatan',
-    'Zona','KNEK','Engkel','Prioritas','ETA Selesai','Flag','Remarks'];
+    'Customer','Nama Barang','Shade','Size','QTY','UOM',
+    'KNEK','Engkel','Prioritas','ETA Selesai','Flag','Remarks',
+    'Tujuan Kirim','Kecamatan','Zona','Salesman'];
   const rows1=[h1];
   routes.forEach(r=>{
     const tripLabel=r.trip_no===2?'TRIP 2':'-';
@@ -7399,30 +7404,57 @@ function exportExcel(){
     r.items.forEach(i=>{
       rows1.push([r.route_no,tripLabel,r.vehicle.plat,r.vehicle.driver,r.vehicle.tipe,r.wh,
         i.stop_order,i.load_order,i.doc_no,i.customer,i.stock_name,i.shade,i.size,
-        i.qty,i.uom,i.kirim,i.kecamatan,i.zona,
-        i.needs_knek?'Y':'',i.force_cde?'Y':'',i.priority,r.eta_selesai,manualFlag,_s(i.remarks,100)]);
+        i.qty,i.uom,
+        i.needs_knek?'Y':'',i.force_cde?'Y':'',i.priority,r.eta_selesai,manualFlag,_s(i.remarks,100),
+        i.kirim,i.kecamatan,i.zona, i.salesman||'']);
     });
   });
   XLSX.utils.book_append_sheet(wbx,XLSX.utils.aoa_to_sheet(rows1),'Routing Plan');
 
-  // Sheet 2: Transfer Gudang
-  const h2=['DO No','Gudang Asal','Ke Gudang','Customer','Barang','QTY','Keterangan'];
-  const rows2=[h2,...transferItems.map(r=>[r.doc_no,r.wh_cons,r.transfer_to,r.customer,r.stock_name,r.qty,_s(r.kirim,100)])];
+  // v4.48.3: Sheet 2-5 — header lengkap untuk konsistensi dengan Routing Plan.
+  // Skip kolom yang tidak relevan (Plat/Driver/Tipe/Stop/ETA — belum di-assign / bukan trip).
+  const hCommon = ['DO No','Gudang','Customer','Nama Barang','Shade','Size','QTY','UOM',
+    'Remarks','Tujuan Kirim','Kecamatan','Kota','Salesman'];
+
+  // Sheet 2: Transfer Gudang — antar gudang internal (PG file)
+  const h2=['DO No','Gudang Asal','Ke Gudang','Customer','Nama Barang','Shade','Size','QTY','UOM',
+    'Remarks','Tujuan Kirim','Kecamatan','Kota','Salesman','Keterangan'];
+  const rows2=[h2,...transferItems.map(r=>[
+    r.doc_no, r.wh_cons||r.wh, r.transfer_to,
+    r.customer, r.stock_name||'', r.shade||'', r.size||'', r.qty, r.uom||'DUS',
+    _s(r.remarks,100), _s(r.kirim,150), r.kecamatan||'', r.kota||'',
+    r.salesman||'', _s(r.transfer_reason||r.note||'',100)
+  ])];
   XLSX.utils.book_append_sheet(wbx,XLSX.utils.aoa_to_sheet(rows2),'Transfer Gudang');
 
   // Sheet 3: Ambil Sendiri (rename dari Dilewati di v4.47)
-  const h3=['DO No','Gudang','Customer','Tujuan','QTY','Alasan'];
-  const rows3=[h3,...skipped.map(r=>[r.doc_no,r.wh_cons,r.customer,_s(r.kirim,80),r.qty,r.skip_reason||''])];
+  const h3=[...hCommon, 'Alasan'];
+  const rows3=[h3,...skipped.map(r=>[
+    r.doc_no, r.wh_cons||r.wh, r.customer, r.stock_name||'', r.shade||'', r.size||'',
+    r.qty, r.uom||'DUS', _s(r.remarks,100), _s(r.kirim,150),
+    r.kecamatan||'', r.kota||'', r.salesman||'',
+    _s(r.skip_reason||'',100)
+  ])];
   XLSX.utils.book_append_sheet(wbx,XLSX.utils.aoa_to_sheet(rows3),'Ambil Sendiri');
 
-  // Sheet 4: Ditunda
-  const h4=['DO No','Gudang','Customer','Tujuan','QTY','Tanggal Kirim'];
-  const rows4=[h4,...deferred.map(r=>[r.doc_no,r.wh_cons,r.customer,_s(r.kirim,80),r.qty,r.deferred_date||''])];
+  // Sheet 4: Ditunda — DO yang di-defer ke besok (luar kota / low util)
+  const h4=[...hCommon, 'Tanggal Kirim','Alasan'];
+  const rows4=[h4,...deferred.map(r=>[
+    r.doc_no, r.wh_cons||r.wh, r.customer, r.stock_name||'', r.shade||'', r.size||'',
+    r.qty, r.uom||'DUS', _s(r.remarks,100), _s(r.kirim,150),
+    r.kecamatan||'', r.kota||'', r.salesman||'',
+    r.deferred_date||'', _s(r.pending_reason||r.defer_reason||'',100)
+  ])];
   XLSX.utils.book_append_sheet(wbx,XLSX.utils.aoa_to_sheet(rows4),'Ditunda');
 
-  // Sheet 5: Vendor
-  const h5=['DO No','Gudang','Customer','Tujuan','QTY','Alasan'];
-  const rows5=[h5,...vendorItems.map(r=>[r.doc_no,r.wh_cons,r.customer,_s(r.kirim,80),r.qty,r.vendor_reason||''])];
+  // Sheet 5: Vendor — DO yang dikirim via vendor pihak ke-3
+  const h5=[...hCommon, 'Vendor','Alasan'];
+  const rows5=[h5,...vendorItems.map(r=>[
+    r.doc_no, r.wh_cons||r.wh, r.customer, r.stock_name||'', r.shade||'', r.size||'',
+    r.qty, r.uom||'DUS', _s(r.remarks,100), _s(r.kirim,150),
+    r.kecamatan||'', r.kota||'', r.salesman||'',
+    r.manual_vendor_kode||r.assigned_vendor||'', _s(r.vendor_reason||'',100)
+  ])];
   XLSX.utils.book_append_sheet(wbx,XLSX.utils.aoa_to_sheet(rows5),'Vendor');
 
   // Sheet 6: Biaya Operasional
