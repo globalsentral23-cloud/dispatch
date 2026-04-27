@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Data Curator v1.4 — GST Logistics</title>
+<title>Data Curator v1.4.1 — GST Logistics</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root {
@@ -155,7 +155,7 @@ body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--t
 
 <div class="app-header">
   <div class="app-logo">📋 DATA CURATOR</div>
-  <div class="app-version">v1.4</div>
+  <div class="app-version">v1.4.1</div>
   <div class="app-tagline">Pre-flight check & cleaning SAP DO + PG · Output compact 19-kolom untuk Routing Optimizer</div>
   <div class="app-date" id="hdr-date">—</div>
 </div>
@@ -1018,6 +1018,11 @@ function runRules() {
 
     // v1.1: Parse KIRIM dengan delimiter ; — strip city suffix ke kolom Kecamatan
     const parsed = parseKirim(row.kirim);
+    // v1.4 (sesi 4): Save city info ke row sebelum strip — supaya _buildCompactRow bisa pakai
+    // (kalau tidak save, parsed.city_suffix bakal null setelah row.kirim di-overwrite di baris 1067)
+    row._city_suffix = parsed.city_suffix || null;
+    row._city_normalized = parsed.city_normalized || null;
+    row._scope_tier = parsed.scope_tier || 'unknown';
     let cleanedKirim = row.kirim;
     if (parsed.has_suffix) {
       // Strip suffix ;<KOTA> dari KIRIM. Output cleaner.
@@ -2255,10 +2260,10 @@ function _buildCompactRow(r) {
   const kirimClean = r._final_kirim || r.kirim || '';
   // Kecamatan
   const kecamatan = r._final_kecamatan || '';
-  // Kota — extract from parsed kirim
-  const parsed = parseKirim(r.kirim || '');
-  const kota = parsed.city_normalized || parsed.city_suffix || '';
-  const scopeTier = parsed.scope_tier || 'unknown';
+  // v1.4 (sesi 4) FIX: Pakai city info yang sudah di-save sebelum kirim di-overwrite.
+  // Sebelumnya: parseKirim(r.kirim) saat ini kembalikan empty karena r.kirim sudah di-strip.
+  const kota = r._city_normalized || r._city_suffix || '';
+  const scopeTier = r._scope_tier || 'unknown';
 
   // Warehouse — normalized
   const wh = r._final_warehouse || r.wh || '';
