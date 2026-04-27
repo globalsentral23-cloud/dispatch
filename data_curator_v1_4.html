@@ -355,7 +355,8 @@ body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--t
   <button class="btn" onclick="downloadAuditJSON()">📋 Audit JSON</button>
 
   <!-- v1.4: SAP Compact — output utama untuk Routing Optimizer -->
-  <span style="display:flex;gap:6px;align-items:center">
+  <!-- Mode default (gabung 1 file multi-tab) -->
+  <span id="compact-export-row-default" style="display:flex;gap:6px;align-items:center">
     <span style="font-size:10px;color:var(--muted);font-weight:700">📋 COMPACT (untuk Routing):</span>
     <button class="btn" id="btn-export-compact"
             onclick="exportCompact()"
@@ -363,6 +364,29 @@ body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--t
             title="Export 19-kolom format dengan multi-tab (DM/DOYONG/CIKUDA + Summary). HG check manual sebelum upload ke Routing Optimizer."
             disabled>
       ⬇ Compact (<span id="cnt-compact-total">0</span>)
+    </button>
+  </span>
+
+  <!-- Mode split: 3 tombol terpisah per gudang -->
+  <span id="compact-export-row-split" style="display:none;gap:6px;align-items:center">
+    <span style="font-size:10px;color:var(--muted);font-weight:700">📋 COMPACT:</span>
+    <button class="btn" id="btn-export-compact-dm" onclick="exportCompactPerWarehouse('DAAN MOGOT')"
+            style="background:#0891b2;color:#fff;border-color:#0e7490;font-weight:700"
+            title="Export Compact untuk gudang DAAN MOGOT saja"
+            disabled>
+      ⬇ DM (<span id="cnt-compact-dm">0</span>)
+    </button>
+    <button class="btn" id="btn-export-compact-dy" onclick="exportCompactPerWarehouse('DOYONG')"
+            style="background:#0891b2;color:#fff;border-color:#0e7490;font-weight:700"
+            title="Export Compact untuk gudang DOYONG saja"
+            disabled>
+      ⬇ DOYONG (<span id="cnt-compact-dy">0</span>)
+    </button>
+    <button class="btn" id="btn-export-compact-ck" onclick="exportCompactPerWarehouse('CIKUDA')"
+            style="background:#0891b2;color:#fff;border-color:#0e7490;font-weight:700"
+            title="Export Compact untuk gudang CIKUDA saja"
+            disabled>
+      ⬇ CIKUDA (<span id="cnt-compact-ck">0</span>)
     </button>
   </span>
 
@@ -749,11 +773,19 @@ function resetAll() {
   document.getElementById('btn-export-dm').disabled = true;
   document.getElementById('btn-export-dy').disabled = true;
   document.getElementById('btn-export-ck').disabled = true;
-  // v1.4: reset Compact button
+  // v1.4: reset Compact button (default + split)
   const btnCompact = document.getElementById('btn-export-compact');
   if (btnCompact) btnCompact.disabled = true;
   const cntCompact = document.getElementById('cnt-compact-total');
   if (cntCompact) cntCompact.textContent = '0';
+  ['btn-export-compact-dm','btn-export-compact-dy','btn-export-compact-ck'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = true;
+  });
+  ['cnt-compact-dm','cnt-compact-dy','cnt-compact-ck'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '0';
+  });
   // v1.3: reset PG buttons
   ['btn-export-pg', 'btn-export-pg-dm', 'btn-export-pg-dy', 'btn-export-pg-ck'].forEach(id => {
     const el = document.getElementById(id);
@@ -1446,6 +1478,20 @@ function renderSummary() {
   document.getElementById('btn-export-dy').disabled = (internalWHCount['DOYONG'] === 0);
   document.getElementById('btn-export-ck').disabled = (internalWHCount['CIKUDA'] === 0);
 
+  // v1.4: Compact split counters & button states (mirror SAP Full pattern)
+  const elCompactDm = document.getElementById('cnt-compact-dm');
+  const elCompactDy = document.getElementById('cnt-compact-dy');
+  const elCompactCk = document.getElementById('cnt-compact-ck');
+  if (elCompactDm) elCompactDm.textContent = internalWHCount['DAAN MOGOT'];
+  if (elCompactDy) elCompactDy.textContent = internalWHCount['DOYONG'];
+  if (elCompactCk) elCompactCk.textContent = internalWHCount['CIKUDA'];
+  const btnCompactDm = document.getElementById('btn-export-compact-dm');
+  const btnCompactDy = document.getElementById('btn-export-compact-dy');
+  const btnCompactCk = document.getElementById('btn-export-compact-ck');
+  if (btnCompactDm) btnCompactDm.disabled = (internalWHCount['DAAN MOGOT'] === 0);
+  if (btnCompactDy) btnCompactDy.disabled = (internalWHCount['DOYONG'] === 0);
+  if (btnCompactCk) btnCompactCk.disabled = (internalWHCount['CIKUDA'] === 0);
+
   // v1.3: PG distribution per gudang asal + counter
   const pgInternalCount = { 'DAAN MOGOT':0, 'DOYONG':0, 'CIKUDA':0 };
   if (pgRows && pgRows.length > 0) {
@@ -1976,6 +2022,16 @@ function _exportRows(_filter) {
 //   - Per-gudang sheet: 19 kolom data + conditional formatting
 
 function exportCompact() {
+  return _exportCompactRows('all');
+}
+
+// v1.4 split mode: export Compact per gudang (single sheet per file)
+function exportCompactPerWarehouse(targetWH) {
+  return _exportCompactRows(targetWH);
+}
+
+// Shared core: build compact workbook, filter by gudang kalau perlu
+function _exportCompactRows(filterWH) {
   const stillCritical = issues.filter(i => i.severity === 'critical' && i.status === 'open').length;
   if (stillCritical > 0) {
     if (!confirm(`Masih ada ${stillCritical} critical issue. Tetap export compact? (DO bermasalah akan tetap muncul dengan flag Critical)`)) {
@@ -1988,16 +2044,20 @@ function exportCompact() {
   sapRows.forEach(r => {
     if (r._drop) return;
     const wh = r._final_warehouse || r.wh || '';
+    // Filter per gudang kalau split mode
+    if (filterWH !== 'all' && wh !== filterWH) return;
     const compactRow = _buildCompactRow(r);
     allRows.push({ compact: compactRow, wh: wh });
   });
 
   if (allRows.length === 0) {
-    alert('Tidak ada row untuk export.');
+    alert(filterWH === 'all'
+      ? 'Tidak ada row untuk export.'
+      : `Tidak ada row untuk gudang ${filterWH}.`);
     return;
   }
 
-  // Group per warehouse
+  // Group per warehouse (untuk multi-tab build kalau mode 'all')
   const byWH = { 'DAAN MOGOT': [], 'DOYONG': [], 'CIKUDA': [] };
   allRows.forEach(r => {
     if (r.wh in byWH) byWH[r.wh].push(r.compact);
@@ -2007,16 +2067,60 @@ function exportCompact() {
   const wb = XLSX.utils.book_new();
   const today = new Date().toISOString().slice(0, 10);
 
+  // v1.4 (sesi 3): Workflow info — Generated time, Tanggal Kirim, Gudang Output
+  const now = new Date();
+  const genTime = now.toISOString().slice(0, 16).replace('T', ' ');
+  // Tanggal kirim = besok (asumsi workflow malam → pagi)
+  const tomorrow = new Date(now.getTime() + 24*60*60*1000);
+  const tanggalKirim = tomorrow.toISOString().slice(0, 10);
+  // Gudang Output label
+  const gudangLabel = filterWH === 'all'
+    ? 'SEMUA (gabung 1 file multi-tab)'
+    : `${filterWH} (split mode — file per gudang)`;
+
+  // Try ambil tanggal DO dari sapRows pertama (untuk validasi konsistensi)
+  let doDateSample = '';
+  for (const r of sapRows) {
+    if (r._drop) continue;
+    const dd = r._origRow[COL.DO_DATE - 1];
+    if (dd) {
+      if (typeof dd === 'number') {
+        const d = new Date(Math.round((dd - 25569) * 86400 * 1000));
+        doDateSample = d.toISOString().slice(0, 10);
+      } else {
+        const s = String(dd).trim();
+        const m = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+        if (m) {
+          let [_, dd2, mm, yy] = m;
+          if (yy.length === 2) yy = (parseInt(yy) > 50 ? '19' : '20') + yy;
+          doDateSample = `${yy}-${mm.padStart(2,'0')}-${dd2.padStart(2,'0')}`;
+        }
+      }
+      if (doDateSample) break;
+    }
+  }
+  const tanggalKirimDisplay = doDateSample || tanggalKirim;
+  const tanggalNote = doDateSample
+    ? `${doDateSample} (dari SAP DO Date)`
+    : `${tanggalKirim} (estimasi: H+1 dari Generated)`;
+
   // ── SHEET 1: SUMMARY ──────────────────────────────────────
   const summaryData = [
-    [`📊 SUMMARY — Data Curator Compact Output (${today})`],
+    [`📊 SUMMARY — Data Curator Compact Output`],
     [],
-    ['Distribusi DO per Gudang Internal'],
+    ['Generated', genTime],
+    ['Tanggal Kirim', tanggalNote],
+    ['Gudang Output', gudangLabel],
+    [],
+    [filterWH === 'all'
+      ? 'Distribusi DO per Gudang Internal'
+      : `Distribusi DO untuk gudang: ${filterWH}`],
     ['Gudang', 'Total Rows', '🔴 Critical', '🟡 Warning', '🟠 Auto-fixed', '🟢 OK'],
   ];
   let totalRows = 0;
   let totalCritical = 0, totalWarning = 0, totalAutofix = 0, totalOK = 0;
   Object.entries(byWH).forEach(([wh, rows]) => {
+    if (rows.length === 0) return; // skip gudang yang kosong
     const cr = rows.filter(r => r[16] === 'Critical').length;
     const wr = rows.filter(r => r[16] === 'Warning').length;
     const af = rows.filter(r => r[16] === 'Auto-fixed').length;
@@ -2031,6 +2135,11 @@ function exportCompact() {
   summaryData.push(['Type', 'Count']);
   const issueCount = {};
   issues.filter(i => i.status !== 'resolved').forEach(i => {
+    // Hanya issue dari row yang ke-export
+    const r = sapRows.find(s => s._idx === i.rowIdx);
+    if (!r || r._drop) return;
+    const wh = r._final_warehouse || r.wh || '';
+    if (filterWH !== 'all' && wh !== filterWH) return;
     issueCount[i.type] = (issueCount[i.type] || 0) + 1;
   });
   Object.entries(issueCount).sort((a,b) => b[1]-a[1]).forEach(([t, c]) => {
@@ -2085,10 +2194,17 @@ function exportCompact() {
     XLSX.utils.book_append_sheet(wb, ws, wh);
   });
 
-  const fname = `sap_compact_${today}.xlsx`;
+  // Filename: gabung pakai date saja, split pakai date_<wh>
+  let fname;
+  if (filterWH === 'all') {
+    fname = `sap_compact_${today}.xlsx`;
+  } else {
+    fname = `sap_compact_${today}_${filterWH.replace(/\s+/g, '_')}.xlsx`;
+  }
   XLSX.writeFile(wb, fname);
 
-  toast(`✅ ${totalRows} row di-export ke ${fname} (${Object.values(byWH).filter(v=>v.length>0).length + 1} sheet)`);
+  const sheetCount = Object.values(byWH).filter(v=>v.length>0).length + 1; // +1 untuk Summary
+  toast(`✅ ${totalRows} row di-export ke ${fname} (${sheetCount} sheet)`);
 }
 
 // Build 1 row compact (19 kolom) dari 1 sapRows entry
@@ -2178,6 +2294,11 @@ function toggleSplitMode() {
   const sapSplit = document.getElementById('sap-export-row-split');
   if (sapDefault) sapDefault.style.display = isOn ? 'none' : 'flex';
   if (sapSplit) sapSplit.style.display = isOn ? 'flex' : 'none';
+  // Compact rows (v1.4: split per gudang)
+  const compactDefault = document.getElementById('compact-export-row-default');
+  const compactSplit = document.getElementById('compact-export-row-split');
+  if (compactDefault) compactDefault.style.display = isOn ? 'none' : 'flex';
+  if (compactSplit) compactSplit.style.display = isOn ? 'flex' : 'none';
   // PG rows — only show kalau ada PG file di-upload
   const hasPG = pgFile && pgRows.length > 0;
   const pgDefault = document.getElementById('pg-export-row-default');
