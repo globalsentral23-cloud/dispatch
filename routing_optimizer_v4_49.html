@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.48.3</title>
+<title>Routing Optimizer v4.49</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.48.3</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.49</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.48.3</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.49</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -7437,13 +7437,50 @@ function exportExcel(){
   ])];
   XLSX.utils.book_append_sheet(wbx,XLSX.utils.aoa_to_sheet(rows3),'Ambil Sendiri');
 
-  // Sheet 4: Ditunda — DO yang di-defer ke besok (luar kota / low util)
-  const h4=[...hCommon, 'Tanggal Kirim','Alasan'];
-  const rows4=[h4,...deferred.map(r=>[
+  // Sheet 4: Ditunda — DO yang di-defer ke besok (luar kota / low util / explicit defer)
+  // v4.49 fix Q3: consolidate 3 sources supaya Excel align dengan UI tab Pending:
+  //   - deferred[]            — explicit defer date dari SAP remarks (manual user tag)
+  //   - luarKotaPending[]     — auto + manual defer (volume luar kota tidak cukup)
+  //   - pendingTomorrowItems[] — low utilization defer (kendaraan <30%)
+  // Dedupe by doc_no (priority: deferred > luarKotaPending > pendingTomorrow).
+  const ditundaMap = new Map();
+  // (1) deferred[] (explicit defer date)
+  (deferred||[]).forEach(r => {
+    if (!ditundaMap.has(r.doc_no)) {
+      ditundaMap.set(r.doc_no, {
+        ...r,
+        _ditunda_source: 'explicit',
+        _alasan: r.pending_reason || r.defer_reason || `Defer date: ${r.deferred_date||''}`,
+      });
+    }
+  });
+  // (2) luarKotaPending[] (luar kota / volume tidak cukup)
+  (luarKotaPending||[]).forEach(r => {
+    if (!ditundaMap.has(r.doc_no)) {
+      ditundaMap.set(r.doc_no, {
+        ...r,
+        _ditunda_source: r.defer_type === 'auto' ? 'luar_kota_auto' : 'luar_kota_manual',
+        _alasan: r.pending_reason || `Luar kota: ${r.kota_tujuan||r.luar_kota_area||'?'}`,
+      });
+    }
+  });
+  // (3) pendingTomorrowItems[] (low util)
+  (pendingTomorrowItems||[]).forEach(r => {
+    if (!ditundaMap.has(r.doc_no)) {
+      ditundaMap.set(r.doc_no, {
+        ...r,
+        _ditunda_source: 'low_util',
+        _alasan: r.pending_reason || 'Util kendaraan rendah <30%',
+      });
+    }
+  });
+  const ditundaAll = Array.from(ditundaMap.values());
+  const h4 = [...hCommon, 'Tanggal Kirim', 'Alasan', 'Source'];
+  const rows4 = [h4, ...ditundaAll.map(r => [
     r.doc_no, r.wh_cons||r.wh, r.customer, r.stock_name||'', r.shade||'', r.size||'',
     r.qty, r.uom||'DUS', _s(r.remarks,100), _s(r.kirim,150),
-    r.kecamatan||'', r.kota||'', r.salesman||'',
-    r.deferred_date||'', _s(r.pending_reason||r.defer_reason||'',100)
+    r.kecamatan||'', r.kota||r.kota_tujuan||'', r.salesman||'',
+    r.deferred_date||'(besok)', _s(r._alasan||'',100), r._ditunda_source||''
   ])];
   XLSX.utils.book_append_sheet(wbx,XLSX.utils.aoa_to_sheet(rows4),'Ditunda');
 
@@ -8065,6 +8102,136 @@ function extractLuarKotaArea(alamat){ return extractKotaFromAlamat(alamat); }
  * Batalkan / kembalikan DO dari Pending Besok.
  * DO dikembalikan ke vendorItems (DO Unplot) + di-CANCELED di GAS.
  */
+// ═══════════════════════════════════════════════════════════════════════════
+// v4.49: pendingAction — Skip/Cancel/Pindah untuk DO di tab Pending
+// ═══════════════════════════════════════════════════════════════════════════
+// Replace Emergency+Batal buttons (legacy v4.47.3-v4.47.6).
+//
+// Mirror semantic dari dispatchAction() di tab Routing:
+//   ⏭ Skip   = tunda lagi +1 hari (extend defer date, days_pending +1)
+//   ✗ Cancel = batalkan permanen (drop dari pending, log alasan + sales)
+//   → Pindah = pulihkan ke routing HARI INI via unit internal/vendor
+//              → reuse emergencyRestoreToToday() logic (sudah ada flow IDLE/route/vendor)
+//
+// source: 'luar_kota' (luarKotaPending) atau 'low_util' (pendingTomorrowItems)
+async function pendingAction(docNo, action, source, evt){
+  evt && evt.stopPropagation();
+  if (!dispatchMode) {
+    alert('Action ini hanya bisa dipakai saat Dispatch Mode AKTIF.\n\nKlik tombol "🚛 Dispatch" di pojok kanan atas.');
+    return;
+  }
+
+  // Locate item
+  let item = null, srcArr = null, idx = -1;
+  if (source === 'luar_kota') {
+    srcArr = luarKotaPending;
+    idx = luarKotaPending.findIndex(p => p.doc_no === docNo);
+  } else if (source === 'low_util') {
+    srcArr = pendingTomorrowItems;
+    idx = (pendingTomorrowItems||[]).findIndex(p => p.doc_no === docNo);
+  }
+  if (idx < 0) { alert(`DO ${docNo} tidak ditemukan di Pending (${source}).`); return; }
+  item = srcArr[idx];
+
+  if (action === 'skip') {
+    // ⏭ SKIP = extend defer +1 hari
+    showDispatchModal({
+      title: '⏭ Skip — Tunda Lagi +1 Hari',
+      color: '#78350f', bg: '#fef3c7',
+      desc: `DO <b>${docNo}</b> (${item.customer}) akan ditunda lagi +1 hari.<br>
+        <span style="font-size:11px;color:#9a3412">Days pending saat ini: ${item.days_pending||0} hari</span>`,
+      fields: [
+        {id:'alasan', label:'Alasan tunda lagi', placeholder:'belum cukup volume / masih tunggu konsolidasi / ...'}
+      ],
+      onOk: async (vals) => {
+        try {
+          // Extend days_pending counter
+          item.days_pending = (item.days_pending||0) + 1;
+          item.skip_log = (item.skip_log||[]);
+          item.skip_log.push({
+            date: new Date().toISOString().slice(0,10),
+            alasan: vals.alasan||'',
+            waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})
+          });
+          // Tag pending_reason
+          item.pending_reason = `${item.pending_reason||''} | [Skip ${new Date().toISOString().slice(0,10)}] ${vals.alasan||''}`.slice(0, 200);
+
+          // Log ke dispatchLog untuk audit consistency
+          setRoutesDirty(true);
+          dispatchLog.push({
+            route_id: null, doc_no: docNo, action: 'pending_skip',
+            alasan: vals.alasan, source: source,
+            days_pending: item.days_pending,
+            waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
+            plat: '-', driver: '-'
+          });
+
+          updateDispatchBar();
+          renderLuarKotaPending();
+        } catch(e) {
+          console.error('[v4.49 skip]', e);
+          alert('Gagal skip: '+e.message);
+        }
+      }
+    });
+
+  } else if (action === 'cancel') {
+    // ✗ CANCEL = batalkan permanen, drop dari pending
+    showDispatchModal({
+      title: '✗ Cancel DO — Permanen',
+      color: '#991b1b', bg: '#fee2e2',
+      desc: `DO <b>${docNo}</b> (${item.customer}) akan dibatalkan permanen.<br>
+        <span style="font-size:11px;color:#7f1d1d">Tidak akan masuk routing besok atau hari berikutnya.</span>`,
+      fields: [
+        {id:'alasan', label:'Alasan cancel', placeholder:'sales cancel / customer batal / barang tidak ada / ...'},
+        {id:'sales', label:'Nama Sales (opsional)', placeholder:'nama sales yang batalkan'},
+      ],
+      onOk: async (vals) => {
+        try {
+          // Remove from source array
+          srcArr.splice(idx, 1);
+
+          // Log ke dispatchLog
+          setRoutesDirty(true);
+          dispatchLog.push({
+            route_id: null, doc_no: docNo, action: 'pending_cancel',
+            alasan: vals.alasan, sales: vals.sales||'', source: source,
+            customer: item.customer, qty: item.qty, kota: item.kota_tujuan||item.kota||'',
+            waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
+            plat: '-', driver: '-'
+          });
+
+          // Mark CANCELED di GAS (mirror batalkanPendingBesok)
+          const gsUrl = document.getElementById('gs-id')?.value.trim();
+          if (gsUrl && gsUrl.startsWith('https://script.google.com/') && gsConnected) {
+            try {
+              await fetch(gsUrl, {method:'POST',
+                headers:{'Content-Type':'text/plain'}, redirect:'follow',
+                body: JSON.stringify({action:'deletePendingBesok', doc_nos:[docNo], status:'CANCELED'})});
+            } catch(e) {
+              console.warn('[v4.49 cancel] GAS update failed:', e.message);
+            }
+          }
+
+          updateDispatchBar();
+          renderLuarKotaPending();
+          renderKPI && renderKPI();
+        } catch(e) {
+          console.error('[v4.49 cancel]', e);
+          alert('Gagal cancel: '+e.message);
+        }
+      }
+    });
+
+  } else if (action === 'pindah') {
+    // → PINDAH = pulihkan ke routing hari ini via unit internal/vendor
+    // Reuse logic emergencyRestoreToToday — sudah ada flow IDLE/route/vendor
+    return emergencyRestoreToToday(docNo, source);
+  }
+}
+
+// LEGACY (v4.44): tetap di-keep untuk backward compat kalau ada call lama,
+// tapi tidak lagi terhubung ke UI button. Use pendingAction(docNo,'cancel',...) instead.
 async function batalkanPendingBesok(docNo){
   const idx = luarKotaPending.findIndex(p=>p.doc_no===docNo);
   if(idx < 0){ alert('DO tidak ditemukan di Pending Besok'); return; }
@@ -8434,15 +8601,11 @@ function renderLuarKotaPending(){
       <td style="color:var(--muted);font-size:9px">${(r.pending_reason||'').slice(0,80)}</td>
       <td>
         <div style="display:flex;gap:4px;flex-wrap:wrap">
-          ${dispatchMode ? `<button onclick="emergencyRestoreToToday('${r.doc_no}','luar_kota')"
-            style="background:#fef3c7;color:#b91c1c;border:1px solid #fca5a5;border-radius:4px;
-                   padding:2px 8px;font-size:9px;cursor:pointer;font-weight:700"
-            title="Emergency — pulihkan ke routing hari ini, assign ke kendaraan/vendor">🚨 Emergency</button>`
-            : `<span style="font-size:9px;color:#94a3b8;font-style:italic" title="Aktifkan Dispatch Mode untuk pakai Emergency">🚨 (dispatch mode)</span>`}
-          <button onclick="batalkanPendingBesok('${r.doc_no}')"
-            style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:4px;
-                   padding:2px 8px;font-size:9px;cursor:pointer;font-weight:600"
-            title="Batalkan dan kembalikan ke DO Unplot">↩ Batal</button>
+          ${dispatchMode ? `
+            <button class="daction-btn skip" onclick="pendingAction('${r.doc_no}','skip','luar_kota',event)" title="Tunda lagi +1 hari (kirim lusa)">⏭ Skip</button>
+            <button class="daction-btn cancel" onclick="pendingAction('${r.doc_no}','cancel','luar_kota',event)" title="Batalkan permanen — sales cancel">✗ Cancel</button>
+            <button class="daction-btn pindah" onclick="pendingAction('${r.doc_no}','pindah','luar_kota',event)" title="Pindah ke unit internal/vendor — kirim hari ini">→ Pindah</button>
+          ` : `<span style="font-size:9px;color:#94a3b8;font-style:italic" title="Aktifkan Dispatch Mode untuk action">(dispatch mode)</span>`}
         </div>
       </td>
     </tr>`;
@@ -8466,11 +8629,13 @@ function renderLuarKotaPending(){
           <td style="font-size:10px;color:var(--muted)">${r.previous_plat||'-'} ${r.previous_driver||''}</td>
           <td style="color:var(--muted);font-size:9px">${(r.pending_reason||'').slice(0,80)}</td>
           <td>
-            ${dispatchMode ? `<button onclick="emergencyRestoreToToday('${r.doc_no}','low_util')"
-              style="background:#fef3c7;color:#b91c1c;border:1px solid #fca5a5;border-radius:4px;
-                     padding:2px 8px;font-size:9px;cursor:pointer;font-weight:700"
-              title="Emergency — pulihkan ke routing hari ini, assign ke kendaraan/vendor">🚨 Emergency</button>`
-              : `<span style="font-size:9px;color:#94a3b8;font-style:italic" title="Aktifkan Dispatch Mode untuk pakai Emergency">🚨 (dispatch mode)</span>`}
+            ${dispatchMode ? `
+              <div style="display:flex;gap:4px;flex-wrap:wrap">
+                <button class="daction-btn skip" onclick="pendingAction('${r.doc_no}','skip','low_util',event)" title="Tunda lagi +1 hari (kirim lusa)">⏭ Skip</button>
+                <button class="daction-btn cancel" onclick="pendingAction('${r.doc_no}','cancel','low_util',event)" title="Batalkan permanen — sales cancel">✗ Cancel</button>
+                <button class="daction-btn pindah" onclick="pendingAction('${r.doc_no}','pindah','low_util',event)" title="Pindah ke unit internal/vendor — kirim hari ini">→ Pindah</button>
+              </div>
+            ` : `<span style="font-size:9px;color:#94a3b8;font-style:italic" title="Aktifkan Dispatch Mode untuk action">(dispatch mode)</span>`}
           </td>
         </tr>`;
       }).join('');
