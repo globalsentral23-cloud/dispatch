@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Data Curator v1.4.1 — GST Logistics</title>
+<title>Data Curator v1.4.2 — GST Logistics</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root {
@@ -155,7 +155,7 @@ body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--t
 
 <div class="app-header">
   <div class="app-logo">📋 DATA CURATOR</div>
-  <div class="app-version">v1.4.1</div>
+  <div class="app-version">v1.4.2</div>
   <div class="app-tagline">Pre-flight check & cleaning SAP DO + PG · Output compact 19-kolom untuk Routing Optimizer</div>
   <div class="app-date" id="hdr-date">—</div>
 </div>
@@ -1294,16 +1294,114 @@ function fuzzyMatchKecamatan(text) {
 //      Tier core/extended → keep.
 //      Unknown code → KEEP dengan flag warning (HG koreksi manual).
 function runPGRules() {
+  // v1.4.2: Filter patterns untuk drop PG row by remarks
+  const CANCELLED_PATTERNS = /(HAS BEEN CANCEL(?:L?ED)|\bCANCEL(?:L?ED)\b|\bBATAL\b|\bBATALKAN\b|\bVOID\b)/i;
+  const AMBIL_SENDIRI_PATTERNS = /(\bAMBIL SENDIRI\b|\bAMBIL SDR\b|CUSTOMER AMBIL|\bPICKUP\b|\bSELF[- ]?PICKUP\b)/i;
+
+  // v1.4.2: Whitelist kota FLEET (deliverable by HG fleet)
+  // Default + 3 tweak HG: Cikarang, Karawang, Kota Bogor
+  const FLEET_CITIES = new Set([
+    'JAKARTA','JAKARTA PUSAT','JAKARTA BARAT','JAKARTA SELATAN','JAKARTA TIMUR','JAKARTA UTARA',
+    'BEKASI','BEKASI KOTA','KOTA BEKASI','KAB. BEKASI','KABUPATEN BEKASI',
+    'TANGERANG','KOTA TANGERANG','KAB. TANGERANG','KABUPATEN TANGERANG',
+    'TANGERANG SELATAN','TANGSEL','KOTA TANGERANG SELATAN',
+    'DEPOK','KOTA DEPOK',
+    'CIKARANG','LIPPO CIKARANG','CIBARUSAH','CIKARANG UTARA','CIKARANG SELATAN','CIKARANG BARAT','CIKARANG TIMUR',
+    'KARAWANG','KOTA KARAWANG','KAB. KARAWANG','KABUPATEN KARAWANG','TELUK JAMBE',
+  ]);
+  // BOGOR khusus: kota = FLEET, kabupaten = EKSPEDISI, ambigu = EKSPEDISI (safe default)
+  const BOGOR_KOTA_PATTERNS = /\b(KOTA BOGOR|BOGOR KOTA)\b/i;
+  const BOGOR_KAB_PATTERNS = /\b(KAB(?:UPATEN)?\.?\s*BOGOR|CIBINONG|CITEUREUP|CIAWI|GUNUNG PUTRI|CILEUNGSI|JONGGOL|PARUNG|TAJUR HALANG|CILEDUG|CISARUA)\b/i;
+
+  // Helper: classify Delivery_Type berdasarkan alamat tujuan
+  function classifyDeliveryType(toMaster, fromInternal) {
+    if (!toMaster) return { type: 'UNKNOWN', city: '' };
+
+    const street = String(toMaster.street || '').toUpperCase();
+    const name   = String(toMaster.name   || '').toUpperCase();
+    const fullText = street + ' ' + name;
+
+    // Cek kalau To = gudang internal HG (A→A transfer)
+    const internalNames = ['DAAN MOGOT','DOYONG','CIKUDA','PASAR KEMIS','MUARA KARANG'];
+    for (const n of internalNames) {
+      if (name.includes(n)) return { type: 'INTERNAL', city: n };
+    }
+
+    // Parse city dari suffix street ;CITY atau dari pattern dalam street
+    const parsed = parseKirim(toMaster.street || '');
+    let detectedCity = parsed.city_normalized || parsed.city_suffix || '';
+
+    // BOGOR khusus — cek pattern explicit
+    const isBogorKota = BOGOR_KOTA_PATTERNS.test(fullText);
+    const isBogorKab = BOGOR_KAB_PATTERNS.test(fullText);
+    if (isBogorKota) {
+      return { type: 'FLEET', city: 'KOTA BOGOR' };
+    }
+    if (isBogorKab) {
+      return { type: 'EKSPEDISI', city: 'KAB. BOGOR' };
+    }
+    // BOGOR ambigu (cuma "BOGOR" tanpa specifier) → EKSPEDISI safe default
+    if (detectedCity.toUpperCase() === 'BOGOR' || /\bBOGOR\b/.test(fullText)) {
+      return { type: 'EKSPEDISI', city: 'BOGOR (ambigu→ekspedisi)' };
+    }
+
+    // Cek whitelist FLEET cities
+    const cityUpper = detectedCity.toUpperCase().trim();
+    if (FLEET_CITIES.has(cityUpper)) {
+      return { type: 'FLEET', city: detectedCity };
+    }
+    // Cek pattern dalam fullText (untuk catch alamat yang gak ada suffix bersih)
+    for (const fc of FLEET_CITIES) {
+      if (fullText.includes(fc)) {
+        return { type: 'FLEET', city: fc };
+      }
+    }
+
+    // Default: EKSPEDISI (safe fallback untuk extended scope + unknown)
+    return { type: 'EKSPEDISI', city: detectedCity || '(unknown)' };
+  }
+  // Save helper for later access in renderSummary/exports
+  window.__classifyPGDelivery = classifyDeliveryType;
+
   pgRows.forEach(row => {
-    // (1) Filter Reason — hanya transfer murni
-    if (!['PGO', 'PGI'].includes(row.reason)) {
+    // v1.4.2 (1a): Filter remarks — DROP_CANCELLED
+    const remarks = String(row.remarks || '');
+    if (CANCELLED_PATTERNS.test(remarks)) {
       row._drop = true;
-      row._drop_reason = `Reason "${row.reason}" bukan transfer (skip — biasanya damage/return/receipt)`;
+      row._drop_reason = `Cancelled: "${remarks.slice(0, 60)}..."`;
+      row._drop_category = 'CANCELLED';
       pgDropped.push({
         rowIdx: row._idx, doc_no: row.doc_no,
         from_wh: row.from_wh, to_wh: row.to_wh,
         item: row.item_desc, qty: row.qty,
-        reason: row._drop_reason
+        reason: row._drop_reason, category: 'CANCELLED'
+      });
+      return;
+    }
+    // v1.4.2 (1b): Filter remarks — DROP_AMBIL_SENDIRI
+    if (AMBIL_SENDIRI_PATTERNS.test(remarks)) {
+      row._drop = true;
+      row._drop_reason = `Ambil sendiri: "${remarks.slice(0, 60)}..."`;
+      row._drop_category = 'AMBIL_SENDIRI';
+      pgDropped.push({
+        rowIdx: row._idx, doc_no: row.doc_no,
+        from_wh: row.from_wh, to_wh: row.to_wh,
+        item: row.item_desc, qty: row.qty,
+        reason: row._drop_reason, category: 'AMBIL_SENDIRI'
+      });
+      return;
+    }
+
+    // (1) Filter Reason — hanya transfer murni
+    if (!['PGO', 'PGI'].includes(row.reason)) {
+      row._drop = true;
+      row._drop_reason = `Reason "${row.reason}" bukan transfer (skip — biasanya damage/return/receipt)`;
+      row._drop_category = 'NON_TRANSFER';
+      pgDropped.push({
+        rowIdx: row._idx, doc_no: row.doc_no,
+        from_wh: row.from_wh, to_wh: row.to_wh,
+        item: row.item_desc, qty: row.qty,
+        reason: row._drop_reason, category: 'NON_TRANSFER'
       });
       return;
     }
@@ -1345,20 +1443,26 @@ function runPGRules() {
     // (4) Lookup To Warehouse di master
     const toMaster = MASTER_GUDANG[row.to_wh];
     if (!toMaster) {
-      // Kode unknown — KEEP, flag warning (HG koreksi manual)
-      pgIssues.push({
-        type: 'pg_unknown_wh_code', severity: 'warning',
-        doc_no: row.doc_no, field: 'To Warehouse',
-        rowIdx: row._idx, status: 'open',
-        msg: `Kode tujuan "${row.to_wh}" tidak ada di master Data Gudang`,
-        suggest: `Update master Data_Gudang.xlsx dengan kode ${row.to_wh}, atau exclude row ini.`,
-        row: row
+      // v1.4.2: Kode unknown → DROP (Q6 confirm: HG handle manual)
+      row._drop = true;
+      row._drop_reason = `Kode tujuan "${row.to_wh}" tidak ada di master Data Gudang — HG handle manual`;
+      row._drop_category = 'UNKNOWN_DEST';
+      pgDropped.push({
+        rowIdx: row._idx, doc_no: row.doc_no,
+        from_wh: row.from_wh, to_wh: row.to_wh,
+        item: row.item_desc, qty: row.qty,
+        reason: row._drop_reason, category: 'UNKNOWN_DEST'
       });
-      row._final_to_name = `(Unknown: ${row.to_wh})`;
+      return;
     } else {
       row._final_to_name = toMaster.name;
 
-      // Detect city dari street master untuk classify scope
+      // v1.4.2: Classify Delivery_Type (FLEET / EKSPEDISI / INTERNAL)
+      const deliveryClass = classifyDeliveryType(toMaster, row._final_from_internal);
+      row._delivery_type = deliveryClass.type;
+      row._delivery_city = deliveryClass.city;
+
+      // Detect city dari street master untuk classify scope (existing logic)
       let detectedCity = null;
       const streetUpper = (toMaster.street || '').toUpperCase();
       const nameUpper = (toMaster.name || '').toUpperCase();
@@ -1382,11 +1486,12 @@ function runPGRules() {
         // Drop — luar pulau / jauh
         row._drop = true;
         row._drop_reason = `Tujuan "${toMaster.name}" di ${detectedCity} (luar scope HG)`;
+        row._drop_category = 'OUTOFSCOPE';
         pgDropped.push({
           rowIdx: row._idx, doc_no: row.doc_no,
           from_wh: row.from_wh, to_wh: `${row.to_wh} (${toMaster.name})`,
           item: row.item_desc, qty: row.qty,
-          reason: row._drop_reason
+          reason: row._drop_reason, category: 'OUTOFSCOPE'
         });
         return;
       } else if (tier === 'extended') {
@@ -1720,15 +1825,29 @@ function renderPG() {
   const byInternal = { 'DAAN MOGOT':0, 'DOYONG':0, 'CIKUDA':0 };
   kept.forEach(r => { if (r._final_from_internal in byInternal) byInternal[r._final_from_internal]++; });
 
-  // Distribusi reason di dropped
-  const dropReasons = {};
-  dropped.forEach(d => {
-    let key = 'lainnya';
-    if (d._drop_reason && d._drop_reason.includes('Reason')) key = 'bukan transfer (damage/return/dll)';
-    else if (d._drop_reason && d._drop_reason.includes('From')) key = 'gudang asal bukan HG';
-    else if (d._drop_reason && d._drop_reason.includes('luar scope')) key = 'tujuan luar scope';
-    dropReasons[key] = (dropReasons[key] || 0) + 1;
+  // v1.4.2: Distribusi by Delivery_Type (FLEET / EKSPEDISI / INTERNAL / UNKNOWN)
+  const byDeliveryType = { FLEET: 0, EKSPEDISI: 0, INTERNAL: 0, UNKNOWN: 0 };
+  kept.forEach(r => {
+    const dt = r._delivery_type || 'UNKNOWN';
+    byDeliveryType[dt] = (byDeliveryType[dt] || 0) + 1;
   });
+
+  // v1.4.2: Distribusi reason di dropped — pakai _drop_category yang sudah di-tag
+  const dropReasons = {
+    'CANCELLED': 0,
+    'AMBIL_SENDIRI': 0,
+    'NON_TRANSFER': 0,
+    'UNKNOWN_DEST': 0,
+    'OUTOFSCOPE': 0,
+    'LAINNYA': 0,
+  };
+  dropped.forEach(d => {
+    const cat = d._drop_category || 'LAINNYA';
+    if (cat in dropReasons) dropReasons[cat]++;
+    else dropReasons['LAINNYA']++;
+  });
+  // Bersihkan key dengan 0 count
+  Object.keys(dropReasons).forEach(k => { if (dropReasons[k] === 0) delete dropReasons[k]; });
 
   container.innerHTML = `
     <div class="stat-grid" style="margin-bottom:14px">
@@ -1769,18 +1888,58 @@ function renderPG() {
     </div>
 
     <div class="card">
+      <div class="card-title">🚚 Distribusi by Delivery Type (v1.4.2)</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">
+        Auto-classify berdasarkan kota tujuan partner. FLEET = HG fleet deliver, EKSPEDISI = via 3PL, INTERNAL = transfer ke gudang HG.
+      </div>
+      <table class="tbl"><thead><tr>
+        <th>Delivery Type</th><th style="text-align:right">Rows</th><th>Description</th>
+      </tr></thead><tbody>
+        ${byDeliveryType.FLEET ? `<tr>
+          <td><span style="background:#dcfce7;color:#166534;padding:2px 8px;border-radius:4px;font-weight:700;font-size:11px">🟢 FLEET</span></td>
+          <td style="text-align:right;font-family:var(--mono);font-weight:700">${byDeliveryType.FLEET}</td>
+          <td style="font-size:11px;color:var(--muted)">Fleet HG deliver — Jakarta/Bekasi/Tangerang/Tangsel/Depok/Cikarang/Karawang/Kota Bogor</td>
+        </tr>` : ''}
+        ${byDeliveryType.EKSPEDISI ? `<tr>
+          <td><span style="background:#fed7aa;color:#9a3412;padding:2px 8px;border-radius:4px;font-weight:700;font-size:11px">🟠 EKSPEDISI</span></td>
+          <td style="text-align:right;font-family:var(--mono);font-weight:700">${byDeliveryType.EKSPEDISI}</td>
+          <td style="font-size:11px;color:var(--muted)">3PL handle — Bogor kab/Purwakarta/Cikampek/Subang/dll</td>
+        </tr>` : ''}
+        ${byDeliveryType.INTERNAL ? `<tr>
+          <td><span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:4px;font-weight:700;font-size:11px">🔵 INTERNAL</span></td>
+          <td style="text-align:right;font-family:var(--mono);font-weight:700">${byDeliveryType.INTERNAL}</td>
+          <td style="font-size:11px;color:var(--muted)">A→A transfer (antar gudang HG)</td>
+        </tr>` : ''}
+        ${byDeliveryType.UNKNOWN ? `<tr>
+          <td><span style="background:#e5e7eb;color:#374151;padding:2px 8px;border-radius:4px;font-weight:700;font-size:11px">⚫ UNKNOWN</span></td>
+          <td style="text-align:right;font-family:var(--mono);font-weight:700">${byDeliveryType.UNKNOWN}</td>
+          <td style="font-size:11px;color:var(--muted)">Master gudang tidak punya alamat lengkap — HG verify manual</td>
+        </tr>` : ''}
+      </tbody></table>
+    </div>
+
+    <div class="card">
       <div class="card-title">📋 Detail PG yang siap export (${kept.length} rows)</div>
       ${kept.length === 0 ? '<div class="empty">Tidak ada PG siap export.</div>' :
         `<table class="tbl"><thead><tr>
-          <th>Doc</th><th>From (Gudang HG)</th><th>To</th><th>Item</th><th>Qty</th><th>Remarks</th>
+          <th>Doc</th><th>From (Gudang HG)</th><th>To</th><th>Type</th><th>Item</th><th>Qty</th><th>Remarks</th>
         </tr></thead><tbody>
           ${kept.slice(0, 200).map(r => {
             const issuesForRow = pgIssues.filter(i => i.rowIdx === r._idx && i.status === 'open');
             const flagBadge = issuesForRow.length > 0 ? ` <span class="badge warning">⚠</span>` : '';
+            // v1.4.2: Delivery_Type badge
+            const dt = r._delivery_type || 'UNKNOWN';
+            const dtStyle = dt === 'FLEET' ? 'background:#dcfce7;color:#166534'
+                          : dt === 'EKSPEDISI' ? 'background:#fed7aa;color:#9a3412'
+                          : dt === 'INTERNAL' ? 'background:#dbeafe;color:#1e40af'
+                          : 'background:#e5e7eb;color:#374151';
+            const dtIcon = dt === 'FLEET' ? '🟢' : dt === 'EKSPEDISI' ? '🟠' : dt === 'INTERNAL' ? '🔵' : '⚫';
+            const dtBadge = `<span style="${dtStyle};padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px;font-family:var(--mono)" title="${escapeAttr(r._delivery_city||'')}">${dtIcon} ${dt}</span>`;
             return `<tr>
               <td><span class="kbd-tag">${escapeHtml(r.doc_no)}</span></td>
               <td><strong>${escapeHtml(r._final_from_internal)}</strong> <span style="color:var(--muted);font-size:10px">(${escapeHtml(r.from_wh)})</span></td>
               <td>${escapeHtml(r._final_to_name)} <span style="color:var(--muted);font-size:10px">(${escapeHtml(r.to_wh)})</span>${flagBadge}</td>
+              <td>${dtBadge}</td>
               <td style="font-size:11px">${escapeHtml(String(r.item_desc).slice(0,50))}</td>
               <td style="text-align:right;font-family:var(--mono)">${r.qty || 0}</td>
               <td style="color:var(--muted);font-size:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(String(r.remarks||'').slice(0,80))}</td>
@@ -2334,14 +2493,21 @@ function _exportPGRows(_filter) {
     return;
   }
 
-  const exportRows = [pgHeaders];
+  // v1.4.2: Tambah kolom baru: Delivery_Type, Delivery_City, To_Name (resolved dari master)
+  const extraHeaders = ['Delivery_Type', 'Delivery_City', 'To_Warehouse_Name'];
+  const exportRows = [[...pgHeaders, ...extraHeaders]];
   let exportedCount = 0;
+  let countByType = { FLEET: 0, EKSPEDISI: 0, INTERNAL: 0, UNKNOWN: 0 };
   pgRows.forEach(r => {
     if (r._drop) return;
     if (_filter !== 'all' && r._final_from_internal !== _filter) return;
-    // Clone original row (preserve format SAP PG asli — 17 kolom)
+    // Clone original row + tambah classification columns
     const orig = r._origRow.slice();
-    exportRows.push(orig);
+    const dt = r._delivery_type || 'UNKNOWN';
+    const dc = r._delivery_city || '';
+    const dn = r._final_to_name || '';
+    countByType[dt] = (countByType[dt] || 0) + 1;
+    exportRows.push([...orig, dt, dc, dn]);
     exportedCount++;
   });
 
@@ -2362,7 +2528,12 @@ function _exportPGRows(_filter) {
     fname = `pg_clean_${today}_${_filter.replace(/\s+/g, '_')}.xlsx`;
   }
   XLSX.writeFile(wb, fname);
-  toast(`✅ ${exportedCount} PG row di-export ke ${fname}`);
+  // Toast dengan breakdown by type
+  const breakdown = Object.entries(countByType)
+    .filter(([_,c]) => c > 0)
+    .map(([t,c]) => `${t}=${c}`)
+    .join(' | ');
+  toast(`✅ ${exportedCount} PG row → ${fname} (${breakdown})`);
 }
 
 function downloadAuditJSON() {
