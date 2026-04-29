@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Data Curator v1.4.2 — GST Logistics</title>
+<title>Data Curator v1.4.3 — GST Logistics</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root {
@@ -155,7 +155,7 @@ body { margin:0; font-family: var(--sans); background: var(--bg); color: var(--t
 
 <div class="app-header">
   <div class="app-logo">📋 DATA CURATOR</div>
-  <div class="app-version">v1.4.2</div>
+  <div class="app-version">v1.4.3</div>
   <div class="app-tagline">Pre-flight check & cleaning SAP DO + PG · Output compact 19-kolom untuk Routing Optimizer</div>
   <div class="app-date" id="hdr-date">—</div>
 </div>
@@ -817,6 +817,43 @@ function resetAll() {
 // ═══════════════════════════════════════════════════════════════════════════
 // VALIDATION ENGINE — main entry point
 // ═══════════════════════════════════════════════════════════════════════════
+// v1.4.3: Safe file reader dengan error message yang actionable.
+// Browser bisa throw NotReadableError kalau file lock (Excel still open),
+// SecurityError kalau permission denied, atau NotFoundError kalau file moved.
+async function safeReadFile(file, fileLabel = 'file') {
+  try {
+    return await file.arrayBuffer();
+  } catch (err) {
+    const name = err.name || '';
+    const msg = (err.message || '').toLowerCase();
+    // Detect common cases by error.name (DOMException standard)
+    if (name === 'NotReadableError' || msg.includes('not be read') || msg.includes('permission')) {
+      throw new Error(
+        `Tidak bisa baca ${fileLabel} "${file.name}".\n\n` +
+        `Kemungkinan penyebab:\n` +
+        `1. File masih TERBUKA di Excel — tutup dulu, baru upload ulang.\n` +
+        `2. File ada di OneDrive/GDrive cloud-only — right-click di Explorer → "Always keep on this device" → tunggu download selesai.\n` +
+        `3. File dari attachment WhatsApp/email yang belum di-save — save dulu ke Documents, baru upload dari sana.\n\n` +
+        `(Original: ${err.name}: ${err.message})`
+      );
+    }
+    if (name === 'NotFoundError' || msg.includes('not found')) {
+      throw new Error(
+        `${fileLabel} "${file.name}" tidak ditemukan di lokasi awalnya.\n\n` +
+        `File mungkin sudah dipindah/dihapus setelah dipilih. Upload ulang dari lokasi terbaru.`
+      );
+    }
+    if (name === 'SecurityError') {
+      throw new Error(
+        `Akses ditolak ke ${fileLabel} "${file.name}".\n\n` +
+        `Cek permission file di File Explorer (right-click → Properties → Security).`
+      );
+    }
+    // Other errors — passthrough with original info
+    throw new Error(`Gagal baca ${fileLabel} "${file.name}":\n${err.name}: ${err.message}`);
+  }
+}
+
 async function runValidation() {
   if (!sapFile) { alert('Upload file SAP dulu'); return; }
   const btn = document.getElementById('btn-validate');
@@ -824,7 +861,7 @@ async function runValidation() {
 
   try {
     // 1. Read SAP file
-    const buf = await sapFile.arrayBuffer();
+    const buf = await safeReadFile(sapFile, 'file SAP');
     const wb = XLSX.read(buf, { type: 'array' });
     const ws = wb.Sheets[wb.SheetNames[0]];
     sapRaw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
@@ -881,7 +918,7 @@ async function runValidation() {
       btn.textContent = '⏳ Reading PG file...';
       await sleep(50);
       try {
-        const pgBuf = await pgFile.arrayBuffer();
+        const pgBuf = await safeReadFile(pgFile, 'file PG');
         const pgWb = XLSX.read(pgBuf, { type: 'array' });
         const pgWs = pgWb.Sheets[pgWb.SheetNames[0]];
         pgRaw = XLSX.utils.sheet_to_json(pgWs, { header: 1, defval: null });
