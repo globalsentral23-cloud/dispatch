@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.50</title>
+<title>Routing Optimizer v4.50.1</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.50</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.50.1</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.50</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.50.1</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -2333,10 +2333,13 @@ function processData(sapRaw,pgRaw){
     }
 
     // Deferred date
+    // v4.50.1 FIX: tighten logic — kalau defer date = today, JANGAN defer.
+    // Sebelumnya isOverdue strict less-than → today tidak match → masuk branch defer.
+    // Sekarang: defer date <= today → routing hari ini (priority 3), bukan defer.
     const deferDate=extractDeferDate(ct,TODAY);
     if(deferDate){
-      if(isOverdue(deferDate,TODAY)){
-        row.priority=3; // overdue = routing segera
+      if(isOverdue(deferDate,TODAY) || isSameDay(deferDate,TODAY)){
+        row.priority=3; // overdue ATAU hari ini = routing segera
       } else {
         defer.push({...row,deferred_date:deferDate});return;
       }
@@ -2719,6 +2722,15 @@ function isOverdue(dateStr,today){
     const[d,mo,y]=dateStr.split('/').map(Number);
     const[td,tm,ty]=today.split('.').map(Number);
     return new Date(2000+y,mo-1,d)<new Date(2000+ty,tm-1,td);
+  }catch(e){return false;}
+}
+
+// v4.50.1: helper untuk cek defer date == today (avoid strict less-than miss)
+function isSameDay(dateStr,today){
+  try{
+    const[d,mo,y]=dateStr.split('/').map(Number);
+    const[td,tm,ty]=today.split('.').map(Number);
+    return d===td && mo===tm && y===ty;
   }catch(e){return false;}
 }
 
@@ -6756,6 +6768,16 @@ function dispatchUndo(routeId,docKeyStr){
 }
 
 // ── Modal helper ─────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// v4.50.1: HTML escape helper — required for showHistoryPopup
+// ═══════════════════════════════════════════════════════════════════════════
+function escapeHtml(s){
+  if(s == null) return '';
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // v4.50: History popup — show action history for DO sebelum modal alasan
 // ═══════════════════════════════════════════════════════════════════════════
