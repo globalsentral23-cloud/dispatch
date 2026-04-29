@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.52.0</title>
+<title>Routing Optimizer v4.52.1</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.52.0</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.52.1</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.52.0</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.52.1</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -934,6 +934,7 @@ let rtMusibahAlerts = [];    // [{plat, doc_no, alasan, jam}]
  // true = mode operasional saat muat
 let luarKotaPending=[]; // DO luar kota yang tidak cukup memenuhi 95%
 let routes=[],skipped=[],deferred=[],vendorItems=[],transferItems=[],pendingTomorrowItems=[];
+let unassignedItems=[]; // v4.52.1 Stage B: DO yang reject dari suggestion, kembali ke pool
 let conflictItems=[]; // v4.43: DO with both vendor-trigger AND no_cdd/force_cde flag
 let assignedFromUnplot=[]; // DO yang di-assign dari tab Unplot ke kendaraan internal
 let biayaData={}; // expense tracking per route.id
@@ -1934,13 +1935,40 @@ async function startAnalysis(){
     showLoad('Menjalankan routing...');await sleep(30);
     const{rts,vendor:routingVendor,pendingTomorrow}=buildRoutes(_activeFinal);
     routes=rts;
+    // v4.52.1 Stage B: Mark all auto-generated routes as SUGGESTION (need approve)
+    routes.forEach(rt => {
+      rt.is_suggestion = true;
+      if(rt.items) rt.items.forEach(it => { it.is_suggestion = true; });
+    });
     // Merge: routing overflow vendor (tambah ke vendorItems yang sudah ada)
     vendorItems = [...vendorItems, ...(routingVendor||[])];
+    // v4.52.1: vendor items dari auto-routing juga is_suggestion (manual approve)
+    (routingVendor||[]).forEach(it => { it.is_suggestion = true; });
     pendingTomorrowItems=pendingTomorrow||[]; // v4.42 Step 5 output
     initBiaya(); // hitung estimasi biaya per kendaraan
     setLoad('Membangun dashboard...');await sleep(30);
     hideLoad();
     showApp();
+
+    // v4.52.1 Phase A: Validation — tampilkan warning kalau output << input
+    setTimeout(() => {
+      const inputDOs = new Set((_activeFinal||[]).map(it => it.doc_no).filter(Boolean));
+      const outputDOs = new Set();
+      (routes||[]).forEach(rt => (rt.items||[]).forEach(it => outputDOs.add(it.doc_no)));
+      (vendorItems||[]).forEach(it => outputDOs.add(it.doc_no));
+      (pendingTomorrowItems||[]).forEach(it => outputDOs.add(it.doc_no));
+      const inN = inputDOs.size, outN = outputDOs.size;
+      const ratio = inN > 0 ? Math.round((outN / inN) * 100) : 100;
+      // Tampilkan warning kalau ratio < 50%
+      if(inN >= 5 && ratio < 50){
+        alert(`⚠ ALERT: Hanya ${outN} dari ${inN} DO (${ratio}%) yang ke-plot.\n\nKemungkinan masalah:\n1. Tanggal SAP (${doDate}) tidak match dengan filter routing\n2. Sebagian besar DO punya tgl_kirim berbeda dari mode\n3. Filter scope/zone terlalu ketat\n\nCek tab "Kirim Besok" atau verifikasi tanggal di header.`);
+      }
+      // Tampilkan date distribution warning kalau ada
+      if(window._dateDistWarning){
+        alert(window._dateDistWarning);
+        window._dateDistWarning = null;
+      }
+    }, 600);
   }catch(err){
     hideLoad();
     console.error('[Routing Optimizer] Error:', err);
@@ -2069,7 +2097,31 @@ function processData(sapRaw,pgRaw){
     console.log('[v4.48] Detected RAW SAP format — header count:', sh.length);
   }
 
-  doDate=fmtDate(sapRaw[1]?.[SC.do_date]);
+  // v4.52.1: Auto-detect DOMINANT date dari SAP (mode), bukan cuma row pertama.
+  // Bug sebelumnya: kalau row 1 punya tgl_kirim beda dari mayoritas, doDate salah → semua DO 29 April di-filter out.
+  const _dateCount = new Map();
+  for(let i=1; i<sapRaw.length; i++){
+    const r = sapRaw[i];
+    if(!r || r.every(c=>!c)) continue;
+    const d = fmtDate(r[SC.do_date]);
+    if(d) _dateCount.set(d, (_dateCount.get(d)||0)+1);
+  }
+  let _modeDate = '', _modeCount = 0;
+  for(const [d, n] of _dateCount.entries()){
+    if(n > _modeCount){ _modeDate = d; _modeCount = n; }
+  }
+  doDate = _modeDate || fmtDate(sapRaw[1]?.[SC.do_date]);
+
+  // Warning kalau distribusi tanggal lebih dari 1 (informative, tidak blocking)
+  if(_dateCount.size > 1){
+    const _dist = [..._dateCount.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5).map(([d,n])=>`${d}=${n}`).join(', ');
+    console.log(`[v4.52.1] SAP date distribution → mode=${doDate} (${_modeCount} dari ${sapRaw.length-1} rows). Detail: ${_dist}`);
+    // Tampilkan banner di UI kalau dominasi < 80%
+    const _domPct = Math.round((_modeCount / (sapRaw.length-1)) * 100);
+    if(_domPct < 80){
+      window._dateDistWarning = `⚠ SAP file punya ${_dateCount.size} tanggal berbeda. Dipakai: ${doDate} (${_domPct}% dominan). Cek "Kirim Besok" untuk DO tanggal lain.`;
+    }
+  }
 
   const all=[];
   let lastKirim='',lastCust='';
@@ -5507,6 +5559,10 @@ function vcardHTML(r){
   const prioLbl=r.max_priority===3?'<span class="badge b-overdue">⚠ TERLAMBAT</span>':
     r.max_priority===2?'<span class="badge b-topurgent">TOP URGENT</span>':
     r.max_priority===1?'<span class="badge b-urgent">URGENT</span>':'';
+  // v4.52.1 Stage B: Badge SARAN AUTO untuk route yang masih is_suggestion
+  const suggestionBadge = r.is_suggestion
+    ? '<span class="badge" style="background:#fff7ed;color:#9a3412;border:1px dashed #BA7517;font-weight:600">◌ SARAN AUTO</span>'
+    : '';
   const etaCls=r.eta_ok?'eta-ok':'eta-bad';
 
   // Group stops
@@ -5613,6 +5669,7 @@ function vcardHTML(r){
       ${r.is_consolidated?'<span class="badge" style="background:#f0f9ff;border-color:#0ea5e9;color:#0369a1">🗜 CONSOLIDATED</span>':''}
       ${r.has_knek?'<span class="badge b-knek">★ KNEK</span>':''}
       ${prioLbl}
+      ${suggestionBadge}
       <div class="head-right">
         <button class="icon-btn pr" onclick="printVehicle(${r.id})"
           style="${dispatchMode?'':'opacity:0.4;cursor:not-allowed'}"
@@ -9529,7 +9586,12 @@ function buildDataDORows(){
     _add(transferItems, { source:'transfer' });
   }
 
-  // 4. Determine status per DO based on dispatchLog + RT data + vendor assignment
+  // v4.52.1 Stage B: 4. Unassigned items (di-reject dari suggestion, kembali ke pool)
+  if(typeof unassignedItems !== 'undefined'){
+    _add(unassignedItems, { source:'unassigned' });
+  }
+
+  // 5. Determine status per DO based on dispatchLog + RT data + vendor assignment
   const rows = Array.from(map.values());
   rows.forEach(row => {
     // Check dispatchLog for skip/cancel
@@ -9562,6 +9624,15 @@ function buildDataDORows(){
       row.driver = vendor ? vendor.nama : firstItem.vendor_kode;
       row.status = 'vendor';  // v4.52.0: dedicated vendor status (was 'assigned')
       row.is_vendor = true;
+      // v4.52.1: vendor masih bisa suggestion kalau dari auto-routing
+      if(firstItem.is_suggestion) row.is_suggestion = true;
+      return;
+    }
+
+    // v4.52.1 Stage B: Cek suggestion flag — DO hasil auto-routing belum di-approve
+    if(row.plat && firstItem.is_suggestion){
+      row.status = 'suggested';
+      row.is_suggestion = true;
       return;
     }
 
@@ -9678,7 +9749,12 @@ function renderDataDO(){
       const internalOpts = allVeh.map(v => `<option value="${escapeHtml(v.plat)}"${row.plat===v.plat?' selected':''}>${escapeHtml(v.plat)} / ${escapeHtml(v.driver||'')}</option>`).join('');
       const vendorOpts = availableVendors.map(v => `<option value="VENDOR:${escapeHtml(v.kode)}"${row.plat==='VENDOR:'+v.kode?' selected':''}>🚛 ${escapeHtml(v.nama)} (${escapeHtml(v.tipe||'')})</option>`).join('');
 
-      driverCell = `<select onchange="dataDOInlineAssign('${escapeHtml(row.doc_no)}',this.value)" style="font-size:10px;padding:3px 4px;border:1px solid #cbd5e1;border-radius:3px;background:#fff;width:100%">
+      // v4.52.1: kalau status suggested, tampilkan "Saran:" prefix italic oranye di atas dropdown
+      const suggestedHint = (row.status === 'suggested')
+        ? `<div style="font-size:9px;color:#9a3412;font-style:italic;margin-bottom:2px">Saran: ${escapeHtml(row.plat||'')} / ${escapeHtml(row.driver||'')}</div>`
+        : '';
+
+      driverCell = `${suggestedHint}<select onchange="dataDOInlineAssign('${escapeHtml(row.doc_no)}',this.value)" style="font-size:10px;padding:3px 4px;border:1px solid ${row.status==='suggested'?'#f59e0b':'#cbd5e1'};border-radius:3px;background:#fff;width:100%">
         <option value="">— Pilih driver —</option>
         ${internalOpts ? `<optgroup label="Internal Driver (${allVeh.length})">${internalOpts}</optgroup>` : ''}
         ${vendorOpts ? `<optgroup label="Vendor / Ekspedisi (${availableVendors.length})">${vendorOpts}</optgroup>` : ''}
@@ -9693,6 +9769,11 @@ function renderDataDO(){
       aksi = dispatchOn
         ? `<button onclick="dataDOUndoSkip('${escapeHtml(row.doc_no)}')" style="font-size:10px;padding:2px 8px;background:#e5e7eb;color:#374151;border:1px solid #9ca3af;border-radius:3px;cursor:pointer">↩ Undo</button>`
         : `<span style="font-size:9px;color:#94a3b8;font-style:italic">— skip locked</span>`;
+    } else if(row.status === 'suggested' && dispatchOn){
+      // v4.52.1 Stage B: Approve/Reject buttons untuk suggestion
+      aksi = `
+        <button onclick="dataDOApprove('${escapeHtml(row.doc_no)}')" style="font-size:10px;padding:3px 8px;background:#0F6E56;color:#fff;border:0;border-radius:3px;cursor:pointer;font-weight:600" title="Approve saran auto">✓ Approve</button>
+        <button onclick="dataDOReject('${escapeHtml(row.doc_no)}')" style="font-size:10px;padding:3px 6px;background:#fff;color:#A32D2D;border:1px solid #A32D2D;border-radius:3px;cursor:pointer;margin-left:3px" title="Reject — DO kembali ke pool">✗</button>`;
     } else if(dispatchOn){
       aksi = `
         <button onclick="dataDOAction('${escapeHtml(row.doc_no)}','skip',event)" style="font-size:10px;padding:2px 5px;background:#fef3c7;color:#854f0b;border:1px solid #f59e0b;border-radius:3px;cursor:pointer" title="Skip">⏭</button>
@@ -9726,6 +9807,25 @@ function renderDataDO(){
   document.getElementById('datado-footer').textContent = `Showing ${sorted.length} of ${allRows.length} DO`;
   document.getElementById('datado-info').textContent = `${allRows.length} DO`;
   _dataDOUpdateBulkBtn();
+
+  // v4.52.1 Stage B: Footer banner Approve All Saran
+  const suggestedRows = allRows.filter(r => r.status === 'suggested');
+  const nSug = suggestedRows.length;
+  const footerEl = document.getElementById('datado-footer');
+  if(footerEl){
+    if(nSug > 0 && dispatchOn){
+      footerEl.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:6px 4px;background:#fff7ed;border-radius:4px;margin-top:4px">
+        <span style="color:#9a3412;font-weight:600;font-size:11px">⚠ ${nSug} DO Saran Auto belum di-approve</span>
+        <button onclick="dataDOApproveAllSaran()" style="margin-left:auto;font-size:10px;padding:5px 12px;background:#0F6E56;color:#fff;border:0;border-radius:4px;font-weight:600;cursor:pointer">✓ Approve All Saran</button>
+      </div>
+      <div style="margin-top:4px;font-size:10px;color:#94a3b8">Showing ${sorted.length} of ${allRows.length} DO</div>`;
+    } else if(nSug > 0 && !dispatchOn){
+      footerEl.innerHTML = `<div style="padding:6px 4px;color:#9a3412;font-size:11px">⚠ ${nSug} DO Saran Auto menunggu — aktifkan Dispatch Mode untuk approve</div>
+      <div style="margin-top:4px;font-size:10px;color:#94a3b8">Showing ${sorted.length} of ${allRows.length} DO</div>`;
+    } else {
+      footerEl.textContent = `Showing ${sorted.length} of ${allRows.length} DO`;
+    }
+  }
 }
 
 function dataDOSetSort(col){
@@ -9878,6 +9978,138 @@ function _dataDOAssignToVendor(docNos, vendorKode){
     renderDataDO();
     alert(`✓ ${moved} DO berhasil di-assign ke vendor ${vendor.nama}.`);
   }
+}
+
+// v4.52.1 Stage B: Approve suggestion — clear is_suggestion flag, jadi committed
+function dataDOApprove(docNo){
+  if(!(typeof dispatchMode !== 'undefined' && dispatchMode)){
+    alert('Aktifkan Dispatch Mode dulu untuk approve.');
+    return;
+  }
+  let approved = 0;
+  // Mark items in routes
+  (routes||[]).forEach(rt => {
+    (rt.items||[]).forEach(it => {
+      if(it.doc_no === docNo && it.is_suggestion){
+        it.is_suggestion = false;
+        approved++;
+      }
+    });
+    // Kalau semua items di route sudah di-approve (no more suggestion), clear route flag
+    if(rt.is_suggestion && (rt.items||[]).every(it => !it.is_suggestion)){
+      rt.is_suggestion = false;
+    }
+  });
+  // Mark items in vendorItems
+  (vendorItems||[]).forEach(it => {
+    if(it.doc_no === docNo && it.is_suggestion){
+      it.is_suggestion = false;
+      approved++;
+    }
+  });
+
+  if(approved > 0){
+    dispatchLog.push({
+      route_id: null, doc_no: docNo, action: 'approve_suggestion',
+      alasan: 'Approve saran auto-routing',
+      source: 'datado',
+      waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})
+    });
+    if(typeof showApp === 'function') showApp();
+    renderDataDO();
+  }
+}
+
+// v4.52.1 Stage B: Reject suggestion — pindah DO dari route ke unassignedItems pool
+function dataDOReject(docNo){
+  if(!(typeof dispatchMode !== 'undefined' && dispatchMode)){
+    alert('Aktifkan Dispatch Mode dulu untuk reject.');
+    return;
+  }
+  if(!confirm(`Reject saran auto untuk DO ${docNo}?\n\nDO akan kembali ke pool "Belum Dimuat" untuk di-assign manual.`)) return;
+
+  let rejected = 0;
+  // Hapus dari routes — kumpulkan items
+  const removedItems = [];
+  (routes||[]).forEach(rt => {
+    const before = rt.items.length;
+    const moved = rt.items.filter(it => it.doc_no === docNo);
+    rt.items = rt.items.filter(it => it.doc_no !== docNo);
+    if(moved.length > 0){
+      removedItems.push(...moved);
+      rt.total_wt = rt.items.reduce((a,i)=>a+(i.weight_kg||0),0);
+      rt.total_vol = rt.items.reduce((a,i)=>a+(i.volume||0),0);
+    }
+  });
+  // Hapus juga dari vendorItems kalau ada
+  const removedFromVendor = (vendorItems||[]).filter(it => it.doc_no === docNo);
+  if(typeof vendorItems !== 'undefined'){
+    vendorItems = vendorItems.filter(it => it.doc_no !== docNo);
+  }
+  removedItems.push(...removedFromVendor);
+
+  if(removedItems.length > 0){
+    // Clear suggestion flags + vendor_kode (supaya tampil sebagai pending)
+    removedItems.forEach(it => {
+      it.is_suggestion = false;
+      it.vendor_kode = '';
+      it.vendor_manual = false;
+      it.vendor_reason = '';
+    });
+    // Push ke unassignedItems pool
+    if(typeof unassignedItems === 'undefined') unassignedItems = [];
+    unassignedItems.push(...removedItems);
+    rejected = removedItems.length;
+
+    dispatchLog.push({
+      route_id: null, doc_no: docNo, action: 'reject_suggestion',
+      alasan: 'Reject saran auto, kembali ke pool',
+      source: 'datado',
+      waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})
+    });
+
+    // Hapus route yang jadi kosong
+    if(typeof routes !== 'undefined'){
+      routes = routes.filter(rt => (rt.items||[]).length > 0);
+    }
+    if(typeof showApp === 'function') showApp();
+    renderDataDO();
+  }
+}
+
+// v4.52.1 Stage B: Approve All Saran — bulk commit semua suggestion
+function dataDOApproveAllSaran(){
+  if(!(typeof dispatchMode !== 'undefined' && dispatchMode)){
+    alert('Aktifkan Dispatch Mode dulu.');
+    return;
+  }
+  // Hitung total suggestion DOs
+  const suggestedDOs = new Set();
+  (routes||[]).forEach(rt => (rt.items||[]).forEach(it => { if(it.is_suggestion) suggestedDOs.add(it.doc_no); }));
+  (vendorItems||[]).forEach(it => { if(it.is_suggestion) suggestedDOs.add(it.doc_no); });
+
+  const n = suggestedDOs.size;
+  if(n === 0){ alert('Tidak ada DO Saran Auto yang menunggu approve.'); return; }
+
+  if(!confirm(`Approve ${n} DO Saran Auto sekaligus?\n\nSemua saran akan di-commit jadi assignment final.`)) return;
+
+  // Clear semua flag
+  (routes||[]).forEach(rt => {
+    rt.is_suggestion = false;
+    (rt.items||[]).forEach(it => { it.is_suggestion = false; });
+  });
+  (vendorItems||[]).forEach(it => { it.is_suggestion = false; });
+
+  dispatchLog.push({
+    route_id: null, doc_no: '*ALL*', action: 'approve_all_suggestion',
+    alasan: `Bulk approve ${n} DO saran auto`,
+    source: 'datado',
+    waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})
+  });
+
+  if(typeof showApp === 'function') showApp();
+  renderDataDO();
+  alert(`✓ ${n} DO Saran Auto berhasil di-approve.`);
 }
 
 // Open modal grouping driver tersedia + penuh
@@ -10037,8 +10269,18 @@ function _dataDOExecuteAssign(docNos, plat){
           if(vendorItems[i].doc_no === docNo) vendorItems.splice(i, 1);
         }
       }
+      // v4.52.1: Coba juga dari unassignedItems pool (DO yang reject dari suggestion)
+      if(do_items.length === 0 && typeof unassignedItems !== 'undefined'){
+        do_items = unassignedItems.filter(i => i.doc_no === docNo);
+        for(let i = unassignedItems.length-1; i >= 0; i--){
+          if(unassignedItems[i].doc_no === docNo) unassignedItems.splice(i, 1);
+        }
+      }
     }
     if(!do_items.length) return;
+
+    // v4.52.1: Manual assign clears is_suggestion flag (committed)
+    do_items.forEach(it => { it.is_suggestion = false; });
 
     // Find or create target route
     let newRoute = routes.find(r => r.vehicle?.plat === plat);
@@ -10052,12 +10294,17 @@ function _dataDOExecuteAssign(docNos, plat){
         total_wt: 0,
         total_vol: 0,
         is_manual: true,
+        is_suggestion: false, // v4.52.1: manual route never suggestion
       };
       routes.push(newRoute);
     }
     newRoute.items.push(...do_items);
     newRoute.total_wt = newRoute.items.reduce((a,i)=>a+(i.weight_kg||0),0);
     newRoute.total_vol = newRoute.items.reduce((a,i)=>a+(i.volume||0),0);
+    // v4.52.1: route now has manually-assigned DO, clear suggestion flag if all items committed
+    if(newRoute.is_suggestion && newRoute.items.every(it => !it.is_suggestion)){
+      newRoute.is_suggestion = false;
+    }
 
     dispatchLog.push({
       route_id: newRoute.id, doc_no: docNo, action: 'assign_manual',
@@ -10068,6 +10315,9 @@ function _dataDOExecuteAssign(docNos, plat){
     });
     moved++;
   });
+
+  // Hapus route yang jadi kosong setelah pindahan
+  routes = routes.filter(rt => (rt.items||[]).length > 0);
 
   if(moved){
     dataDOSelected.clear();
