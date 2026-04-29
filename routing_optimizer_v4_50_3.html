@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.50.2</title>
+<title>Routing Optimizer v4.50.3</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.50.2</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.50.3</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.50.2</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.50.3</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -5443,7 +5443,9 @@ function vcardHTML(r){
   const stops=Object.entries(byStop).sort((a,b)=>+a[0]-+b[0]);
   const totalQty=r.items.reduce((a,i)=>a+i.qty,0);
 
-  const stopRows=stops.slice(0,6).map(([sn,{items,load}])=>{
+  // v4.50.3: Render all stops as collapsible. Stops 0-5 visible, stops 6+ hidden but expandable.
+  // HG: "+4 tujuan lagi" jangan hide mati — bisa di-expand untuk Skip/Cancel/Pindah juga.
+  const _renderStop = ([sn,{items,load}], stopIdx) => {
     const dest=items[0].kirim;const cust=items[0].customer;
     const knek=items.some(i=>i.needs_knek);
     const noCDD=items.some(i=>i.no_cdd);
@@ -5492,8 +5494,28 @@ function vcardHTML(r){
       </div>
       <div class="stop-qty">${qty}${items.some(i=>i.qty_overridden)?'<span style="font-size:8px;color:var(--amber);display:block">adj</span>':''}</div>
     </div>`;
-  }).join('');
-  const more=stops.length>6?`<div style="padding:4px 10px;font-size:10px;color:var(--dim)">+${stops.length-6} tujuan lagi...</div>`:'';
+  };
+
+  // Stops 0-5: visible by default
+  const stopRows = stops.slice(0,6).map((s,i) => _renderStop(s,i)).join('');
+
+  // Stops 6+: hidden by default, expandable on click
+  const hiddenStops = stops.slice(6);
+  const moreStopsBlock = hiddenStops.length > 0
+    ? `<div class="stops-more-wrap">
+        <div class="stops-more-hidden" id="more-stops-${r.id}" style="display:none">
+          ${hiddenStops.map((s,i) => _renderStop(s, i+6)).join('')}
+        </div>
+        <div class="stops-more-toggle"
+             id="toggle-stops-${r.id}"
+             onclick="toggleMoreStops('${r.id}')"
+             style="padding:6px 10px;font-size:11px;color:#1e40af;cursor:pointer;background:#eff6ff;border-top:1px dashed #bfdbfe;text-align:center;font-weight:600;user-select:none"
+             title="Klik untuk lihat ${hiddenStops.length} stop lainnya">
+          ▼ +${hiddenStops.length} tujuan lagi (klik untuk lihat &amp; aksi)
+        </div>
+      </div>`
+    : '';
+  const more = moreStopsBlock;
 
   const warnBanner=!r.eta_ok?`<div class="warn-banner">⚠ Estimasi selesai ${r.eta_selesai} — melebihi window 15.00</div>`:
     r.eta_selesai>'13:00'?`<div class="warn-banner yellow">⏱ Estimasi selesai ${r.eta_selesai} — perlu monitoring</div>`:'';
@@ -5633,7 +5655,8 @@ function renderDeferred(){
 
   // v4.50.2: Untuk setiap defer row, cek apakah tanggal kirim = today
   // (kapasitas habis case — Q2). Kalau iya → warning visual + tombol pindah.
-  const todayN = _normalizeDateStr(TODAY.replace(/\./g, '/'));
+  // v4.50.2 PATCH: pakai doDate (global) bukan TODAY (local scope).
+  const todayN = _normalizeDateStr((doDate||'').replace(/\./g, '/'));
 
   document.getElementById('tbody-defer').innerHTML=deferred.map((r,idx)=>{
     const deferN = _normalizeDateStr(r.deferred_date||'');
@@ -7257,6 +7280,21 @@ function toggleWH(hdr){
   const ch=hdr.querySelector('span:last-child');
   body.classList.toggle('collapsed');
   ch.textContent=body.classList.contains('collapsed')?'▸':'▾';
+}
+
+// v4.50.3: Toggle expand stops 6+ — biar bisa Skip/Cancel/Pindah untuk semua stop
+function toggleMoreStops(routeId){
+  const more = document.getElementById('more-stops-'+routeId);
+  const toggle = document.getElementById('toggle-stops-'+routeId);
+  if(!more || !toggle) return;
+  const isHidden = more.style.display === 'none';
+  more.style.display = isHidden ? 'block' : 'none';
+  // Update toggle text + icon
+  const totalHidden = more.children.length;
+  toggle.innerHTML = isHidden
+    ? `▲ Sembunyikan ${totalHidden} stop lainnya`
+    : `▼ +${totalHidden} tujuan lagi (klik untuk lihat &amp; aksi)`;
+  toggle.style.background = isHidden ? '#dbeafe' : '#eff6ff';
 }
 
 // ═══════════════════════════════════════════════════════
@@ -10346,4 +10384,4 @@ async function syncManualDO(item, route) {
   </div>
 </div>
 </body>
-</html>
+</html>  
