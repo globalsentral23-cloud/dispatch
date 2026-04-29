@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.50.4</title>
+<title>Routing Optimizer v4.51</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.50.4</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.51</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -530,12 +530,13 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.50.4</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.51</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
     <div class="tb-date" id="tb-date">—</div>
     <button class="tab-btn active" onclick="switchTab('routing',this)">Routing</button>
+    <button class="tab-btn" onclick="switchTab('datado',this)" title="Manage DO ala GST ERP — table flat, search/filter/sort, bulk assign driver">📊 Data DO</button>
     <button class="tab-btn" onclick="switchTab('map',this)">🗺 Peta</button>
     <button class="tab-btn" onclick="switchTab('transfer',this)">Transfer Gudang</button>
     <button class="tab-btn" onclick="switchTab('skipped',this)">Ambil Sendiri</button>
@@ -594,6 +595,61 @@ body.dispatch-active .dispatch-bar{display:flex}
   </div>
 
   <div class="tab-pane active" id="tab-routing"><div class="main-content" id="main-routing"></div></div>
+
+  <!-- v4.51: Tab Data DO — table flat ala GST ERP untuk manage DO + manual assign driver -->
+  <div class="tab-pane" id="tab-datado">
+    <div class="datado-toolbar" style="padding:10px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <input id="datado-search" oninput="renderDataDO()" placeholder="🔍 Cari DO/customer/plat..." style="font-size:11px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;width:200px">
+      <select id="datado-date" onchange="renderDataDO()" style="font-size:11px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;background:#fff" title="Tanggal DO">
+        <option value="today">📅 Hari Ini</option>
+        <option value="all">Semua Tanggal</option>
+      </select>
+      <select id="datado-filter-driver" onchange="renderDataDO()" style="font-size:11px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;background:#fff">
+        <option value="">Driver: Semua</option>
+      </select>
+      <select id="datado-filter-status" onchange="renderDataDO()" style="font-size:11px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;background:#fff">
+        <option value="">Status: Semua</option>
+        <option value="pending">○ Belum Dimuat</option>
+        <option value="assigned">● Diassign</option>
+        <option value="loading">● Sedang Muat</option>
+        <option value="enroute">● Dalam Pengiriman</option>
+        <option value="done">● Selesai</option>
+        <option value="skipped">● Skip / Cancel</option>
+      </select>
+      <label style="font-size:11px;color:#475569;display:flex;align-items:center;gap:4px;cursor:pointer">
+        <input type="checkbox" id="datado-hide-done" checked onchange="renderDataDO()"> Sembunyikan Selesai
+      </label>
+      <button id="datado-bulk-assign" onclick="dataDOBulkAssign()" disabled style="font-size:11px;padding:6px 14px;background:#2563eb;color:#fff;border:0;border-radius:4px;font-weight:600;cursor:pointer;opacity:0.5">+ Assign Driver (<span id="datado-selected-count">0</span> selected)</button>
+      <span style="margin-left:auto;color:#64748b;font-size:11px" id="datado-info">— DO</span>
+    </div>
+    <div style="overflow-x:auto;background:#fff">
+      <table class="datado-tbl" style="width:100%;font-size:11px;border-collapse:collapse;table-layout:fixed">
+        <colgroup>
+          <col style="width:34px"><col style="width:30px"><col style="width:90px"><col style="width:60px"><col style="width:130px"><col style="width:88px"><col style="width:140px"><col style="width:80px"><col style="width:48px"><col style="width:200px"><col style="width:120px">
+        </colgroup>
+        <thead>
+          <tr style="background:#f1f5f9;text-align:left;color:#475569;font-size:10px;border-bottom:1px solid #e2e8f0">
+            <th style="padding:7px 6px;text-align:center"><input type="checkbox" id="datado-select-all" onchange="dataDOSelectAll(this.checked)"></th>
+            <th style="padding:7px 6px;font-weight:600">No</th>
+            <th style="padding:7px 6px;font-weight:600;cursor:pointer" onclick="dataDOSetSort('doc_no')">DO No <span id="sort-doc_no"></span></th>
+            <th style="padding:7px 6px;font-weight:600;cursor:pointer" onclick="dataDOSetSort('do_date')">Tgl <span id="sort-do_date"></span></th>
+            <th style="padding:7px 6px;font-weight:600">Driver / Plat</th>
+            <th style="padding:7px 6px;font-weight:600;cursor:pointer" onclick="dataDOSetSort('status')">Status <span id="sort-status">▴</span></th>
+            <th style="padding:7px 6px;font-weight:600;cursor:pointer" onclick="dataDOSetSort('customer')">Customer <span id="sort-customer"></span></th>
+            <th style="padding:7px 6px;font-weight:600">Gudang</th>
+            <th style="padding:7px 6px;font-weight:600;text-align:right;cursor:pointer" onclick="dataDOSetSort('qty')">QTY <span id="sort-qty"></span></th>
+            <th style="padding:7px 6px;font-weight:600">Tujuan</th>
+            <th style="padding:7px 6px;font-weight:600;text-align:center">Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="datado-tbody"></tbody>
+      </table>
+    </div>
+    <div class="datado-footer" style="padding:8px 12px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:11px;color:#64748b" id="datado-footer">
+      Showing 0 of 0 DO
+    </div>
+  </div>
+
   <div class="tab-pane" id="tab-map">
     <div class="map-filter-bar">
       <span style="font-size:11px;color:var(--dim)">Gudang:</span>
@@ -9390,6 +9446,506 @@ function switchTab(tab,btn){
   if(tab==='vendor'){renderVendorTab();}
   if(tab==='luarkota'){renderLuarKotaPending();}
   if(tab==='settlement'){renderSettlement();}
+  if(tab==='datado'){renderDataDO();}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v4.51: TAB DATA DO — Mirror format GST ERP
+// Tujuan: dispatcher familiar dengan UI sebelumnya, manual assign driver,
+// search/filter/sort/bulk action, real-time status sync.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const DATADO_STATUS = {
+  pending:  { label:'○ Belum Dimuat',     bg:'#f1f5f9', fg:'#475569', order:0 },
+  assigned: { label:'● Diassign',         bg:'#dcfce7', fg:'#166534', order:1 },
+  loading:  { label:'● Sedang Muat',      bg:'#fef3c7', fg:'#854f0b', order:2 },
+  enroute:  { label:'● Dalam Pengiriman', bg:'#dbeafe', fg:'#0c447c', order:3 },
+  done:     { label:'● Selesai',          bg:'#ccfbf1', fg:'#085041', order:4 },
+  skipped:  { label:'● Skip / Cancel',    bg:'#fee2e2', fg:'#991b1b', order:5 },
+};
+
+let dataDOSelected = new Set();
+let dataDOSortCol = 'status';
+let dataDOSortDir = 'asc';
+
+// Build flat array of DO from semua sources (routes + pending + skip + defer + vendor)
+// 1 row = 1 DO unique (group line items, sum QTY, collapse barang names)
+function buildDataDORows(){
+  const map = new Map(); // doc_no → { ... aggregated ... }
+
+  // Helper: aggregate items per DO
+  function _add(items, opts){
+    items.forEach(it => {
+      const dn = it.doc_no;
+      if(!dn) return;
+      if(!map.has(dn)){
+        map.set(dn, {
+          doc_no: dn,
+          do_date: it.do_date || doDate || '',
+          customer: it.customer || '',
+          gudang: (it.wh_cons||it.warehouse||'').replace('GUDANG ',''),
+          tujuan: (it.kirim||'').slice(0,80),
+          items: [],
+          qty: 0,
+          status: 'pending',
+          plat: opts.plat || null,
+          driver: opts.driver || null,
+          route_id: opts.route_id || null,
+          source: opts.source,
+          is_locked: false,
+          rt: it,
+        });
+      }
+      const row = map.get(dn);
+      row.items.push(it);
+      row.qty += (parseFloat(it.qty)||0);
+    });
+  }
+
+  // 1. From assigned routes (driver picked) + check muat/jalan/selesai status
+  if(typeof routes !== 'undefined'){
+    routes.forEach(r => {
+      const v = r.vehicle || {};
+      _add(r.items||[], { plat:v.plat, driver:v.driver, route_id:r.id, source:'route' });
+    });
+  }
+
+  // 2. From vendor items (DO Unplot — no driver yet)
+  if(typeof vendorItems !== 'undefined'){
+    _add(vendorItems, { source:'vendor' });
+  }
+
+  // 3. Transfer items
+  if(typeof transferItems !== 'undefined'){
+    _add(transferItems, { source:'transfer' });
+  }
+
+  // 4. Determine status per DO based on dispatchLog + RT data
+  const rows = Array.from(map.values());
+  rows.forEach(row => {
+    // Check dispatchLog for skip/cancel
+    const dl = (typeof dispatchLog !== 'undefined' ? dispatchLog : []).filter(l => l.doc_no === row.doc_no);
+    const lastAction = dl.length ? dl[dl.length-1].action : '';
+
+    if(lastAction === 'skip' || lastAction === 'cancel'){
+      row.status = 'skipped';
+      row.is_locked = true;
+      row.last_action = lastAction;
+      return;
+    }
+
+    // Check RT status (jam_muat/jam_jalan/jam_selesai dari driver app sync)
+    const rt = (typeof rtTrack !== 'undefined' && rtTrack && rtTrack[row.doc_no]) || {};
+    if(rt.jam_selesai){
+      row.status = 'done';
+      row.is_locked = true;
+      row.jam_selesai = rt.jam_selesai;
+    } else if(rt.jam_jalan){
+      row.status = 'enroute';
+      row.jam_jalan = rt.jam_jalan;
+    } else if(rt.jam_muat){
+      row.status = 'loading';
+      row.jam_muat = rt.jam_muat;
+    } else if(row.plat){
+      row.status = 'assigned';
+    } else {
+      row.status = 'pending';
+    }
+  });
+
+  return rows;
+}
+
+function _dataDOMatchesFilter(row){
+  const search = (document.getElementById('datado-search')?.value || '').trim().toLowerCase();
+  const filterDriver = document.getElementById('datado-filter-driver')?.value || '';
+  const filterStatus = document.getElementById('datado-filter-status')?.value || '';
+  const hideDone = document.getElementById('datado-hide-done')?.checked;
+
+  if(search){
+    const haystack = [row.doc_no, row.customer, row.tujuan, row.plat||'', row.driver||''].join(' ').toLowerCase();
+    if(!haystack.includes(search)) return false;
+  }
+  if(filterDriver && row.plat !== filterDriver) return false;
+  if(filterStatus && row.status !== filterStatus) return false;
+  if(hideDone && row.status === 'done') return false;
+  return true;
+}
+
+function _dataDOSort(rows){
+  const col = dataDOSortCol;
+  const dir = dataDOSortDir === 'asc' ? 1 : -1;
+  rows.sort((a,b) => {
+    let av, bv;
+    if(col === 'status'){
+      av = DATADO_STATUS[a.status]?.order ?? 99;
+      bv = DATADO_STATUS[b.status]?.order ?? 99;
+    } else if(col === 'qty'){
+      av = a.qty; bv = b.qty;
+    } else {
+      av = String(a[col]||'').toLowerCase();
+      bv = String(b[col]||'').toLowerCase();
+    }
+    if(av < bv) return -1*dir;
+    if(av > bv) return 1*dir;
+    return 0;
+  });
+  return rows;
+}
+
+function renderDataDO(){
+  const allRows = buildDataDORows();
+  const filtered = allRows.filter(_dataDOMatchesFilter);
+  const sorted = _dataDOSort(filtered);
+
+  // Update driver filter dropdown
+  const driverSel = document.getElementById('datado-filter-driver');
+  if(driverSel){
+    const cur = driverSel.value;
+    const allDrivers = [...new Set(allRows.filter(r=>r.plat).map(r=>r.plat))].sort();
+    driverSel.innerHTML = '<option value="">Driver: Semua</option>' +
+      allDrivers.map(p => `<option value="${escapeHtml(p)}"${cur===p?' selected':''}>${escapeHtml(p)}</option>`).join('');
+  }
+
+  // Update sort indicators
+  ['doc_no','do_date','status','customer','qty'].forEach(c => {
+    const el = document.getElementById('sort-'+c);
+    if(el) el.textContent = (c === dataDOSortCol) ? (dataDOSortDir==='asc'?'▴':'▾') : '';
+  });
+
+  // Render table body
+  const tbody = document.getElementById('datado-tbody');
+  if(!tbody) return;
+
+  if(sorted.length === 0){
+    tbody.innerHTML = `<tr><td colspan="11" style="padding:30px;text-align:center;color:#94a3b8;font-style:italic">Tidak ada DO yang sesuai filter.</td></tr>`;
+    document.getElementById('datado-footer').textContent = `0 dari ${allRows.length} DO`;
+    return;
+  }
+
+  // Build vehicle options for dropdown (semua plat dari routes + 'pending' option)
+  const allVeh = (typeof vehicles !== 'undefined' && vehicles) ? vehicles
+    : (typeof getAllVehicles === 'function' ? getAllVehicles() : []);
+
+  tbody.innerHTML = sorted.map((row, idx) => {
+    const st = DATADO_STATUS[row.status] || DATADO_STATUS.pending;
+    const isSel = dataDOSelected.has(row.doc_no);
+    const rowBg = isSel ? '#fef3c7' : (idx%2 ? '#fafafa' : '#fff');
+
+    // Driver dropdown — only enabled kalau status pending/assigned (bukan loading/enroute/done/skipped)
+    const canEdit = (row.status === 'pending' || row.status === 'assigned');
+    let driverCell;
+    if(row.status === 'skipped'){
+      driverCell = `<span style="font-size:10px;color:#94a3b8;font-style:italic">— di-${row.last_action} dispatcher</span>`;
+    } else if(row.is_locked){
+      driverCell = `<span style="font-size:10px">${escapeHtml(row.plat||'—')}<br><span style="color:#94a3b8;font-size:9px">${escapeHtml(row.driver||'')}</span></span>`;
+    } else {
+      const opts = ['<option value="">— Pilih driver —</option>']
+        .concat(allVeh.map(v => `<option value="${escapeHtml(v.plat)}"${row.plat===v.plat?' selected':''}>${escapeHtml(v.plat)} / ${escapeHtml(v.driver||'')}</option>`));
+      driverCell = `<select onchange="dataDOInlineAssign('${escapeHtml(row.doc_no)}',this.value)" style="font-size:10px;padding:3px 4px;border:1px solid #cbd5e1;border-radius:3px;background:#fff;width:100%">${opts.join('')}</select>`;
+    }
+
+    // Action buttons
+    let aksi;
+    if(row.status === 'done'){
+      aksi = `<span style="font-size:9px;color:#94a3b8">— locked</span>`;
+    } else if(row.status === 'skipped'){
+      aksi = `<button onclick="dataDOUndoSkip('${escapeHtml(row.doc_no)}')" style="font-size:10px;padding:2px 8px;background:#e5e7eb;color:#374151;border:1px solid #9ca3af;border-radius:3px;cursor:pointer">↩ Undo</button>`;
+    } else if(dispatchMode){
+      aksi = `
+        <button onclick="dataDOAction('${escapeHtml(row.doc_no)}','skip',event)" style="font-size:10px;padding:2px 5px;background:#fef3c7;color:#854f0b;border:1px solid #f59e0b;border-radius:3px;cursor:pointer" title="Skip">⏭</button>
+        <button onclick="dataDOAction('${escapeHtml(row.doc_no)}','cancel',event)" style="font-size:10px;padding:2px 5px;background:#fee2e2;color:#991b1b;border:1px solid #ef4444;border-radius:3px;cursor:pointer;margin-left:2px" title="Cancel">×</button>
+        <button onclick="dataDOAction('${escapeHtml(row.doc_no)}','pindah',event)" style="font-size:10px;padding:2px 5px;background:#ede9fe;color:#5b21b6;border:1px solid #8b5cf6;border-radius:3px;cursor:pointer;margin-left:2px" title="Pindah">→</button>`;
+    } else {
+      aksi = `<span style="font-size:9px;color:#94a3b8;font-style:italic">aktifkan dispatch mode</span>`;
+    }
+
+    const checkbox = canEdit
+      ? `<input type="checkbox" ${isSel?'checked':''} onchange="dataDOToggleSelect('${escapeHtml(row.doc_no)}',this.checked)">`
+      : `<span style="color:#cbd5e1">—</span>`;
+
+    return `<tr style="background:${rowBg};border-bottom:1px solid #f1f5f9">
+      <td style="padding:6px 6px;text-align:center">${checkbox}</td>
+      <td style="padding:6px 6px;font-family:ui-monospace,monospace;color:#94a3b8">${idx+1}</td>
+      <td style="padding:6px 6px;font-family:ui-monospace,monospace;font-weight:600">${escapeHtml(row.doc_no)}</td>
+      <td style="padding:6px 6px;font-size:10px;color:#64748b">${escapeHtml(fmtDateDisplay(row.do_date)||'—')}</td>
+      <td style="padding:6px 6px">${driverCell}</td>
+      <td style="padding:6px 6px"><span style="background:${st.bg};color:${st.fg};font-size:10px;padding:2px 6px;border-radius:3px;font-weight:600;white-space:nowrap">${st.label}</span></td>
+      <td style="padding:6px 6px;font-size:10px;font-weight:600">${escapeHtml((row.customer||'').slice(0,30))}</td>
+      <td style="padding:6px 6px;font-size:10px;color:#64748b">${escapeHtml(row.gudang||'—')}</td>
+      <td style="padding:6px 6px;text-align:right;font-family:ui-monospace,monospace;font-weight:600">${row.qty}</td>
+      <td style="padding:6px 6px;font-size:10px;color:#64748b">${escapeHtml((row.tujuan||'').slice(0,40))}</td>
+      <td style="padding:6px 6px;text-align:center">${aksi}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('datado-footer').textContent = `Showing ${sorted.length} of ${allRows.length} DO`;
+  document.getElementById('datado-info').textContent = `${allRows.length} DO`;
+  _dataDOUpdateBulkBtn();
+}
+
+function dataDOSetSort(col){
+  if(dataDOSortCol === col){
+    dataDOSortDir = (dataDOSortDir === 'asc' ? 'desc' : 'asc');
+  } else {
+    dataDOSortCol = col;
+    dataDOSortDir = 'asc';
+  }
+  renderDataDO();
+}
+
+function dataDOSelectAll(checked){
+  const allRows = buildDataDORows().filter(_dataDOMatchesFilter);
+  const editable = allRows.filter(r => r.status === 'pending' || r.status === 'assigned');
+  if(checked){
+    editable.forEach(r => dataDOSelected.add(r.doc_no));
+  } else {
+    editable.forEach(r => dataDOSelected.delete(r.doc_no));
+  }
+  renderDataDO();
+}
+
+function dataDOToggleSelect(docNo, checked){
+  if(checked) dataDOSelected.add(docNo);
+  else dataDOSelected.delete(docNo);
+  _dataDOUpdateBulkBtn();
+  // Update row bg without full re-render
+  renderDataDO();
+}
+
+function _dataDOUpdateBulkBtn(){
+  const btn = document.getElementById('datado-bulk-assign');
+  const cnt = document.getElementById('datado-selected-count');
+  if(!btn || !cnt) return;
+  const n = dataDOSelected.size;
+  cnt.textContent = n;
+  if(n > 0){
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  } else {
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+  }
+}
+
+// Bulk: open modal with driver list grouped by tersedia/penuh
+function dataDOBulkAssign(){
+  if(dataDOSelected.size === 0){ alert('Pilih DO dulu (centang checkbox).'); return; }
+  _dataDOOpenAssignModal(Array.from(dataDOSelected));
+}
+
+// Inline: dropdown change per row
+function dataDOInlineAssign(docNo, plat){
+  if(!plat) return;
+  const allRows = buildDataDORows();
+  const row = allRows.find(r => r.doc_no === docNo);
+  if(!row){ renderDataDO(); return; }
+  // Kalau DO sudah di route auto, warning override
+  if(row.plat && row.plat !== plat && row.route_id){
+    const rt = routes.find(r => r.id === row.route_id);
+    const oldDriver = rt ? `${rt.vehicle.plat} / ${rt.vehicle.driver}` : row.plat;
+    const newRt = routes.find(r => r.vehicle.plat === plat);
+    const newDriver = newRt ? `${plat} / ${newRt.vehicle.driver}` : plat;
+    if(!confirm(`⚠ Override Auto-Route?\n\nDO ${docNo} saat ini di route auto:\n   ${oldDriver}\n\nAkan dipindah ke (manual):\n   ${newDriver}\n\nDO akan dihapus dari route lama, ditambah ke driver baru.\nAksi ini akan masuk log.\n\nLanjutkan?`)){
+      renderDataDO();
+      return;
+    }
+  }
+  _dataDOExecuteAssign([docNo], plat);
+}
+
+// Open modal grouping driver tersedia + penuh
+function _dataDOOpenAssignModal(docNos){
+  const allVeh = (typeof vehicles !== 'undefined' && vehicles) ? vehicles : (typeof getAllVehicles === 'function' ? getAllVehicles() : []);
+  // Hitung load per driver dari routes
+  const loadByPlat = {};
+  if(typeof routes !== 'undefined'){
+    routes.forEach(r => {
+      const p = r.vehicle?.plat;
+      if(!p) return;
+      if(!loadByPlat[p]) loadByPlat[p] = { kg:0, m3:0, max_kg:0 };
+      loadByPlat[p].kg = r.total_wt||0;
+      loadByPlat[p].m3 = r.total_vol||0;
+      loadByPlat[p].max_kg = r.vehicle?.kapasitas_kg || 5000;
+    });
+  }
+
+  // Hitung total selected
+  const allRows = buildDataDORows();
+  const selRows = allRows.filter(r => docNos.includes(r.doc_no));
+  const totalQty = selRows.reduce((a,r)=>a+r.qty,0);
+
+  // Group: tersedia (util<100%) vs penuh (util>=95%)
+  const driverGroups = { tersedia: [], penuh: [] };
+  allVeh.forEach(v => {
+    const load = loadByPlat[v.plat] || { kg:0, m3:0, max_kg:v.kapasitas_kg||5000 };
+    const util = load.max_kg ? Math.round((load.kg/load.max_kg)*100) : 0;
+    const item = { ...v, util, kg:load.kg, max_kg:load.max_kg };
+    if(util >= 95) driverGroups.penuh.push(item);
+    else driverGroups.tersedia.push(item);
+  });
+  driverGroups.tersedia.sort((a,b)=>a.util-b.util);
+  driverGroups.penuh.sort((a,b)=>b.util-a.util);
+
+  const renderRow = (v, isFull) => `<label style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid #f1f5f9;cursor:pointer;${isFull?'opacity:0.85':''}">
+    <input type="radio" name="datado-assign-driver" value="${escapeHtml(v.plat)}">
+    <span style="font-family:ui-monospace,monospace;font-size:11px;font-weight:600;width:80px">${escapeHtml(v.plat)}</span>
+    <span style="font-size:11px;flex:1">${escapeHtml(v.driver||'-')}</span>
+    <span style="font-size:9px;background:#fef3c7;color:#854f0b;padding:1px 5px;border-radius:3px">${escapeHtml(v.tipe||'')}</span>
+    <span style="font-size:10px;color:${isFull?'#991b1b':'#64748b'};font-family:ui-monospace,monospace;font-weight:${isFull?'600':'400'};min-width:140px;text-align:right">${v.kg}/${v.max_kg}kg · ${v.util}%${isFull?' OVERLOAD':''}</span>
+  </label>`;
+
+  const html = `
+    <div id="datado-modal-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto" onclick="if(event.target===this)dataDOCloseModal()">
+      <div style="background:#fff;border-radius:8px;width:100%;max-width:600px;overflow:hidden">
+        <div style="padding:14px 18px;border-bottom:1px solid #e5e7eb">
+          <div style="font-size:14px;font-weight:600">Assign Driver</div>
+          <div style="font-size:11px;color:#64748b;margin-top:2px">${docNos.length} DO selected · Total ${totalQty} DUS</div>
+        </div>
+        <div style="padding:12px 18px;border-bottom:1px solid #e5e7eb">
+          <input id="datado-modal-search" oninput="_dataDOFilterModalDrivers(this.value)" placeholder="Cari driver / plat..." style="font-size:11px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;width:100%;box-sizing:border-box">
+        </div>
+        <div style="padding:12px 18px;max-height:380px;overflow-y:auto" id="datado-modal-list">
+          ${driverGroups.tersedia.length ? `
+            <div style="font-size:11px;color:#166534;font-weight:600;margin-bottom:8px;padding:4px 8px;background:#dcfce7;border-radius:3px">● Driver Tersedia (kapasitas masih ada) · ${driverGroups.tersedia.length}</div>
+            <div class="datado-driver-group">${driverGroups.tersedia.map(v=>renderRow(v,false)).join('')}</div>
+          `:''}
+          ${driverGroups.penuh.length ? `
+            <div style="height:14px"></div>
+            <div style="font-size:11px;color:#991b1b;font-weight:600;margin-bottom:8px;padding:4px 8px;background:#fee2e2;border-radius:3px">⚠ Driver Penuh / Overload · ${driverGroups.penuh.length} (klik dengan hati-hati)</div>
+            <div class="datado-driver-group">${driverGroups.penuh.map(v=>renderRow(v,true)).join('')}</div>
+          `:''}
+        </div>
+        <div style="padding:12px 18px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:8px;background:#f8fafc">
+          <button onclick="dataDOCloseModal()" style="font-size:11px;padding:7px 14px;background:#fff;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer">Batal</button>
+          <button onclick="dataDOConfirmAssign()" style="font-size:11px;padding:7px 14px;background:#2563eb;color:#fff;border:0;border-radius:4px;font-weight:600;cursor:pointer">Confirm Assign</button>
+        </div>
+      </div>
+    </div>`;
+
+  // Append
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  document.body.appendChild(div.firstElementChild);
+
+  window._dataDOModalDocNos = docNos;
+}
+
+function dataDOCloseModal(){
+  const m = document.getElementById('datado-modal-overlay');
+  if(m) m.remove();
+  window._dataDOModalDocNos = null;
+}
+
+function _dataDOFilterModalDrivers(q){
+  q = (q||'').toLowerCase();
+  document.querySelectorAll('#datado-modal-list label').forEach(lbl => {
+    lbl.style.display = lbl.textContent.toLowerCase().includes(q) ? 'flex' : 'none';
+  });
+}
+
+function dataDOConfirmAssign(){
+  const sel = document.querySelector('input[name="datado-assign-driver"]:checked');
+  if(!sel){ alert('Pilih driver dulu.'); return; }
+  const plat = sel.value;
+  const docNos = window._dataDOModalDocNos || [];
+  dataDOCloseModal();
+  // Cek kalau ada DO yang sudah di auto-route → warning sekali untuk semua
+  const allRows = buildDataDORows();
+  const willOverride = docNos.filter(dn => {
+    const r = allRows.find(x => x.doc_no === dn);
+    return r && r.plat && r.plat !== plat && r.route_id;
+  });
+  if(willOverride.length > 0){
+    if(!confirm(`⚠ ${willOverride.length} dari ${docNos.length} DO sudah di auto-route. Override semua ke ${plat}?\n\nDO yang akan override:\n${willOverride.slice(0,5).join(', ')}${willOverride.length>5?` (+${willOverride.length-5} lainnya)`:''}`)){
+      return;
+    }
+  }
+  _dataDOExecuteAssign(docNos, plat);
+}
+
+function _dataDOExecuteAssign(docNos, plat){
+  const veh = (typeof vehicles !== 'undefined' && vehicles ? vehicles : (typeof getAllVehicles === 'function' ? getAllVehicles() : [])).find(v=>v.plat===plat);
+  if(!veh){ alert('Driver tidak ditemukan.'); return; }
+  let moved = 0;
+  docNos.forEach(docNo => {
+    // Find DO across all sources
+    const oldRoute = routes.find(r => (r.items||[]).some(i => i.doc_no === docNo));
+    let do_items = [];
+    if(oldRoute){
+      do_items = oldRoute.items.filter(i => i.doc_no === docNo);
+      oldRoute.items = oldRoute.items.filter(i => i.doc_no !== docNo);
+      // Recalc route load
+      oldRoute.total_wt = oldRoute.items.reduce((a,i)=>a+(i.weight_kg||0),0);
+      oldRoute.total_vol = oldRoute.items.reduce((a,i)=>a+(i.volume||0),0);
+    } else {
+      // Coba dari vendorItems
+      do_items = (typeof vendorItems !== 'undefined' ? vendorItems : []).filter(i => i.doc_no === docNo);
+      if(typeof vendorItems !== 'undefined'){
+        for(let i = vendorItems.length-1; i >= 0; i--){
+          if(vendorItems[i].doc_no === docNo) vendorItems.splice(i, 1);
+        }
+      }
+    }
+    if(!do_items.length) return;
+
+    // Find or create target route
+    let newRoute = routes.find(r => r.vehicle?.plat === plat);
+    if(!newRoute){
+      // Create new route for this driver
+      newRoute = {
+        id: 'r-manual-' + plat + '-' + Date.now(),
+        vehicle: veh,
+        items: [],
+        wh: do_items[0].wh_cons || do_items[0].warehouse || 'GUDANG DOYONG',
+        total_wt: 0,
+        total_vol: 0,
+        is_manual: true,
+      };
+      routes.push(newRoute);
+    }
+    newRoute.items.push(...do_items);
+    newRoute.total_wt = newRoute.items.reduce((a,i)=>a+(i.weight_kg||0),0);
+    newRoute.total_vol = newRoute.items.reduce((a,i)=>a+(i.volume||0),0);
+
+    dispatchLog.push({
+      route_id: newRoute.id, doc_no: docNo, action: 'assign_manual',
+      alasan: `Manual assign via tab Data DO ${oldRoute?'(override auto)':''}`,
+      source: 'datado',
+      waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
+      plat: plat, driver: veh.driver||''
+    });
+    moved++;
+  });
+
+  if(moved){
+    dataDOSelected.clear();
+    if(typeof setRoutesDirty === 'function') setRoutesDirty(true);
+    if(typeof showApp === 'function') showApp();
+    if(typeof renderKPI === 'function') renderKPI();
+    renderDataDO();
+    alert(`✓ ${moved} DO berhasil di-assign ke ${plat} / ${veh.driver||''}.`);
+  }
+}
+
+// Skip/Cancel/Pindah dari tab Data DO — delegate ke handler existing
+function dataDOAction(docNo, action, evt){
+  evt && evt.stopPropagation();
+  // Find route_id for this docNo
+  const r = routes.find(rt => (rt.items||[]).some(i => i.doc_no === docNo));
+  const route_id = r ? r.id : null;
+  if(typeof dispatchAction === 'function'){
+    dispatchAction(route_id, docNo, action, evt);
+    setTimeout(renderDataDO, 100);
+  }
+}
+
+function dataDOUndoSkip(docNo){
+  if(typeof dispatchUndo === 'function'){
+    const r = routes.find(rt => (rt.items||[]).some(i => i.doc_no === docNo));
+    dispatchUndo(r?r.id:null, docNo);
+    setTimeout(renderDataDO, 100);
+  }
 }
 
 // ═══════════════════════════════════════════════════════
