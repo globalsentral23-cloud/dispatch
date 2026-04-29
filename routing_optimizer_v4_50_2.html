@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.50.1</title>
+<title>Routing Optimizer v4.50.2</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.50.1</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.50.2</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.50.1</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.50.2</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -654,7 +654,7 @@ body.dispatch-active .dispatch-bar{display:flex}
           <div style="font-size:13px;font-weight:700;color:#475569">📅 Tanggal Kirim Berbeda dari SAP — <span id="cnt-defer">0</span> item</div>
           <span style="font-size:10px;color:var(--muted)">Pindah ke tanggal X yang sudah di-set di SAP</span>
         </div>
-        <div class="tbl-wrap"><table class="info-tbl"><thead><tr><th>DO No</th><th>Gudang</th><th>Customer</th><th>Tujuan</th><th>QTY</th><th>Tgl Kirim</th></tr></thead><tbody id="tbody-defer"></tbody></table></div>
+        <div class="tbl-wrap"><table class="info-tbl"><thead><tr><th>DO No</th><th>Gudang</th><th>Customer</th><th>Tujuan</th><th>QTY</th><th>Tgl Kirim</th><th>Aksi</th></tr></thead><tbody id="tbody-defer"></tbody></table></div>
       </div>
 
       <!-- Summary cards (auto + manual defer dari capacity) -->
@@ -2701,36 +2701,69 @@ function getGudangAddress(gudangName){
   return GUD_ADDR[gudangName]||GUD_ADDR['GUDANG DOYONG'];
 }
 
+// v4.50.2: helper format display tanggal — convert dd/mm/yy → dd/mm/yyyy (HG standard)
+function fmtDateDisplay(dateStr){
+  if(!dateStr) return '—';
+  const norm = _normalizeDateStr(dateStr);
+  if(!norm) return String(dateStr);
+  const [d,mo,y] = norm.split('/');
+  return `${d}/${mo}/20${y}`;
+}
+
 function extractDeferDate(ct,today){
+  // v4.50.2 FIX: handle year format 2-digit (26) atau 4-digit (2026)
+  // Plus alternative separator (- selain /), no-zero-pad (29/4/26)
   const pats=[
-    /KIRIM\s+(?:SENIN|SELASA|RABU|KAMIS|JUMAT|SABTU)\s+(?:TGL\s+)?(\d{2}\/\d{2}\/\d{2,4})/,
-    /KIRIM\s+TGL\s*(\d{2}\/\d{2}\/\d{2,4})/,
+    /KIRIM\s+(?:SENIN|SELASA|RABU|KAMIS|JUMAT|SABTU)\s+(?:TGL\s+)?(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/,
+    /KIRIM\s+TGL\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/,
+    /TGL\s+KIRIM\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/,
   ];
   for(const p of pats){
     const m=ct.match(p);
     if(m){
-      const todayParts=today.split('.');
-      const todayFmt=todayParts[0]+'/'+todayParts[1]+'/'+(todayParts[2]||'26');
-      if(m[1]!==todayFmt) return m[1];
+      // v4.50.2: normalize ke format dd/mm/yy (2-digit year, slash, zero-pad)
+      const normalized = _normalizeDateStr(m[1]);
+      if(!normalized) continue;
+      // Compare dengan today (juga normalized)
+      const todayNorm = _normalizeDateStr(today.replace(/\./g, '/'));
+      if(normalized !== todayNorm) return normalized;
     }
   }
   return null;
 }
 
+// v4.50.2: helper normalize date string ke format dd/mm/yy (2-digit year, slash separator)
+function _normalizeDateStr(s){
+  if(!s) return null;
+  const m = String(s).match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if(!m) return null;
+  let [, d, mo, y] = m;
+  d = d.padStart(2, '0');
+  mo = mo.padStart(2, '0');
+  // 4-digit year → 2-digit (2026 → 26)
+  if(y.length === 4) y = y.slice(-2);
+  return `${d}/${mo}/${y}`;
+}
+
 function isOverdue(dateStr,today){
   try{
-    const[d,mo,y]=dateStr.split('/').map(Number);
-    const[td,tm,ty]=today.split('.').map(Number);
+    // v4.50.2: normalize input dulu (handle 4-digit year, dash, no-zero-pad)
+    const dn = _normalizeDateStr(dateStr);
+    const tn = _normalizeDateStr(today.replace(/\./g, '/'));
+    if(!dn || !tn) return false;
+    const[d,mo,y]=dn.split('/').map(Number);
+    const[td,tm,ty]=tn.split('/').map(Number);
     return new Date(2000+y,mo-1,d)<new Date(2000+ty,tm-1,td);
   }catch(e){return false;}
 }
 
-// v4.50.1: helper untuk cek defer date == today (avoid strict less-than miss)
+// v4.50.1 + v4.50.2: helper untuk cek defer date == today (avoid strict less-than miss)
 function isSameDay(dateStr,today){
   try{
-    const[d,mo,y]=dateStr.split('/').map(Number);
-    const[td,tm,ty]=today.split('.').map(Number);
-    return d===td && mo===tm && y===ty;
+    const dn = _normalizeDateStr(dateStr);
+    const tn = _normalizeDateStr(today.replace(/\./g, '/'));
+    if(!dn || !tn) return false;
+    return dn === tn;
   }catch(e){return false;}
 }
 
@@ -5597,15 +5630,85 @@ function renderSkipped(){
 
 function renderDeferred(){
   document.getElementById('cnt-defer').textContent=deferred.length;
-  document.getElementById('tbody-defer').innerHTML=deferred.map(r=>`<tr>
-    <td style="font-family:var(--mono);font-size:10px">${r.doc_no}</td>
-    <td>${r.wh_cons}</td>
-    <td>${r.customer.slice(0,30)}</td>
-    <td style="color:var(--muted);max-width:200px">${String(r.kirim||"").slice(0,60)}</td>
-    <td style="font-family:var(--mono);font-weight:600">${r.qty}</td>
-    <td style="font-family:var(--mono);font-size:10px;color:var(--amber)">${r.deferred_date||'—'}</td>
-  </tr>`).join('');
+
+  // v4.50.2: Untuk setiap defer row, cek apakah tanggal kirim = today
+  // (kapasitas habis case — Q2). Kalau iya → warning visual + tombol pindah.
+  const todayN = _normalizeDateStr(TODAY.replace(/\./g, '/'));
+
+  document.getElementById('tbody-defer').innerHTML=deferred.map((r,idx)=>{
+    const deferN = _normalizeDateStr(r.deferred_date||'');
+    const isToday = (deferN && todayN && deferN === todayN);
+    const rowStyle = isToday ? 'background:#fef3c7' : '';
+    const tglDisplay = fmtDateDisplay(r.deferred_date);
+    const tglStyle = isToday
+      ? 'font-family:var(--mono);font-size:10px;color:#dc2626;font-weight:700'
+      : 'font-family:var(--mono);font-size:10px;color:var(--amber)';
+    const tglLabel = isToday
+      ? `${tglDisplay} <span style="background:#fee2e2;color:#dc2626;font-size:9px;padding:1px 5px;border-radius:3px;margin-left:4px;font-weight:700">⚠ HARI INI</span>`
+      : tglDisplay;
+    const aksiBtn = isToday && dispatchMode
+      ? `<button onclick="moveDeferToPending('${r.doc_no}',${idx},event)"
+          class="daction-btn pindah" style="font-size:10px;padding:3px 8px"
+          title="Kapasitas internal habis — pindah ke Pending Besok">→ Ke Pending</button>`
+      : (isToday ? `<span style="font-size:9px;color:#94a3b8;font-style:italic">(dispatch mode)</span>` : '—');
+    return `<tr style="${rowStyle}">
+      <td style="font-family:var(--mono);font-size:10px">${escapeHtml(r.doc_no)}</td>
+      <td>${escapeHtml(r.wh_cons||'')}</td>
+      <td>${escapeHtml((r.customer||'').slice(0,30))}</td>
+      <td style="color:var(--muted);max-width:200px">${escapeHtml(String(r.kirim||"").slice(0,60))}</td>
+      <td style="font-family:var(--mono);font-weight:600">${r.qty||0}</td>
+      <td style="${tglStyle}">${tglLabel}</td>
+      <td>${aksiBtn}</td>
+    </tr>`;
+  }).join('');
   _updatePendingTabCount();
+}
+
+// v4.50.2: Pindahkan DO defer (yang tanggal=today, kapasitas habis) ke luarKotaPending
+// Q2 confirm HG: Manual + warning visual — flag merah, kasih tombol "Pindah ke Pending Besok"
+async function moveDeferToPending(docNo, deferIdx, evt){
+  evt && evt.stopPropagation();
+  if(!dispatchMode){
+    alert('Aksi ini hanya bisa dipakai saat Dispatch Mode AKTIF.');
+    return;
+  }
+  const item = deferred[deferIdx];
+  if(!item || item.doc_no !== docNo){
+    // Index drift — re-find by doc_no
+    const realIdx = deferred.findIndex(r => r.doc_no === docNo);
+    if(realIdx < 0){ alert(`DO ${docNo} tidak ditemukan di defer list.`); return; }
+    deferIdx = realIdx;
+  }
+  const it = deferred[deferIdx];
+
+  if(!confirm(`Pindahkan DO ${docNo} (${it.customer}) ke Pending Besok?\n\nDO ini awalnya kirim hari ini, tapi kapasitas internal sudah habis.\nDO akan defer ke besok.`)) return;
+
+  // Remove dari deferred[]
+  deferred.splice(deferIdx, 1);
+
+  // Push ke luarKotaPending (manual defer mode)
+  luarKotaPending.push({
+    ...it,
+    defer_type: 'manual',
+    pending_reason: `Kirim today (${fmtDateDisplay(it.deferred_date)}) — kapasitas internal habis, manual defer`,
+    days_pending: 0,
+    deferred_at: new Date().toISOString(),
+  });
+
+  // Log
+  setRoutesDirty(true);
+  dispatchLog.push({
+    route_id: null, doc_no: docNo, action: 'defer_to_pending',
+    alasan: 'kapasitas internal habis (manual defer dari section Tanggal Kirim Berbeda)',
+    source: 'defer',
+    waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
+    plat: '-', driver: '-'
+  });
+
+  updateDispatchBar();
+  renderDeferred();
+  renderLuarKotaPending();
+  renderKPI && renderKPI();
 }
 
 // v4.47 F: aggregate counter untuk tab "Pending" (gabungan deferred + luar kota + low-util)
@@ -5945,7 +6048,7 @@ function renderVendorGroup(group, wh){
       </div>
       <table class="info-tbl" style="font-size:11px">
         <thead><tr>
-          <th>DO No</th><th>Customer</th><th>Tujuan</th><th>QTY</th><th>Vol</th><th>Kriteria</th><th>Pindah</th>
+          <th>DO No</th><th>Customer</th><th>Tujuan</th><th>QTY</th><th>Size</th><th>UOM</th><th>Vol</th><th>Kriteria</th><th>Pindah</th>
         </tr></thead>
         <tbody>
           ${items.map(r=>{
@@ -5964,6 +6067,8 @@ function renderVendorGroup(group, wh){
               <td style="font-size:10px;font-weight:600">${(r.customer||'').slice(0,22)}</td>
               <td style="color:var(--muted);max-width:140px;font-size:9px">${(r.kirim||'').slice(0,45)}</td>
               <td style="font-family:var(--mono);font-weight:600;font-size:10px">${r.qty||0}</td>
+              <td style="font-family:var(--mono);font-size:9px;color:var(--muted)">${(r.size||'').slice(0,12)}</td>
+              <td style="font-family:var(--mono);font-size:9px;color:var(--muted)">${r.uom||'DUS'}</td>
               <td style="font-family:var(--mono);font-size:9px;color:var(--muted)">${(r.total_vol||0).toFixed(2)}</td>
               <td style="font-size:9px;color:#92400e">${(r.vendor_trigger_reason||r.vendor_reason||'—').slice(0,50)}</td>
               <td>${assignSel}</td>
