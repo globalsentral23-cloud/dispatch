@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.51</title>
+<title>Routing Optimizer v4.51.1</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.51</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.51.1</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.51</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.51.1</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -625,7 +625,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     <div style="overflow-x:auto;background:#fff">
       <table class="datado-tbl" style="width:100%;font-size:11px;border-collapse:collapse;table-layout:fixed">
         <colgroup>
-          <col style="width:34px"><col style="width:30px"><col style="width:90px"><col style="width:60px"><col style="width:130px"><col style="width:88px"><col style="width:140px"><col style="width:80px"><col style="width:48px"><col style="width:200px"><col style="width:120px">
+          <col style="width:34px"><col style="width:30px"><col style="width:90px"><col style="width:60px"><col style="width:130px"><col style="width:88px"><col style="width:140px"><col style="width:80px"><col style="width:48px"><col style="width:80px"><col style="width:170px"><col style="width:120px">
         </colgroup>
         <thead>
           <tr style="background:#f1f5f9;text-align:left;color:#475569;font-size:10px;border-bottom:1px solid #e2e8f0">
@@ -638,6 +638,7 @@ body.dispatch-active .dispatch-bar{display:flex}
             <th style="padding:7px 6px;font-weight:600;cursor:pointer" onclick="dataDOSetSort('customer')">Customer <span id="sort-customer"></span></th>
             <th style="padding:7px 6px;font-weight:600">Gudang</th>
             <th style="padding:7px 6px;font-weight:600;text-align:right;cursor:pointer" onclick="dataDOSetSort('qty')">QTY <span id="sort-qty"></span></th>
+            <th style="padding:7px 6px;font-weight:600">Size</th>
             <th style="padding:7px 6px;font-weight:600">Tujuan</th>
             <th style="padding:7px 6px;font-weight:600;text-align:center">Aksi</th>
           </tr>
@@ -6700,6 +6701,8 @@ function toggleDispatchMode(){
   renderRouting(); // re-render untuk tampil/sembunyikan tombol aksi
   // v4.47.5: re-render Pending tab supaya tombol Emergency follow Dispatch Mode
   if (typeof renderLuarKotaPending === 'function') renderLuarKotaPending();
+  // v4.51.1: re-render Data DO tab supaya dropdown driver + bulk button follow Dispatch Mode
+  if (typeof renderDataDO === 'function' && document.getElementById('tab-datado')?.classList.contains('active')) renderDataDO();
 }
 
 function updateDispatchBar(){
@@ -9520,7 +9523,7 @@ function buildDataDORows(){
     _add(transferItems, { source:'transfer' });
   }
 
-  // 4. Determine status per DO based on dispatchLog + RT data
+  // 4. Determine status per DO based on dispatchLog + RT data + vendor assignment
   const rows = Array.from(map.values());
   rows.forEach(row => {
     // Check dispatchLog for skip/cancel
@@ -9540,17 +9543,24 @@ function buildDataDORows(){
       row.status = 'done';
       row.is_locked = true;
       row.jam_selesai = rt.jam_selesai;
-    } else if(rt.jam_jalan){
-      row.status = 'enroute';
-      row.jam_jalan = rt.jam_jalan;
-    } else if(rt.jam_muat){
-      row.status = 'loading';
-      row.jam_muat = rt.jam_muat;
-    } else if(row.plat){
-      row.status = 'assigned';
-    } else {
-      row.status = 'pending';
+      return;
     }
+    if(rt.jam_jalan){ row.status = 'enroute'; row.jam_jalan = rt.jam_jalan; return; }
+    if(rt.jam_muat){ row.status = 'loading'; row.jam_muat = rt.jam_muat; return; }
+
+    // v4.51.1: Cek vendor assignment dari item flag
+    const firstItem = row.items[0] || {};
+    if(firstItem.vendor_kode && (typeof vendorState !== 'undefined')){
+      const vendor = (vendorState||[]).find(v => v.kode === firstItem.vendor_kode);
+      row.plat = 'VENDOR:' + firstItem.vendor_kode;
+      row.driver = vendor ? vendor.nama : firstItem.vendor_kode;
+      row.status = 'assigned';
+      row.is_vendor = true;
+      return;
+    }
+
+    // Default: assigned kalau punya plat, pending kalau belum
+    row.status = row.plat ? 'assigned' : 'pending';
   });
 
   return rows;
@@ -9618,40 +9628,65 @@ function renderDataDO(){
   if(!tbody) return;
 
   if(sorted.length === 0){
-    tbody.innerHTML = `<tr><td colspan="11" style="padding:30px;text-align:center;color:#94a3b8;font-style:italic">Tidak ada DO yang sesuai filter.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12" style="padding:30px;text-align:center;color:#94a3b8;font-style:italic">Tidak ada DO yang sesuai filter.</td></tr>`;
     document.getElementById('datado-footer').textContent = `0 dari ${allRows.length} DO`;
     return;
   }
 
+  // v4.51.1: dispatch mode guard — semua aksi (dropdown, bulk, skip/cancel/pindah) hanya saat dispatch ON
+  const dispatchOn = (typeof dispatchMode !== 'undefined' && dispatchMode);
+
   // Build vehicle options for dropdown (semua plat dari routes + 'pending' option)
-  const allVeh = (typeof vehicles !== 'undefined' && vehicles) ? vehicles
-    : (typeof getAllVehicles === 'function' ? getAllVehicles() : []);
+  const allVeh = (typeof getAllVehicles === 'function' ? getAllVehicles() : (typeof vehicles !== 'undefined' ? vehicles : []));
+  // v4.51.1: tambah vendor list ke opsi
+  const availableVendors = (typeof vendorState !== 'undefined' && Array.isArray(vendorState))
+    ? vendorState.filter(v => v.available !== false) : [];
 
   tbody.innerHTML = sorted.map((row, idx) => {
     const st = DATADO_STATUS[row.status] || DATADO_STATUS.pending;
     const isSel = dataDOSelected.has(row.doc_no);
     const rowBg = isSel ? '#fef3c7' : (idx%2 ? '#fafafa' : '#fff');
 
-    // Driver dropdown — only enabled kalau status pending/assigned (bukan loading/enroute/done/skipped)
+    // v4.51.1: Size column — distinct sizes joined, kalau >2 tampil "first +N"
+    const allSizes = [...new Set((row.items||[]).map(i => String(i.size||'').trim()).filter(Boolean))];
+    const sizeDisplay = allSizes.length === 0 ? '—' :
+                        allSizes.length === 1 ? allSizes[0] :
+                        allSizes.length === 2 ? allSizes.join(', ') :
+                        `${allSizes[0]} <span style="color:#94a3b8;font-size:9px">+${allSizes.length-1}</span>`;
+
+    // Driver dropdown — v4.51.1: tambah vendor optgroup, disable kalau dispatch off
     const canEdit = (row.status === 'pending' || row.status === 'assigned');
     let driverCell;
     if(row.status === 'skipped'){
       driverCell = `<span style="font-size:10px;color:#94a3b8;font-style:italic">— di-${row.last_action} dispatcher</span>`;
     } else if(row.is_locked){
       driverCell = `<span style="font-size:10px">${escapeHtml(row.plat||'—')}<br><span style="color:#94a3b8;font-size:9px">${escapeHtml(row.driver||'')}</span></span>`;
+    } else if(!dispatchOn){
+      // Dispatch mode off — show current assignment as readonly
+      driverCell = row.plat
+        ? `<span style="font-size:10px;color:#64748b">${escapeHtml(row.plat)}<br><span style="color:#94a3b8;font-size:9px">${escapeHtml(row.driver||'')}</span></span>`
+        : `<span style="font-size:10px;color:#94a3b8;font-style:italic">— belum assign</span>`;
     } else {
-      const opts = ['<option value="">— Pilih driver —</option>']
-        .concat(allVeh.map(v => `<option value="${escapeHtml(v.plat)}"${row.plat===v.plat?' selected':''}>${escapeHtml(v.plat)} / ${escapeHtml(v.driver||'')}</option>`));
-      driverCell = `<select onchange="dataDOInlineAssign('${escapeHtml(row.doc_no)}',this.value)" style="font-size:10px;padding:3px 4px;border:1px solid #cbd5e1;border-radius:3px;background:#fff;width:100%">${opts.join('')}</select>`;
+      // Dispatch ON — show editable dropdown with internal + vendor groups
+      const internalOpts = allVeh.map(v => `<option value="${escapeHtml(v.plat)}"${row.plat===v.plat?' selected':''}>${escapeHtml(v.plat)} / ${escapeHtml(v.driver||'')}</option>`).join('');
+      const vendorOpts = availableVendors.map(v => `<option value="VENDOR:${escapeHtml(v.kode)}"${row.plat==='VENDOR:'+v.kode?' selected':''}>🚛 ${escapeHtml(v.nama)} (${escapeHtml(v.tipe||'')})</option>`).join('');
+
+      driverCell = `<select onchange="dataDOInlineAssign('${escapeHtml(row.doc_no)}',this.value)" style="font-size:10px;padding:3px 4px;border:1px solid #cbd5e1;border-radius:3px;background:#fff;width:100%">
+        <option value="">— Pilih driver —</option>
+        ${internalOpts ? `<optgroup label="Internal Driver (${allVeh.length})">${internalOpts}</optgroup>` : ''}
+        ${vendorOpts ? `<optgroup label="Vendor / Ekspedisi (${availableVendors.length})">${vendorOpts}</optgroup>` : ''}
+      </select>`;
     }
 
-    // Action buttons
+    // Action buttons — sudah dispatch mode aware
     let aksi;
     if(row.status === 'done'){
       aksi = `<span style="font-size:9px;color:#94a3b8">— locked</span>`;
     } else if(row.status === 'skipped'){
-      aksi = `<button onclick="dataDOUndoSkip('${escapeHtml(row.doc_no)}')" style="font-size:10px;padding:2px 8px;background:#e5e7eb;color:#374151;border:1px solid #9ca3af;border-radius:3px;cursor:pointer">↩ Undo</button>`;
-    } else if(dispatchMode){
+      aksi = dispatchOn
+        ? `<button onclick="dataDOUndoSkip('${escapeHtml(row.doc_no)}')" style="font-size:10px;padding:2px 8px;background:#e5e7eb;color:#374151;border:1px solid #9ca3af;border-radius:3px;cursor:pointer">↩ Undo</button>`
+        : `<span style="font-size:9px;color:#94a3b8;font-style:italic">— skip locked</span>`;
+    } else if(dispatchOn){
       aksi = `
         <button onclick="dataDOAction('${escapeHtml(row.doc_no)}','skip',event)" style="font-size:10px;padding:2px 5px;background:#fef3c7;color:#854f0b;border:1px solid #f59e0b;border-radius:3px;cursor:pointer" title="Skip">⏭</button>
         <button onclick="dataDOAction('${escapeHtml(row.doc_no)}','cancel',event)" style="font-size:10px;padding:2px 5px;background:#fee2e2;color:#991b1b;border:1px solid #ef4444;border-radius:3px;cursor:pointer;margin-left:2px" title="Cancel">×</button>
@@ -9660,7 +9695,8 @@ function renderDataDO(){
       aksi = `<span style="font-size:9px;color:#94a3b8;font-style:italic">aktifkan dispatch mode</span>`;
     }
 
-    const checkbox = canEdit
+    // Checkbox — disabled kalau dispatch off
+    const checkbox = (canEdit && dispatchOn)
       ? `<input type="checkbox" ${isSel?'checked':''} onchange="dataDOToggleSelect('${escapeHtml(row.doc_no)}',this.checked)">`
       : `<span style="color:#cbd5e1">—</span>`;
 
@@ -9674,6 +9710,7 @@ function renderDataDO(){
       <td style="padding:6px 6px;font-size:10px;font-weight:600">${escapeHtml((row.customer||'').slice(0,30))}</td>
       <td style="padding:6px 6px;font-size:10px;color:#64748b">${escapeHtml(row.gudang||'—')}</td>
       <td style="padding:6px 6px;text-align:right;font-family:ui-monospace,monospace;font-weight:600">${row.qty}</td>
+      <td style="padding:6px 6px;font-size:10px;color:#64748b;font-family:ui-monospace,monospace">${sizeDisplay}</td>
       <td style="padding:6px 6px;font-size:10px;color:#64748b">${escapeHtml((row.tujuan||'').slice(0,40))}</td>
       <td style="padding:6px 6px;text-align:center">${aksi}</td>
     </tr>`;
@@ -9719,39 +9756,121 @@ function _dataDOUpdateBulkBtn(){
   if(!btn || !cnt) return;
   const n = dataDOSelected.size;
   cnt.textContent = n;
-  if(n > 0){
+  // v4.51.1: dispatch mode guard
+  const dispatchOn = (typeof dispatchMode !== 'undefined' && dispatchMode);
+  if(n > 0 && dispatchOn){
     btn.disabled = false;
     btn.style.opacity = '1';
+    btn.title = '';
   } else {
     btn.disabled = true;
     btn.style.opacity = '0.5';
+    btn.title = !dispatchOn ? 'Aktifkan dispatch mode dulu' : 'Pilih DO dulu';
   }
 }
 
 // Bulk: open modal with driver list grouped by tersedia/penuh
 function dataDOBulkAssign(){
+  if(!(typeof dispatchMode !== 'undefined' && dispatchMode)){
+    alert('Aktifkan Dispatch Mode dulu untuk assign driver.');
+    return;
+  }
   if(dataDOSelected.size === 0){ alert('Pilih DO dulu (centang checkbox).'); return; }
   _dataDOOpenAssignModal(Array.from(dataDOSelected));
 }
 
-// Inline: dropdown change per row
-function dataDOInlineAssign(docNo, plat){
-  if(!plat) return;
+// Inline: dropdown change per row — v4.51.1 support VENDOR: prefix
+function dataDOInlineAssign(docNo, value){
+  if(!value) return;
+  if(!(typeof dispatchMode !== 'undefined' && dispatchMode)){
+    alert('Aktifkan Dispatch Mode dulu.');
+    renderDataDO();
+    return;
+  }
+
+  // Vendor branch
+  if(String(value).startsWith('VENDOR:')){
+    const vendorKode = value.slice(7);
+    const vendor = (vendorState||[]).find(v => v.kode === vendorKode);
+    if(!vendor){ alert('Vendor tidak ditemukan.'); renderDataDO(); return; }
+    if(!confirm(`Assign DO ${docNo} ke vendor ${vendor.nama} (${vendor.tipe})?`)){ renderDataDO(); return; }
+    _dataDOAssignToVendor([docNo], vendorKode);
+    return;
+  }
+
+  // Internal driver branch
   const allRows = buildDataDORows();
   const row = allRows.find(r => r.doc_no === docNo);
   if(!row){ renderDataDO(); return; }
   // Kalau DO sudah di route auto, warning override
-  if(row.plat && row.plat !== plat && row.route_id){
+  if(row.plat && row.plat !== value && row.route_id){
     const rt = routes.find(r => r.id === row.route_id);
     const oldDriver = rt ? `${rt.vehicle.plat} / ${rt.vehicle.driver}` : row.plat;
-    const newRt = routes.find(r => r.vehicle.plat === plat);
-    const newDriver = newRt ? `${plat} / ${newRt.vehicle.driver}` : plat;
+    const newRt = routes.find(r => r.vehicle.plat === value);
+    const newDriver = newRt ? `${value} / ${newRt.vehicle.driver}` : value;
     if(!confirm(`⚠ Override Auto-Route?\n\nDO ${docNo} saat ini di route auto:\n   ${oldDriver}\n\nAkan dipindah ke (manual):\n   ${newDriver}\n\nDO akan dihapus dari route lama, ditambah ke driver baru.\nAksi ini akan masuk log.\n\nLanjutkan?`)){
       renderDataDO();
       return;
     }
   }
-  _dataDOExecuteAssign([docNo], plat);
+  _dataDOExecuteAssign([docNo], value);
+}
+
+// v4.51.1: assign DO ke vendor — pindah dari internal route ke vendorItems
+function _dataDOAssignToVendor(docNos, vendorKode){
+  const vendor = (vendorState||[]).find(v => v.kode === vendorKode);
+  if(!vendor){ alert('Vendor tidak ditemukan.'); return; }
+  let moved = 0;
+  docNos.forEach(docNo => {
+    // Cari DO di route internal
+    const oldRoute = routes.find(r => (r.items||[]).some(i => i.doc_no === docNo));
+    let do_items = [];
+    if(oldRoute){
+      do_items = oldRoute.items.filter(i => i.doc_no === docNo);
+      oldRoute.items = oldRoute.items.filter(i => i.doc_no !== docNo);
+      oldRoute.total_wt = oldRoute.items.reduce((a,i)=>a+(i.weight_kg||0),0);
+      oldRoute.total_vol = oldRoute.items.reduce((a,i)=>a+(i.volume||0),0);
+    } else {
+      // Sudah di vendorItems → cuma update vendor_kode
+      do_items = (typeof vendorItems !== 'undefined' ? vendorItems : []).filter(i => i.doc_no === docNo);
+    }
+    if(!do_items.length) return;
+
+    // Set vendor flag + reason
+    do_items.forEach(it => {
+      it.vendor_kode = vendorKode;
+      it.vendor_manual = true;
+      it.vendor_reason = `Manual assign ke ${vendor.nama} via Data DO`;
+      it.vendor_trigger_reason = it.vendor_trigger_reason || 'Manual';
+    });
+
+    // Pindahkan dari route ke vendorItems[] (kalau dari route)
+    if(oldRoute && typeof vendorItems !== 'undefined'){
+      do_items.forEach(it => {
+        if(!vendorItems.find(v => v.doc_no===it.doc_no && v.stock_code===it.stock_code)){
+          vendorItems.push(it);
+        }
+      });
+    }
+
+    dispatchLog.push({
+      route_id: null, doc_no: docNo, action: 'assign_vendor',
+      alasan: `Manual assign ke vendor ${vendor.nama}`,
+      source: 'datado',
+      waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
+      plat: 'VENDOR:'+vendorKode, driver: vendor.nama
+    });
+    moved++;
+  });
+
+  if(moved){
+    dataDOSelected.clear();
+    if(typeof setRoutesDirty === 'function') setRoutesDirty(true);
+    if(typeof showApp === 'function') showApp();
+    if(typeof renderKPI === 'function') renderKPI();
+    renderDataDO();
+    alert(`✓ ${moved} DO berhasil di-assign ke vendor ${vendor.nama}.`);
+  }
 }
 
 // Open modal grouping driver tersedia + penuh
@@ -9795,25 +9914,41 @@ function _dataDOOpenAssignModal(docNos){
     <span style="font-size:10px;color:${isFull?'#991b1b':'#64748b'};font-family:ui-monospace,monospace;font-weight:${isFull?'600':'400'};min-width:140px;text-align:right">${v.kg}/${v.max_kg}kg · ${v.util}%${isFull?' OVERLOAD':''}</span>
   </label>`;
 
+  // v4.51.1: Vendor section
+  const availableVendors = (typeof vendorState !== 'undefined' && Array.isArray(vendorState))
+    ? vendorState.filter(v => v.available !== false) : [];
+  const renderVendorRow = (v) => `<label style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid #f1f5f9;cursor:pointer">
+    <input type="radio" name="datado-assign-driver" value="VENDOR:${escapeHtml(v.kode)}">
+    <span style="font-family:ui-monospace,monospace;font-size:11px;font-weight:600;width:80px">🚛 ${escapeHtml(v.kode)}</span>
+    <span style="font-size:11px;flex:1">${escapeHtml(v.nama||'-')}</span>
+    <span style="font-size:9px;background:#ede9fe;color:#5b21b6;padding:1px 5px;border-radius:3px">${escapeHtml(v.tipe||'')}</span>
+    <span style="font-size:10px;color:#64748b;min-width:140px;text-align:right">${escapeHtml(v.coverage||'-')}</span>
+  </label>`;
+
   const html = `
     <div id="datado-modal-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto" onclick="if(event.target===this)dataDOCloseModal()">
       <div style="background:#fff;border-radius:8px;width:100%;max-width:600px;overflow:hidden">
         <div style="padding:14px 18px;border-bottom:1px solid #e5e7eb">
-          <div style="font-size:14px;font-weight:600">Assign Driver</div>
+          <div style="font-size:14px;font-weight:600">Assign Driver / Vendor</div>
           <div style="font-size:11px;color:#64748b;margin-top:2px">${docNos.length} DO selected · Total ${totalQty} DUS</div>
         </div>
         <div style="padding:12px 18px;border-bottom:1px solid #e5e7eb">
-          <input id="datado-modal-search" oninput="_dataDOFilterModalDrivers(this.value)" placeholder="Cari driver / plat..." style="font-size:11px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;width:100%;box-sizing:border-box">
+          <input id="datado-modal-search" oninput="_dataDOFilterModalDrivers(this.value)" placeholder="Cari driver / plat / vendor..." style="font-size:11px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;width:100%;box-sizing:border-box">
         </div>
         <div style="padding:12px 18px;max-height:380px;overflow-y:auto" id="datado-modal-list">
           ${driverGroups.tersedia.length ? `
-            <div style="font-size:11px;color:#166534;font-weight:600;margin-bottom:8px;padding:4px 8px;background:#dcfce7;border-radius:3px">● Driver Tersedia (kapasitas masih ada) · ${driverGroups.tersedia.length}</div>
+            <div style="font-size:11px;color:#166534;font-weight:600;margin-bottom:8px;padding:4px 8px;background:#dcfce7;border-radius:3px">● Internal Driver — Tersedia · ${driverGroups.tersedia.length}</div>
             <div class="datado-driver-group">${driverGroups.tersedia.map(v=>renderRow(v,false)).join('')}</div>
           `:''}
           ${driverGroups.penuh.length ? `
             <div style="height:14px"></div>
-            <div style="font-size:11px;color:#991b1b;font-weight:600;margin-bottom:8px;padding:4px 8px;background:#fee2e2;border-radius:3px">⚠ Driver Penuh / Overload · ${driverGroups.penuh.length} (klik dengan hati-hati)</div>
+            <div style="font-size:11px;color:#991b1b;font-weight:600;margin-bottom:8px;padding:4px 8px;background:#fee2e2;border-radius:3px">⚠ Internal Driver — Penuh / Overload · ${driverGroups.penuh.length}</div>
             <div class="datado-driver-group">${driverGroups.penuh.map(v=>renderRow(v,true)).join('')}</div>
+          `:''}
+          ${availableVendors.length ? `
+            <div style="height:14px"></div>
+            <div style="font-size:11px;color:#5b21b6;font-weight:600;margin-bottom:8px;padding:4px 8px;background:#ede9fe;border-radius:3px">🚛 Vendor / Ekspedisi · ${availableVendors.length}</div>
+            <div class="datado-driver-group">${availableVendors.map(renderVendorRow).join('')}</div>
           `:''}
         </div>
         <div style="padding:12px 18px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:8px;background:#f8fafc">
@@ -9846,11 +9981,20 @@ function _dataDOFilterModalDrivers(q){
 
 function dataDOConfirmAssign(){
   const sel = document.querySelector('input[name="datado-assign-driver"]:checked');
-  if(!sel){ alert('Pilih driver dulu.'); return; }
-  const plat = sel.value;
+  if(!sel){ alert('Pilih driver atau vendor dulu.'); return; }
+  const value = sel.value;
   const docNos = window._dataDOModalDocNos || [];
   dataDOCloseModal();
-  // Cek kalau ada DO yang sudah di auto-route → warning sekali untuk semua
+
+  // v4.51.1: Vendor branch
+  if(String(value).startsWith('VENDOR:')){
+    const vendorKode = value.slice(7);
+    _dataDOAssignToVendor(docNos, vendorKode);
+    return;
+  }
+
+  // Internal driver — cek override warning
+  const plat = value;
   const allRows = buildDataDORows();
   const willOverride = docNos.filter(dn => {
     const r = allRows.find(x => x.doc_no === dn);
