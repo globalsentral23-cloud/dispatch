@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.51.1</title>
+<title>Routing Optimizer v4.52.0</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.51.1</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.52.0</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.51.1</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.52.0</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -538,10 +538,10 @@ body.dispatch-active .dispatch-bar{display:flex}
     <button class="tab-btn active" onclick="switchTab('routing',this)">Routing</button>
     <button class="tab-btn" onclick="switchTab('datado',this)" title="Manage DO ala GST ERP — table flat, search/filter/sort, bulk assign driver">📊 Data DO</button>
     <button class="tab-btn" onclick="switchTab('map',this)">🗺 Peta</button>
-    <button class="tab-btn" onclick="switchTab('transfer',this)">Transfer Gudang</button>
-    <button class="tab-btn" onclick="switchTab('skipped',this)">Ambil Sendiri</button>
-    <button class="tab-btn" onclick="switchTab('vendor',this)">DO Unplot (<span id="cnt-vendor">0</span>)</button>
-    <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota" title="DO yang ditunda ke besok — tanggal beda dari SAP atau capacity penuh">Pending (<span id="cnt-pending-tab">0</span>)</button>
+    <button class="tab-btn" onclick="switchTab('transfer',this)" style="display:none">Transfer Gudang</button>
+    <button class="tab-btn" onclick="switchTab('skipped',this)" style="display:none">Ambil Sendiri</button>
+    <button class="tab-btn" onclick="switchTab('vendor',this)" title="DO yang di-assign manual ke vendor — default kosong, isi via Data DO">DO Vendor (<span id="cnt-vendor">0</span>)</button>
+    <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota" title="DO yang dijadwalkan kirim besok atau tanggal future — auto-detect dari tgl_kirim SAP atau manual schedule">Kirim Besok (<span id="cnt-pending-tab">0</span>)</button>
     <button class="tab-btn" onclick="switchTab('konflik',this)" id="tab-btn-konflik" style="color:#b91c1c">⚠ DO Konflik</button>
     <button class="tab-btn" id="tab-btn-biaya" onclick="switchTab('biaya',this)">💰 Biaya Ops</button>
     <button class="tab-btn" onclick="switchTab('settlement',this)">📋 Settlement T+1</button>
@@ -610,10 +610,13 @@ body.dispatch-active .dispatch-bar{display:flex}
       <select id="datado-filter-status" onchange="renderDataDO()" style="font-size:11px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;background:#fff">
         <option value="">Status: Semua</option>
         <option value="pending">○ Belum Dimuat</option>
+        <option value="suggested">◌ Saran Auto</option>
         <option value="assigned">● Diassign</option>
+        <option value="vendor">🚛 Vendor</option>
         <option value="loading">● Sedang Muat</option>
         <option value="enroute">● Dalam Pengiriman</option>
         <option value="done">● Selesai</option>
+        <option value="kirim_besok">📅 Kirim Besok</option>
         <option value="skipped">● Skip / Cancel</option>
       </select>
       <label style="font-size:11px;color:#475569;display:flex;align-items:center;gap:4px;cursor:pointer">
@@ -699,7 +702,7 @@ body.dispatch-active .dispatch-bar{display:flex}
   <div class="tab-pane" id="tab-luarkota">
     <div class="info-wrap">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
-        <div style="font-size:14px;font-weight:600">Pending — DO yang ditunda</div>
+        <div style="font-size:14px;font-weight:600">Kirim Besok — DO yang dijadwalkan future</div>
         <button onclick="downloadLuarKotaPending()" style="padding:6px 16px;border-radius:8px;background:var(--navy);border:none;color:#fff;font-size:12px;font-weight:600;cursor:pointer">⬇ Download Pending Besok</button>
         <button onclick="downloadDeferred()" style="padding:6px 16px;border-radius:8px;background:#475569;border:none;color:#fff;font-size:12px;font-weight:600;cursor:pointer">⬇ Download Tanggal Lain</button>
       </div>
@@ -8595,7 +8598,7 @@ async function batalkanPendingBesok(docNo){
   const item = luarKotaPending[idx];
   if(!confirm(`Batalkan pending DO ${docNo} (${item.customer})?
 
-DO akan dikembalikan ke DO Unplot.`)) return;
+DO akan dikembalikan ke DO Vendor.`)) return;
   luarKotaPending.splice(idx,1);
   // Kembalikan ke vendorItems sebagai unplot
   vendorItems.push({
@@ -9459,12 +9462,15 @@ function switchTab(tab,btn){
 // ═══════════════════════════════════════════════════════════════════════════
 
 const DATADO_STATUS = {
-  pending:  { label:'○ Belum Dimuat',     bg:'#f1f5f9', fg:'#475569', order:0 },
-  assigned: { label:'● Diassign',         bg:'#dcfce7', fg:'#166534', order:1 },
-  loading:  { label:'● Sedang Muat',      bg:'#fef3c7', fg:'#854f0b', order:2 },
-  enroute:  { label:'● Dalam Pengiriman', bg:'#dbeafe', fg:'#0c447c', order:3 },
-  done:     { label:'● Selesai',          bg:'#ccfbf1', fg:'#085041', order:4 },
-  skipped:  { label:'● Skip / Cancel',    bg:'#fee2e2', fg:'#991b1b', order:5 },
+  pending:     { label:'○ Belum Dimuat',     bg:'#f1f5f9', fg:'#475569', order:0 },
+  suggested:   { label:'◌ Saran Auto',       bg:'#fff7ed', fg:'#9a3412', order:1 },
+  assigned:    { label:'● Diassign',         bg:'#dcfce7', fg:'#166534', order:2 },
+  vendor:      { label:'🚛 Vendor',          bg:'#ede9fe', fg:'#5b21b6', order:3 },
+  loading:     { label:'● Sedang Muat',      bg:'#fef3c7', fg:'#854f0b', order:4 },
+  enroute:     { label:'● Dalam Pengiriman', bg:'#dbeafe', fg:'#0c447c', order:5 },
+  done:        { label:'● Selesai',          bg:'#ccfbf1', fg:'#085041', order:6 },
+  kirim_besok: { label:'📅 Kirim Besok',     bg:'#fef3c7', fg:'#854f0b', order:7 },
+  skipped:     { label:'● Skip / Cancel',    bg:'#fee2e2', fg:'#991b1b', order:8 },
 };
 
 let dataDOSelected = new Set();
@@ -9554,7 +9560,7 @@ function buildDataDORows(){
       const vendor = (vendorState||[]).find(v => v.kode === firstItem.vendor_kode);
       row.plat = 'VENDOR:' + firstItem.vendor_kode;
       row.driver = vendor ? vendor.nama : firstItem.vendor_kode;
-      row.status = 'assigned';
+      row.status = 'vendor';  // v4.52.0: dedicated vendor status (was 'assigned')
       row.is_vendor = true;
       return;
     }
@@ -9655,7 +9661,8 @@ function renderDataDO(){
                         `${allSizes[0]} <span style="color:#94a3b8;font-size:9px">+${allSizes.length-1}</span>`;
 
     // Driver dropdown — v4.51.1: tambah vendor optgroup, disable kalau dispatch off
-    const canEdit = (row.status === 'pending' || row.status === 'assigned');
+    // v4.52.0: editable untuk pending/suggested/assigned/vendor/kirim_besok
+    const canEdit = (row.status === 'pending' || row.status === 'suggested' || row.status === 'assigned' || row.status === 'vendor' || row.status === 'kirim_besok');
     let driverCell;
     if(row.status === 'skipped'){
       driverCell = `<span style="font-size:10px;color:#94a3b8;font-style:italic">— di-${row.last_action} dispatcher</span>`;
