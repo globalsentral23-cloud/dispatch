@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.50.3</title>
+<title>Routing Optimizer v4.50.4</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.50.3</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.50.4</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.50.3</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.50.4</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -5335,20 +5335,32 @@ function renderKPI(){
   const utilWtPct=totalWtCap>0?Math.round(totalWtLoad/totalWtCap*100):0;
   const utilVolPct=totalVolCap>0?Math.round(totalVolLoad/totalVolCap*100):0;
 
+  // v4.50.4: Fix counting bugs — count unique DO (label "DO") atau line items (label "item") konsisten.
+  // Bug sebelumnya:
+  // - TOTAL DO AKTIF: reduce per-route sum → DO multi-route ke-double-count
+  // - TRANSFER: label "DO" tapi count line items
+  // - JABO OVERFLOW: label "DO" tapi count line items
+  // - PENDING BESOK: cuma count luarKotaPending, miss pendingTomorrowItems (low_util)
+  const totalDOAktif = new Set(myRoutes.flatMap(r => r.items.map(i => i.doc_no))).size;
+  const transferUniqueDO = new Set(transferItems.map(i => i.doc_no)).size;
+  const jaboUniqueDO = new Set(vendorItems.filter(r=>!r.luar_kota && !r.vendor_fallback).map(r=>r.doc_no)).size;
+  const luarKotaUniqueDO = new Set(vendorItems.filter(r=>r.luar_kota || r.vendor_fallback).map(r=>r.doc_no)).size;
+  const pendingBesokTotal = (luarKotaPending||[]).length + (pendingTomorrowItems||[]).length;
+
   document.getElementById('kpi-bar').innerHTML=[
-    ['TOTAL DO AKTIF',myRoutes.reduce((a,r)=>a+new Set(r.items.map(i=>i.doc_no)).size,0),'DO'],
+    ['TOTAL DO AKTIF',totalDOAktif,'DO'],
     ['TOTAL DUS',totalQty.toLocaleString('id'),'keseluruhan'],
     ['RUTE 1',r1,'kendaraan'],
 
     ['🔁 TRIP 2',rT2,'kendaraan'],
-    ['TRANSFER',transferItems.length,'DO'],
+    ['TRANSFER',transferUniqueDO,'DO'],
     ['SKIP',skipped.length,'item'],
     ['TGL LAIN',deferred.length,'item'],
-    ['⚠ JABO OVERFLOW',jaboOverflow,'DO'],
-    ['LUAR KOTA',luarKotaVendor,'via vendor'],
+    ['⚠ JABO OVERFLOW',jaboUniqueDO,'DO'],
+    ['LUAR KOTA',luarKotaUniqueDO,'DO via vendor'],
     ['KNEK',knek,'kendaraan'],
     ['⚠ ETA LEWAT 15.00',warn,'kendaraan'],
-    ['PENDING BESOK',luarKotaPending.length,'luar kota'],
+    ['PENDING BESOK',pendingBesokTotal,'item'],
     ['CARRY OVER',carryOverItems.length,'dari kemarin'],
     ['⚖ UTIL BERAT',utilWtPct+'%','rata-rata armada'],
     ['📦 UTIL VOLUME',utilVolPct+'%','rata-rata armada'],
@@ -5883,8 +5895,9 @@ function renderVendor(){
   // v4.43.1: pakai buildVendorAssignmentMap sebagai single source of truth
   if(!vendorState.length) initVendorState();
 
-  // Update total badge di tab button
-  document.getElementById('cnt-vendor').textContent = vendorItems.length;
+  // v4.50.4: tab counter pakai unique DO (consistent dengan label "DO" di KPI JABO OVERFLOW + LUAR KOTA)
+  // Sebelumnya count line items → misleading (44 vendorItems = 14 unique DO)
+  document.getElementById('cnt-vendor').textContent = new Set(vendorItems.map(r=>r.doc_no)).size;
 
   // Build assignment map (single source of truth untuk renderVendor + sendVendorOrder)
   const { assignMap, unassigned } = buildVendorAssignmentMap();
@@ -9037,7 +9050,8 @@ function changeUnits(vi,delta){
 }
 
 function renderVendorDOList(){
-  document.getElementById('cnt-vendor').textContent=vendorItems.length;
+  // v4.50.4: count unique DO consistent dengan KPI label
+  document.getElementById('cnt-vendor').textContent=new Set(vendorItems.map(r=>r.doc_no)).size;
   // v4.43: Delegate ke renderVendor() yang sudah handle grouping per Gudang × Vendor
   renderVendor();
 }
@@ -10384,4 +10398,4 @@ async function syncManualDO(item, route) {
   </div>
 </div>
 </body>
-</html>  
+</html>
