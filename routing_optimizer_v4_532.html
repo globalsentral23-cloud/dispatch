@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.53.1</title>
+<title>Routing Optimizer v4.53.2</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.53.1</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.53.2</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.53.1</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.53.2</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -934,7 +934,7 @@ let rtMusibahAlerts = [];    // [{plat, doc_no, alasan, jam}]
  // true = mode operasional saat muat
 let luarKotaPending=[]; // DO luar kota yang tidak cukup memenuhi 95%
 let routes=[],skipped=[],deferred=[],vendorItems=[],transferItems=[],pendingTomorrowItems=[];
-let unassignedItems=[]; // v4.53.1 FIX: reset di resetApp() — sebelumnya ghost DOs dari sesi lama bocor ke sesi baru
+let unassignedItems=[]; // v4.53.2 FIX: reset di resetApp() — sebelumnya ghost DOs dari sesi lama bocor ke sesi baru
 let conflictItems=[]; // v4.43: DO with both vendor-trigger AND no_cdd/force_cde flag
 let assignedFromUnplot=[]; // DO yang di-assign dari tab Unplot ke kendaraan internal
 let biayaData={}; // expense tracking per route.id
@@ -1056,14 +1056,14 @@ const WH_COORDS={
 const LUAR_KW=/SEMARANG|SURABAYA|PURWOKERTO|KUDUS|BANJARMASIN|MEDAN|MAKASSAR|BALI|LOMBOK|MANADO|SAMARINDA|TARAKAN|PALEMBANG|PONTIANAK|BALIKPAPAN|DENPASAR|TABANAN/;
 // Daerah luar kota tapi bisa pakai vendor jika kendaraan penuh
 const VENDOR_FALLBACK_KW=/BANDUNG|CIMAHI|CIKAMPEK|CILEGON|CIANJUR|SUBANG|SUKABUMI|PURWAKARTA|GARUT/;
-// v4.53.1: Tambah compact-format wh names dari data curator v1.4 (CIKUDA/CK/DM).
+// v4.53.2: Tambah compact-format wh names dari data curator v1.4 (CIKUDA/CK/DM).
 // Sebelumnya cuma berisi format SAP raw ('GUDANG KEMENANGAN JAYA CIKUDA') sehingga
 // SAP curator output 'CIKUDA' tidak match → semua row SAP CIKUDA di-skip → 100+ DO hilang.
 const JABO_WH=new Set(['DOYONG','DAAN MOGOT','PASAR KEMIS 2','KOMP PASAR KEMIS 2','KOMP PASAR KEMIS','PASAR KEMIS','GUDANG KEMENANGAN JAYA CIKUDA','GUDANG KEMENANGAN JAYA CIKUDA 2','GUDANG KEMENANGAN JAYA CIKUDA 3','DIRECT','TAMPUNGAN','MUARA KARANG','CIKUDA','CIKUDA 2','CIKUDA 3','CK','DM']);
 const JABO_PG=new Set(['A11','A24','A35','R01','R02','R03','RO1','RO2','AD11','AD24','AD35','RD01','RD02','RD03','D01']);
 
 // ═══════════════════════════════════════════════════════
-// v4.53.1: HARI LIBUR + DELIVERY DATE (SLA WORKFLOW)
+// v4.53.2: HARI LIBUR + DELIVERY DATE (SLA WORKFLOW)
 // ═══════════════════════════════════════════════════════
 // Hari libur kalender merah Indonesia 2026 (hardcoded fallback).
 // Format: 'YYYY-MM-DD'. Bisa di-override dengan sheet "Hari Libur" di master.
@@ -1165,14 +1165,14 @@ async function loadHolidaysFromMaster(){
     }
     if(set.size){
       _holidayOverride = set;
-      console.log(`%c[v4.53.1] Loaded ${set.size} hari libur dari master sheet (override fallback)`, 'color:#0891b2;font-weight:bold');
+      console.log(`%c[v4.53.2] Loaded ${set.size} hari libur dari master sheet (override fallback)`, 'color:#0891b2;font-weight:bold');
     }
   }catch(e){
-    console.warn('[v4.53.1] loadHolidaysFromMaster error:', e);
+    console.warn('[v4.53.2] loadHolidaysFromMaster error:', e);
   }
 }
 // ═══════════════════════════════════════════════════════
-// END v4.53.1 holiday helpers
+// END v4.53.2 holiday helpers
 // ═══════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════
@@ -1230,7 +1230,7 @@ async function connectGSheets(){
       });
       files.masterData=processed;
       parseMasterData(processed);
-      await loadHolidaysFromMaster(); // v4.53.1: load hari libur dari master kalau ada
+      await loadHolidaysFromMaster(); // v4.53.2: load hari libur dari master kalau ada
       localStorage.setItem(GSHEET_ID_KEY, gsInput);
       gsConnected=true;
       const nSheet=Object.keys(processed).length;
@@ -1444,9 +1444,52 @@ function parseMasterData(masterData){
   });
 
   // Parse Vendor
+  // v4.53.2 FIX: Sebelumnya `vRows.filter(r=>r[0]&&!String(r[0]).includes('['))` cuma skip
+  // baris dengan tag `[...]`, TAPI tidak skip header row "Kode Vendor". Akibatnya header
+  // ke-parse jadi vendor palsu bernama "Nama Vendor/Ekspedisi" dengan tipe "Tipe".
+  // Solusi: pakai pattern parser Kendaraan — detect header row by name, lalu loop dari i=1.
+  // Bonus: header-based column lookup → robust kalau master sheet kolom-nya digeser.
   const vRows=masterData['Vendor']||[];
-  vendorList=vRows.filter(r=>r[0]&&!String(r[0]).includes('['))
-    .map(r=>({kode:r[0],nama:r[1],tipe:r[2],coverage:r[3],telp:r[4],pic:r[5]}));
+  vendorList=[];
+  if(vRows.length > 1){
+    const vh = vRows[0]||[];
+    const vi = {
+      kode:     vh.findIndex(h=>/kode/i.test(String(h))),
+      nama:     vh.findIndex(h=>/nama/i.test(String(h))),
+      tipe:     vh.findIndex(h=>/^tipe$/i.test(String(h).trim())),
+      coverage: vh.findIndex(h=>/coverage/i.test(String(h))),
+      telp:     vh.findIndex(h=>/telp|telepon|phone/i.test(String(h))),
+      pic:      vh.findIndex(h=>/pic|kontak/i.test(String(h))),
+      aktif:    vh.findIndex(h=>/^aktif$/i.test(String(h).trim())),
+    };
+    // Fallback ke posisi default kalau header detection gagal
+    if(vi.kode<0)     vi.kode=0;
+    if(vi.nama<0)     vi.nama=1;
+    if(vi.tipe<0)     vi.tipe=2;
+    if(vi.coverage<0) vi.coverage=3;
+    if(vi.telp<0)     vi.telp=4;
+    if(vi.pic<0)      vi.pic=5;
+
+    for(let i=1; i<vRows.length; i++){
+      const r=vRows[i];
+      const kode=String(r[vi.kode]||'').trim();
+      // Skip kalau kosong, atau ada bracket marker [ISI...], atau aktif=N
+      if(!kode || kode.includes('[')) continue;
+      if(vi.aktif>=0){
+        const aktifVal=String(r[vi.aktif]||'').trim().toUpperCase();
+        if(aktifVal==='N' || aktifVal==='TIDAK' || aktifVal==='NON-AKTIF') continue;
+      }
+      vendorList.push({
+        kode,
+        nama:     String(r[vi.nama]||'').trim(),
+        tipe:     String(r[vi.tipe]||'').trim(),
+        coverage: String(r[vi.coverage]||'').trim(),
+        telp:     String(r[vi.telp]||'').trim(),
+        pic:      String(r[vi.pic]||'').trim(),
+      });
+    }
+    console.log(`%c[v4.53.2] Vendor parser: ${vRows.length-1} data rows → ${vendorList.length} vendor aktif`, 'color:#0891b2;font-weight:bold');
+  }
 
   // Parse Kecamatan cache
   const kecRows=masterData['Kecamatan']||[];
@@ -1870,14 +1913,14 @@ function checkReady(){
 // MAIN ANALYSIS
 // ═══════════════════════════════════════════════════════
 async function startAnalysis(){
-  // v4.53.1: Defensive clear — pastikan pool kosong sebelum analisis baru
+  // v4.53.2: Defensive clear — pastikan pool kosong sebelum analisis baru
   // (failsafe kalau resetApp pernah skip reset karena user cancel confirm)
   unassignedItems=[];
   showLoad('Membaca data SAP...');await sleep(50);
   try{
     const sapRaw=await readExcel(files.sap);
 
-    // v4.53.1: Derive session gudang dari SAP file (definitive source).
+    // v4.53.2: Derive session gudang dari SAP file (definitive source).
     // Dipakai untuk filter GAS carry-over — SEBELUM showApp() dipanggil
     // sehingga UI elements (gudang-badge) belum tersedia.
     const _scanSapWh=(()=>{
@@ -1892,7 +1935,7 @@ async function startAnalysis(){
       }
       return Object.entries(_cnt).sort((a,b)=>b[1]-a[1])[0]?.[0]||'';
     })();
-    if(_scanSapWh) console.log(`[v4.53.1] Session gudang dari SAP: "${_scanSapWh}"`);
+    if(_scanSapWh) console.log(`[v4.53.2] Session gudang dari SAP: "${_scanSapWh}"`);
 
     setLoad('Membaca data PG...');
     const pgRaw=await readExcel(files.pg);
@@ -1902,7 +1945,7 @@ async function startAnalysis(){
       masterRaw=await readExcelAll(files.master);
       files.masterData=masterRaw;
       parseMasterData(masterRaw);
-      await loadHolidaysFromMaster(); // v4.53.1: load hari libur dari master kalau ada
+      await loadHolidaysFromMaster(); // v4.53.2: load hari libur dari master kalau ada
     }
     setLoad('Merge & filter data...');await sleep(30);
     // Load carry over DO if uploaded
@@ -1934,7 +1977,7 @@ async function startAnalysis(){
     if(_gsUrl && _gsUrl.startsWith('https://script.google.com/') && gsConnected){
       try{
         setLoad('Memuat pending luar kota dari kemarin...');
-        // v4.53.1 FIX: pakai _scanSapWh (dari SAP file, sudah tersedia).
+        // v4.53.2 FIX: pakai _scanSapWh (dari SAP file, sudah tersedia).
         // Bug sebelumnya: _gudang diambil dari gudang-badge yang BELUM EXIST saat ini
         // (showApp() belum dipanggil) → _gudang selalu '' → GAS return SEMUA gudang
         // → DOs gudang lain (misal DOYONG 26Apr) masuk ke pool session ini.
@@ -1946,7 +1989,7 @@ async function startAnalysis(){
         _gasCarryOver = (_pendData.items || []);
         if(_gasCarryOver.length > 0)
           console.log(`%c[v4.45] Loaded ${_gasCarryOver.length} carry-over pending besok dari GAS (auto: ${_gasCarryOver.filter(i=>i.defer_type==='auto').length}, manual: ${_gasCarryOver.filter(i=>i.defer_type==='manual').length})`, 'color:#f97316;font-weight:bold');
-        // v4.53.1: Double-check filter gudang pada hasil GAS — kalau GAS masih return
+        // v4.53.2: Double-check filter gudang pada hasil GAS — kalau GAS masih return
         // items dari gudang lain (edge case: server-side filter belum ada), reject di sini.
         if(_scanSapWh && _gasCarryOver.length>0){
           const _nw=s=>String(s||'').replace(/^GUDANG\s*/i,'').trim().toUpperCase();
@@ -1955,7 +1998,7 @@ async function startAnalysis(){
           _gasCarryOver=_gasCarryOver.filter(i=>{const _iw=_nw(i.gudang||i.wh_cons||i.wh||'');return !_iw||_iw===_sn;});
           if(_gasCarryOver.length<_b4){
             const _rej=_b4-_gasCarryOver.length;
-            console.warn(`[v4.53.1] GAS carry-over: ${_rej} DO dari gudang lain di-reject (session=${_scanSapWh})`);
+            console.warn(`[v4.53.2] GAS carry-over: ${_rej} DO dari gudang lain di-reject (session=${_scanSapWh})`);
             window._carryOverCrossWarnMsg=(window._carryOverCrossWarnMsg?window._carryOverCrossWarnMsg+'\n\n':'')+`⚠ GAS CARRY-OVER: ${_rej} DO dari gudang lain diabaikan (session: ${_scanSapWh}).`;
           }
         }
@@ -2119,7 +2162,7 @@ async function startAnalysis(){
       if(inN >= 5 && ratio < 50){
         alert(`⚠ ALERT: Hanya ${outN} dari ${inN} DO (${ratio}%) yang ke-plot.\n\nKemungkinan masalah:\n1. Tanggal SAP (${doDate}) tidak match dengan filter routing\n2. Sebagian besar DO punya tgl_kirim berbeda dari mode\n3. Filter scope/zone terlalu ketat\n\nCek tab "Kirim Besok" atau verifikasi tanggal di header.`);
       }
-      // v4.53.1: Tampilkan warning kalau ada carry over cross-gudang yang ditolak
+      // v4.53.2: Tampilkan warning kalau ada carry over cross-gudang yang ditolak
       if(window._carryOverCrossWarnMsg){
         alert(window._carryOverCrossWarnMsg);
         window._carryOverCrossWarnMsg = null;
@@ -2273,13 +2316,13 @@ function processData(sapRaw,pgRaw){
   }
   doDate = _modeDate || fmtDate(sapRaw[1]?.[SC.do_date]);
 
-  // v4.53.1: DELIVERY_DATE = next workday setelah doDate (= T+1 calendar, skip libur+Minggu).
+  // v4.53.2: DELIVERY_DATE = next workday setelah doDate (= T+1 calendar, skip libur+Minggu).
   // Dipakai untuk compare instruksi "KIRIM TGL X" supaya DO yang target besok = route, bukan defer.
   // Fallback ke doDate kalau gagal calc.
   const _deliveryIso = nextWorkday(doDate);
   const DELIVERY_DATE = _deliveryIso ? fmtDate(_deliveryIso) : doDate;
   window._deliveryDateInfo = { generate: doDate, delivery: DELIVERY_DATE, deliveryIso: _deliveryIso };
-  console.log(`%c[v4.53.1] Generate date T = ${doDate} → DELIVERY_DATE T+1 (workday) = ${DELIVERY_DATE}`, 'color:#0891b2;font-weight:bold');
+  console.log(`%c[v4.53.2] Generate date T = ${doDate} → DELIVERY_DATE T+1 (workday) = ${DELIVERY_DATE}`, 'color:#0891b2;font-weight:bold');
 
   // Warning kalau distribusi tanggal lebih dari 1 (informative, tidak blocking)
   if(_dateCount.size > 1){
@@ -2614,7 +2657,7 @@ function processData(sapRaw,pgRaw){
     }
 
     // Deferred date
-    // v4.53.1: compare dengan DELIVERY_DATE (= T+1 workday), bukan TODAY (= T).
+    // v4.53.2: compare dengan DELIVERY_DATE (= T+1 workday), bukan TODAY (= T).
     // Sebelumnya "KIRIM TGL [besok]" salah masuk defer karena dianggap future.
     // Sekarang:
     //   X < DELIVERY_DATE  → SLA breach (priority 3)
@@ -2632,7 +2675,7 @@ function processData(sapRaw,pgRaw){
       }
     }
 
-    // v4.53.1: SLA priority boost berdasarkan umur DO (calendar days dari issue).
+    // v4.53.2: SLA priority boost berdasarkan umur DO (calendar days dari issue).
     // umur ≥ 2 → priority 3 (back date — kalau tidak terkirim T+1, breach SLA 2 hari).
     // Boost ini OVERRIDE priority dari URGENT/TOP URGENT manual (max-of).
     const _umur = daysBetween(row.do_date, TODAY);
@@ -2732,7 +2775,7 @@ function processData(sapRaw,pgRaw){
     active.push(row);
   });
 
-  // ── v4.53.1: CROSS-GUDANG GUARD — filter carry over sebelum merge ──────────
+  // ── v4.53.2: CROSS-GUDANG GUARD — filter carry over sebelum merge ──────────
   // parseCarryOver() baca SEMUA rows dari routing xlsx tanpa filter gudang.
   // Jika file xlsx berisi rute multi-gudang (misal DOYONG+CIKUDA), DOs gudang lain
   // akan ikut masuk dan mencemari session ini. Guard ini menolak item tsb + warn user.
@@ -2758,7 +2801,7 @@ function processData(sapRaw,pgRaw){
       const _rejWhs=[...new Set(_rejected.map(c=>c.wh_cons||'unknown'))].join(', ');
       const _rejDOs=_rejected.map(c=>c.doc_no).join(', ');
       window._carryOverCrossWarnMsg=`⚠ CARRY OVER CROSS-GUDANG TERDETEKSI\n\n${_rejected.length} DO dari gudang LAIN diabaikan:\nGudang: ${_rejWhs}\nDO: ${_rejDOs}\n\nHanya DO dari gudang ${_sessionWh.join('/')} yang diproses.\nCek apakah file carry over benar.`;
-      console.warn('[v4.53.1] Carry over cross-gudang rejected:',_rejected.length,'DOs from',_rejWhs);
+      console.warn('[v4.53.2] Carry over cross-gudang rejected:',_rejected.length,'DOs from',_rejWhs);
       carryOverItems=[..._allowed]; // update global — hanya sisakan yang valid
     }
   }
@@ -3066,13 +3109,13 @@ function extractDeferDate(ct,today){
 function _normalizeDateStr(s){
   if(!s) return null;
   s = String(s).trim();
-  // v4.53.1: Handle ISO format YYYY-MM-DD (failsafe — fmtDate sudah translate, tapi kalau-kalau).
+  // v4.53.2: Handle ISO format YYYY-MM-DD (failsafe — fmtDate sudah translate, tapi kalau-kalau).
   const _iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if(_iso){
     const [, y, mo, d] = _iso;
     return `${d.padStart(2,'0')}/${mo.padStart(2,'0')}/${y.slice(-2)}`;
   }
-  // v4.53.1: tambahkan dot ke separator untuk handle "30.04.26" (HG standard format).
+  // v4.53.2: tambahkan dot ke separator untuk handle "30.04.26" (HG standard format).
   const m = s.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
   if(!m) return null;
   let [, d, mo, y] = m;
@@ -3106,7 +3149,7 @@ function isSameDay(dateStr,today){
 
 function fmtDate(v){
   if(!v) return '';
-  // v4.53.1: Handle ISO format (YYYY-MM-DD) dari data curator v1.4 → convert ke dd.mm.yy (HG standard).
+  // v4.53.2: Handle ISO format (YYYY-MM-DD) dari data curator v1.4 → convert ke dd.mm.yy (HG standard).
   // Sebelumnya string langsung di-return as-is sehingga "2026-04-30" lolos ke downstream
   // → _normalizeDateStr salah parse "26" sebagai hari, "30" sebagai tahun → display "26/04/2030".
   if(typeof v==='string'){
@@ -3121,7 +3164,7 @@ function fmtDate(v){
   return String(v);
 }
 
-// v4.53.1: Generate badge HTML untuk DO/item.
+// v4.53.2: Generate badge HTML untuk DO/item.
 // Multi-badge stacking: DO bisa punya 🔄 PENDING + 🔥 TOP sekaligus.
 // Input: object dengan .priority, .carry_over, ._sla_reason, ._do_age, .remarks/text
 // Output: HTML string (badges di-concatenate dengan spasi).
@@ -3284,7 +3327,7 @@ async function autoLoadCarryOver() {
       wh_cons  : String(d.gudang||'').trim(),
       kirim    : String(d.alamat||'').trim(),
       carry_over: true,
-      priority : 4, // v4.53.1: HIGHEST — carry over menang dari SLA breach back date
+      priority : 4, // v4.53.2: HIGHEST — carry over menang dari SLA breach back date
       alasan   : String(d.remark||d.alasan_gagal||'Gagal kirim kemarin'),
     }));
 
@@ -3318,7 +3361,7 @@ function parseCarryOver(raw){
       qty:parseFloat(String(r[ciQty]||'0').replace(/[^0-9.]/g,''))||0,
       wh_cons:String(r[ciGud]||'').trim(),
       kirim:String(r[ciKirim]||'').trim(),
-      carry_over:true, priority:4, // v4.53.1: HIGHEST — carry over menang dari SLA back date
+      carry_over:true, priority:4, // v4.53.2: HIGHEST — carry over menang dari SLA back date
     });
   }
   return result;
@@ -3921,7 +3964,7 @@ function buildRoutes(active){
   vehicles.sort((a,b)=>a.rank-b.rank);
 
   // ═══════════════════════════════════════════════════════════════════════
-  // v4.53.1: STRICT PER-WAREHOUSE SESSION
+  // v4.53.2: STRICT PER-WAREHOUSE SESSION
   // ═══════════════════════════════════════════════════════════════════════
   // Setiap dispatcher session HANYA boleh pakai kendaraan dari gudang session-nya sendiri.
   // CIKUDA dispatcher → hanya kendaraan CIKUDA. DM dispatcher → hanya kendaraan DM. dst.
@@ -3937,10 +3980,10 @@ function buildRoutes(active){
     const _filteredOut = vehicles.filter(v => v.wh !== _sessionWh).map(v => `${v.plat}/${v.driver}(${v.wh.replace('GUDANG ','')})`);
     vehicles.splice(0, vehicles.length, ...vehicles.filter(v => v.wh === _sessionWh));
     if(_filteredOut.length > 0){
-      console.log(`%c[v4.53.1 STRICT SESSION] Session=${_sessionWh}: ${_beforeCount} → ${vehicles.length} kendaraan (${_filteredOut.length} kendaraan gudang lain di-eject)`, 'color:#dc2626;font-weight:bold');
+      console.log(`%c[v4.53.2 STRICT SESSION] Session=${_sessionWh}: ${_beforeCount} → ${vehicles.length} kendaraan (${_filteredOut.length} kendaraan gudang lain di-eject)`, 'color:#dc2626;font-weight:bold');
       console.log(`  Di-eject: ${_filteredOut.slice(0,10).join(', ')}${_filteredOut.length>10?` ...+${_filteredOut.length-10}`:''}`);
     } else {
-      console.log(`%c[v4.53.1 STRICT SESSION] Session=${_sessionWh}: ${vehicles.length} kendaraan (sudah pure same-wh)`, 'color:#10b981;font-weight:bold');
+      console.log(`%c[v4.53.2 STRICT SESSION] Session=${_sessionWh}: ${vehicles.length} kendaraan (sudah pure same-wh)`, 'color:#10b981;font-weight:bold');
     }
   }
   // ═══════════════════════════════════════════════════════════════════════
@@ -4432,7 +4475,7 @@ function buildRoutes(active){
         let best=null,bestScore=-999;
         for(const s of finalState.values()){
           const v=s.vehicle;
-          // v4.53.1: hard boundary — kendaraan harus dari gudang yang sama dengan DO.
+          // v4.53.2: hard boundary — kendaraan harus dari gudang yang sama dengan DO.
           // Kalau vehicles sudah filtered di buildRoutes, ini redundant tapi explicit.
           if(s.wh !== doWH) continue;
           if(forceCDE&&!/CDE/i.test(v.tipe)) continue;
@@ -4491,7 +4534,7 @@ function buildRoutes(active){
     }
   }
   // ── CROSS-WAREHOUSE PASS: CIKUDA overflow → DAAN MOGOT absorb ──────────
-  // v4.53.1: DISABLED. User explicit: setiap dispatcher session hanya pakai kendaraan
+  // v4.53.2: DISABLED. User explicit: setiap dispatcher session hanya pakai kendaraan
   // dari gudangnya sendiri. CIKUDA overflow harus ke vendor third-party, bukan ke DM.
   // Block di-bypass via early return; code di-keep untuk audit trail.
   if(false) {
@@ -9853,7 +9896,7 @@ function buildDataDORows(){
           source: opts.source,
           is_locked: false,
           rt: it,
-          // v4.53.1: SLA fields untuk badge generation
+          // v4.53.2: SLA fields untuk badge generation
           carry_over: it.carry_over || false,
           priority: it.priority || 0,
           _sla_reason: it._sla_reason || null,
@@ -11231,7 +11274,7 @@ function showLoad(msg){document.getElementById('loading').style.display='flex';s
 function setLoad(msg){document.getElementById('load-msg').textContent=msg;}
 function hideLoad(){document.getElementById('loading').style.display='none';}
 function resetApp(){
-  // v4.53.1: Deteksi sisa state dari sesi sebelumnya — tampilkan confirm kalau ada DO aktif
+  // v4.53.2: Deteksi sisa state dari sesi sebelumnya — tampilkan confirm kalau ada DO aktif
   const _staleSet = new Set();
   (routes||[]).forEach(r => (r.items||[]).forEach(i => _staleSet.add(i.doc_no)));
   (unassignedItems||[]).forEach(i => _staleSet.add(i.doc_no));
@@ -11251,8 +11294,8 @@ function resetApp(){
   routes=[];skipped=[];deferred=[];vendorItems=[];transferItems=[];carryOverItems=[];luarKotaPending=[];biayaData={};
   conflictItems=[];pendingTomorrowItems=[]; // v4.43
   assignedFromUnplot=[];
-  unassignedItems=[]; // v4.53.1 FIX: sebelumnya tidak di-reset → ghost DOs dari sesi lama ikut ke sesi baru
-  doDate=''; // v4.53.1: clear tanggal sesi
+  unassignedItems=[]; // v4.53.2 FIX: sebelumnya tidak di-reset → ghost DOs dari sesi lama ikut ke sesi baru
+  doDate=''; // v4.53.2: clear tanggal sesi
   gsConnected=false;
   document.getElementById('gs-status').style.display='none';
   setGsStatus('','loading');
