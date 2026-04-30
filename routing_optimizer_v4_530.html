@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.52.5</title>
+<title>Routing Optimizer v4.53.0</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.52.5</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.53.0</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.52.5</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.53.0</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -934,7 +934,7 @@ let rtMusibahAlerts = [];    // [{plat, doc_no, alasan, jam}]
  // true = mode operasional saat muat
 let luarKotaPending=[]; // DO luar kota yang tidak cukup memenuhi 95%
 let routes=[],skipped=[],deferred=[],vendorItems=[],transferItems=[],pendingTomorrowItems=[];
-let unassignedItems=[]; // v4.52.5 FIX: reset di resetApp() — sebelumnya ghost DOs dari sesi lama bocor ke sesi baru
+let unassignedItems=[]; // v4.53.0 FIX: reset di resetApp() — sebelumnya ghost DOs dari sesi lama bocor ke sesi baru
 let conflictItems=[]; // v4.43: DO with both vendor-trigger AND no_cdd/force_cde flag
 let assignedFromUnplot=[]; // DO yang di-assign dari tab Unplot ke kendaraan internal
 let biayaData={}; // expense tracking per route.id
@@ -1056,11 +1056,124 @@ const WH_COORDS={
 const LUAR_KW=/SEMARANG|SURABAYA|PURWOKERTO|KUDUS|BANJARMASIN|MEDAN|MAKASSAR|BALI|LOMBOK|MANADO|SAMARINDA|TARAKAN|PALEMBANG|PONTIANAK|BALIKPAPAN|DENPASAR|TABANAN/;
 // Daerah luar kota tapi bisa pakai vendor jika kendaraan penuh
 const VENDOR_FALLBACK_KW=/BANDUNG|CIMAHI|CIKAMPEK|CILEGON|CIANJUR|SUBANG|SUKABUMI|PURWAKARTA|GARUT/;
-// v4.52.5: Tambah compact-format wh names dari data curator v1.4 (CIKUDA/CK/DM).
+// v4.53.0: Tambah compact-format wh names dari data curator v1.4 (CIKUDA/CK/DM).
 // Sebelumnya cuma berisi format SAP raw ('GUDANG KEMENANGAN JAYA CIKUDA') sehingga
 // SAP curator output 'CIKUDA' tidak match → semua row SAP CIKUDA di-skip → 100+ DO hilang.
 const JABO_WH=new Set(['DOYONG','DAAN MOGOT','PASAR KEMIS 2','KOMP PASAR KEMIS 2','KOMP PASAR KEMIS','PASAR KEMIS','GUDANG KEMENANGAN JAYA CIKUDA','GUDANG KEMENANGAN JAYA CIKUDA 2','GUDANG KEMENANGAN JAYA CIKUDA 3','DIRECT','TAMPUNGAN','MUARA KARANG','CIKUDA','CIKUDA 2','CIKUDA 3','CK','DM']);
 const JABO_PG=new Set(['A11','A24','A35','R01','R02','R03','RO1','RO2','AD11','AD24','AD35','RD01','RD02','RD03','D01']);
+
+// ═══════════════════════════════════════════════════════
+// v4.53.0: HARI LIBUR + DELIVERY DATE (SLA WORKFLOW)
+// ═══════════════════════════════════════════════════════
+// Hari libur kalender merah Indonesia 2026 (hardcoded fallback).
+// Format: 'YYYY-MM-DD'. Bisa di-override dengan sheet "Hari Libur" di master.
+const LIBUR_2026=new Set([
+  '2026-01-01', // Tahun Baru
+  '2026-02-17', // Imlek 2577
+  '2026-03-18', // Awal Puasa Ramadhan
+  '2026-03-20', // Hari Suci Nyepi
+  '2026-04-03', // Wafat Yesus Kristus
+  '2026-04-17', // Idul Fitri 1447H Hari ke-1
+  '2026-04-18', // Idul Fitri 1447H Hari ke-2
+  '2026-05-01', // Hari Buruh
+  '2026-05-14', // Kenaikan Yesus
+  '2026-05-17', // Hari Raya Waisak
+  '2026-06-01', // Hari Lahir Pancasila
+  '2026-06-25', // Idul Adha 1447H
+  '2026-07-16', // Tahun Baru Hijriyah
+  '2026-08-17', // Kemerdekaan RI
+  '2026-09-24', // Maulid Nabi
+  '2026-12-25', // Natal
+]);
+
+// Override list dari master sheet (akan di-populate via loadHolidaysFromMaster).
+// Pakai Set yang sama format ('YYYY-MM-DD'). Empty = pakai LIBUR_2026 saja.
+let _holidayOverride = null; // null = belum di-load, pakai fallback
+
+function _toIsoDate(s){
+  // Convert "30.04.26" / "30/04/26" / "2026-04-30" / Date object → "2026-04-30"
+  if(!s) return null;
+  if(s instanceof Date){
+    return `${s.getFullYear()}-${String(s.getMonth()+1).padStart(2,'0')}-${String(s.getDate()).padStart(2,'0')}`;
+  }
+  s = String(s).trim();
+  // Already ISO?
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if(m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  // dd.mm.yy / dd/mm/yy / dd-mm-yy → expand year ke 20YY
+  m = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+  if(m){
+    let [, d, mo, y] = m;
+    if(y.length===2) y='20'+y;
+    return `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+  return null;
+}
+
+function isHoliday(dateInput){
+  // dateInput bisa "30.04.26", "2026-04-30", Date — output: true kalau libur kalender merah
+  const iso = _toIsoDate(dateInput);
+  if(!iso) return false;
+  if(_holidayOverride && _holidayOverride.has(iso)) return true;
+  return LIBUR_2026.has(iso);
+}
+
+function isWorkday(dateInput){
+  // Sen-Sab kerja, Minggu libur, kecuali hari libur kalender merah.
+  const iso = _toIsoDate(dateInput);
+  if(!iso) return false;
+  const d = new Date(iso+'T00:00:00');
+  if(d.getDay()===0) return false;       // Minggu = 0 di getDay()
+  if(isHoliday(iso)) return false;
+  return true;
+}
+
+function nextWorkday(dateInput){
+  // Output: ISO date string ("2026-05-02") dari hari kerja berikutnya.
+  const iso = _toIsoDate(dateInput);
+  if(!iso) return null;
+  let d = new Date(iso+'T00:00:00');
+  for(let i=0;i<14;i++){ // safety: max 14 hari ke depan (kalau ketemu libur panjang)
+    d.setDate(d.getDate()+1);
+    const niso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    if(isWorkday(niso)) return niso;
+  }
+  return null;
+}
+
+function daysBetween(dateA, dateB){
+  // Calendar days dari A ke B (positive kalau B > A). Return null kalau invalid.
+  const a = _toIsoDate(dateA), b = _toIsoDate(dateB);
+  if(!a||!b) return null;
+  const da = new Date(a+'T00:00:00'), db = new Date(b+'T00:00:00');
+  return Math.round((db-da)/(86400000));
+}
+
+async function loadHolidaysFromMaster(){
+  // Best-effort: kalau master sheet punya tab "Hari Libur" dengan kolom 'tanggal',
+  // load dan merge ke _holidayOverride.
+  try{
+    const rows = (files.masterData && files.masterData['Hari Libur']) || [];
+    if(!rows.length) return;
+    const hdr = rows[0]||[];
+    const idxTgl = hdr.findIndex(h => /tanggal|date/i.test(String(h)));
+    if(idxTgl<0) return;
+    const set = new Set();
+    for(let i=1;i<rows.length;i++){
+      const iso = _toIsoDate(rows[i][idxTgl]);
+      if(iso) set.add(iso);
+    }
+    if(set.size){
+      _holidayOverride = set;
+      console.log(`%c[v4.53.0] Loaded ${set.size} hari libur dari master sheet (override fallback)`, 'color:#0891b2;font-weight:bold');
+    }
+  }catch(e){
+    console.warn('[v4.53.0] loadHolidaysFromMaster error:', e);
+  }
+}
+// ═══════════════════════════════════════════════════════
+// END v4.53.0 holiday helpers
+// ═══════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════
 // WAREHOUSE NORMALIZATION
@@ -1117,6 +1230,7 @@ async function connectGSheets(){
       });
       files.masterData=processed;
       parseMasterData(processed);
+      await loadHolidaysFromMaster(); // v4.53.0: load hari libur dari master kalau ada
       localStorage.setItem(GSHEET_ID_KEY, gsInput);
       gsConnected=true;
       const nSheet=Object.keys(processed).length;
@@ -1756,14 +1870,14 @@ function checkReady(){
 // MAIN ANALYSIS
 // ═══════════════════════════════════════════════════════
 async function startAnalysis(){
-  // v4.52.5: Defensive clear — pastikan pool kosong sebelum analisis baru
+  // v4.53.0: Defensive clear — pastikan pool kosong sebelum analisis baru
   // (failsafe kalau resetApp pernah skip reset karena user cancel confirm)
   unassignedItems=[];
   showLoad('Membaca data SAP...');await sleep(50);
   try{
     const sapRaw=await readExcel(files.sap);
 
-    // v4.52.5: Derive session gudang dari SAP file (definitive source).
+    // v4.53.0: Derive session gudang dari SAP file (definitive source).
     // Dipakai untuk filter GAS carry-over — SEBELUM showApp() dipanggil
     // sehingga UI elements (gudang-badge) belum tersedia.
     const _scanSapWh=(()=>{
@@ -1778,7 +1892,7 @@ async function startAnalysis(){
       }
       return Object.entries(_cnt).sort((a,b)=>b[1]-a[1])[0]?.[0]||'';
     })();
-    if(_scanSapWh) console.log(`[v4.52.5] Session gudang dari SAP: "${_scanSapWh}"`);
+    if(_scanSapWh) console.log(`[v4.53.0] Session gudang dari SAP: "${_scanSapWh}"`);
 
     setLoad('Membaca data PG...');
     const pgRaw=await readExcel(files.pg);
@@ -1788,6 +1902,7 @@ async function startAnalysis(){
       masterRaw=await readExcelAll(files.master);
       files.masterData=masterRaw;
       parseMasterData(masterRaw);
+      await loadHolidaysFromMaster(); // v4.53.0: load hari libur dari master kalau ada
     }
     setLoad('Merge & filter data...');await sleep(30);
     // Load carry over DO if uploaded
@@ -1819,7 +1934,7 @@ async function startAnalysis(){
     if(_gsUrl && _gsUrl.startsWith('https://script.google.com/') && gsConnected){
       try{
         setLoad('Memuat pending luar kota dari kemarin...');
-        // v4.52.5 FIX: pakai _scanSapWh (dari SAP file, sudah tersedia).
+        // v4.53.0 FIX: pakai _scanSapWh (dari SAP file, sudah tersedia).
         // Bug sebelumnya: _gudang diambil dari gudang-badge yang BELUM EXIST saat ini
         // (showApp() belum dipanggil) → _gudang selalu '' → GAS return SEMUA gudang
         // → DOs gudang lain (misal DOYONG 26Apr) masuk ke pool session ini.
@@ -1831,7 +1946,7 @@ async function startAnalysis(){
         _gasCarryOver = (_pendData.items || []);
         if(_gasCarryOver.length > 0)
           console.log(`%c[v4.45] Loaded ${_gasCarryOver.length} carry-over pending besok dari GAS (auto: ${_gasCarryOver.filter(i=>i.defer_type==='auto').length}, manual: ${_gasCarryOver.filter(i=>i.defer_type==='manual').length})`, 'color:#f97316;font-weight:bold');
-        // v4.52.5: Double-check filter gudang pada hasil GAS — kalau GAS masih return
+        // v4.53.0: Double-check filter gudang pada hasil GAS — kalau GAS masih return
         // items dari gudang lain (edge case: server-side filter belum ada), reject di sini.
         if(_scanSapWh && _gasCarryOver.length>0){
           const _nw=s=>String(s||'').replace(/^GUDANG\s*/i,'').trim().toUpperCase();
@@ -1840,7 +1955,7 @@ async function startAnalysis(){
           _gasCarryOver=_gasCarryOver.filter(i=>{const _iw=_nw(i.gudang||i.wh_cons||i.wh||'');return !_iw||_iw===_sn;});
           if(_gasCarryOver.length<_b4){
             const _rej=_b4-_gasCarryOver.length;
-            console.warn(`[v4.52.5] GAS carry-over: ${_rej} DO dari gudang lain di-reject (session=${_scanSapWh})`);
+            console.warn(`[v4.53.0] GAS carry-over: ${_rej} DO dari gudang lain di-reject (session=${_scanSapWh})`);
             window._carryOverCrossWarnMsg=(window._carryOverCrossWarnMsg?window._carryOverCrossWarnMsg+'\n\n':'')+`⚠ GAS CARRY-OVER: ${_rej} DO dari gudang lain diabaikan (session: ${_scanSapWh}).`;
           }
         }
@@ -2004,7 +2119,7 @@ async function startAnalysis(){
       if(inN >= 5 && ratio < 50){
         alert(`⚠ ALERT: Hanya ${outN} dari ${inN} DO (${ratio}%) yang ke-plot.\n\nKemungkinan masalah:\n1. Tanggal SAP (${doDate}) tidak match dengan filter routing\n2. Sebagian besar DO punya tgl_kirim berbeda dari mode\n3. Filter scope/zone terlalu ketat\n\nCek tab "Kirim Besok" atau verifikasi tanggal di header.`);
       }
-      // v4.52.5: Tampilkan warning kalau ada carry over cross-gudang yang ditolak
+      // v4.53.0: Tampilkan warning kalau ada carry over cross-gudang yang ditolak
       if(window._carryOverCrossWarnMsg){
         alert(window._carryOverCrossWarnMsg);
         window._carryOverCrossWarnMsg = null;
@@ -2157,6 +2272,14 @@ function processData(sapRaw,pgRaw){
     if(n > _modeCount){ _modeDate = d; _modeCount = n; }
   }
   doDate = _modeDate || fmtDate(sapRaw[1]?.[SC.do_date]);
+
+  // v4.53.0: DELIVERY_DATE = next workday setelah doDate (= T+1 calendar, skip libur+Minggu).
+  // Dipakai untuk compare instruksi "KIRIM TGL X" supaya DO yang target besok = route, bukan defer.
+  // Fallback ke doDate kalau gagal calc.
+  const _deliveryIso = nextWorkday(doDate);
+  const DELIVERY_DATE = _deliveryIso ? fmtDate(_deliveryIso) : doDate;
+  window._deliveryDateInfo = { generate: doDate, delivery: DELIVERY_DATE, deliveryIso: _deliveryIso };
+  console.log(`%c[v4.53.0] Generate date T = ${doDate} → DELIVERY_DATE T+1 (workday) = ${DELIVERY_DATE}`, 'color:#0891b2;font-weight:bold');
 
   // Warning kalau distribusi tanggal lebih dari 1 (informative, tidak blocking)
   if(_dateCount.size > 1){
@@ -2491,16 +2614,34 @@ function processData(sapRaw,pgRaw){
     }
 
     // Deferred date
-    // v4.50.1 FIX: tighten logic — kalau defer date = today, JANGAN defer.
-    // Sebelumnya isOverdue strict less-than → today tidak match → masuk branch defer.
-    // Sekarang: defer date <= today → routing hari ini (priority 3), bukan defer.
+    // v4.53.0: compare dengan DELIVERY_DATE (= T+1 workday), bukan TODAY (= T).
+    // Sebelumnya "KIRIM TGL [besok]" salah masuk defer karena dianggap future.
+    // Sekarang:
+    //   X < DELIVERY_DATE  → SLA breach (priority 3)
+    //   X = DELIVERY_DATE  → tepat target, route normal
+    //   X > DELIVERY_DATE  → defer ke Kirim Besok
     const deferDate=extractDeferDate(ct,TODAY);
     if(deferDate){
-      if(isOverdue(deferDate,TODAY) || isSameDay(deferDate,TODAY)){
-        row.priority=3; // overdue ATAU hari ini = routing segera
+      if(isOverdue(deferDate,DELIVERY_DATE)){
+        row.priority=3; // request lewat dari delivery target = SLA breach
+        row._sla_reason='kirim_tgl_overdue';
+      } else if(isSameDay(deferDate,DELIVERY_DATE)){
+        // X = DELIVERY_DATE = target normal → no priority boost, no defer
       } else {
         defer.push({...row,deferred_date:deferDate});return;
       }
+    }
+
+    // v4.53.0: SLA priority boost berdasarkan umur DO (calendar days dari issue).
+    // umur ≥ 2 → priority 3 (back date — kalau tidak terkirim T+1, breach SLA 2 hari).
+    // Boost ini OVERRIDE priority dari URGENT/TOP URGENT manual (max-of).
+    const _umur = daysBetween(row.do_date, TODAY);
+    if(_umur !== null && _umur >= 2){
+      row.priority = Math.max(row.priority||0, 3);
+      row._sla_reason = row._sla_reason || `back_date_${_umur}d`;
+      row._do_age = _umur;
+    } else if(_umur !== null) {
+      row._do_age = _umur;
     }
 
     // Priority
@@ -2591,7 +2732,7 @@ function processData(sapRaw,pgRaw){
     active.push(row);
   });
 
-  // ── v4.52.5: CROSS-GUDANG GUARD — filter carry over sebelum merge ──────────
+  // ── v4.53.0: CROSS-GUDANG GUARD — filter carry over sebelum merge ──────────
   // parseCarryOver() baca SEMUA rows dari routing xlsx tanpa filter gudang.
   // Jika file xlsx berisi rute multi-gudang (misal DOYONG+CIKUDA), DOs gudang lain
   // akan ikut masuk dan mencemari session ini. Guard ini menolak item tsb + warn user.
@@ -2617,7 +2758,7 @@ function processData(sapRaw,pgRaw){
       const _rejWhs=[...new Set(_rejected.map(c=>c.wh_cons||'unknown'))].join(', ');
       const _rejDOs=_rejected.map(c=>c.doc_no).join(', ');
       window._carryOverCrossWarnMsg=`⚠ CARRY OVER CROSS-GUDANG TERDETEKSI\n\n${_rejected.length} DO dari gudang LAIN diabaikan:\nGudang: ${_rejWhs}\nDO: ${_rejDOs}\n\nHanya DO dari gudang ${_sessionWh.join('/')} yang diproses.\nCek apakah file carry over benar.`;
-      console.warn('[v4.52.5] Carry over cross-gudang rejected:',_rejected.length,'DOs from',_rejWhs);
+      console.warn('[v4.53.0] Carry over cross-gudang rejected:',_rejected.length,'DOs from',_rejWhs);
       carryOverItems=[..._allowed]; // update global — hanya sisakan yang valid
     }
   }
@@ -2924,12 +3065,19 @@ function extractDeferDate(ct,today){
 // v4.50.2: helper normalize date string ke format dd/mm/yy (2-digit year, slash separator)
 function _normalizeDateStr(s){
   if(!s) return null;
-  const m = String(s).match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  s = String(s).trim();
+  // v4.53.0: Handle ISO format YYYY-MM-DD (failsafe — fmtDate sudah translate, tapi kalau-kalau).
+  const _iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if(_iso){
+    const [, y, mo, d] = _iso;
+    return `${d.padStart(2,'0')}/${mo.padStart(2,'0')}/${y.slice(-2)}`;
+  }
+  // v4.53.0: tambahkan dot ke separator untuk handle "30.04.26" (HG standard format).
+  const m = s.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
   if(!m) return null;
   let [, d, mo, y] = m;
   d = d.padStart(2, '0');
   mo = mo.padStart(2, '0');
-  // 4-digit year → 2-digit (2026 → 26)
   if(y.length === 4) y = y.slice(-2);
   return `${d}/${mo}/${y}`;
 }
@@ -2958,9 +3106,48 @@ function isSameDay(dateStr,today){
 
 function fmtDate(v){
   if(!v) return '';
-  if(typeof v==='string') return v.trim();
+  // v4.53.0: Handle ISO format (YYYY-MM-DD) dari data curator v1.4 → convert ke dd.mm.yy (HG standard).
+  // Sebelumnya string langsung di-return as-is sehingga "2026-04-30" lolos ke downstream
+  // → _normalizeDateStr salah parse "26" sebagai hari, "30" sebagai tahun → display "26/04/2030".
+  if(typeof v==='string'){
+    const _iso = v.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if(_iso){
+      const [, y, mo, d] = _iso;
+      return `${d.padStart(2,'0')}.${mo.padStart(2,'0')}.${y.slice(-2)}`;
+    }
+    return v.trim();
+  }
   if(v instanceof Date) return `${String(v.getDate()).padStart(2,'0')}.${String(v.getMonth()+1).padStart(2,'0')}.${String(v.getFullYear()).slice(-2)}`;
   return String(v);
+}
+
+// v4.53.0: Generate badge HTML untuk DO/item.
+// Multi-badge stacking: DO bisa punya 🔄 PENDING + 🔥 TOP sekaligus.
+// Input: object dengan .priority, .carry_over, ._sla_reason, ._do_age, .remarks/text
+// Output: HTML string (badges di-concatenate dengan spasi).
+function generateBadges(item){
+  if(!item) return '';
+  const badges = [];
+  const ct = String(item.remarks||item.customer||'').toUpperCase();
+
+  // 🔄 PENDING — DO carry over dari sesi sebelumnya (priority 4, paling tinggi)
+  if(item.carry_over){
+    badges.push('<span class="badge-pending" title="DO Pending dari kemarin — wajib terkirim hari ini" style="display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;background:#fed7aa;color:#ea580c;border:0.8px solid #ea580c;margin-right:3px">🔄 PENDING</span>');
+  }
+  // 🚨 SLA — back date umur ≥ 2 atau "KIRIM TGL X" overdue
+  if(item._sla_reason || (item._do_age!=null && item._do_age>=2) || item.priority===3){
+    const ageLabel = (item._do_age!=null && item._do_age>=2) ? ` (${item._do_age}d)` : '';
+    badges.push(`<span class="badge-sla" title="SLA breach — DO sudah ${item._do_age||'2+'} hari, wajib terkirim besok" style="display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;background:#fee2e2;color:#dc2626;border:0.8px solid #dc2626;margin-right:3px">🚨 SLA${ageLabel}</span>`);
+  }
+  // 🔥 TOP URGENT — manual flag dari customer text (priority 2)
+  if(/TOP\s+URGENT/.test(ct) || item.priority===2){
+    badges.push('<span class="badge-top" title="TOP URGENT — flag manual dari customer/admin" style="display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;background:#fce7f3;color:#be185d;border:0.8px solid #be185d;margin-right:3px">🔥 TOP</span>');
+  }
+  // ⚠ URGENT — manual flag (priority 1)
+  else if(/\bURGENT\b/.test(ct) || item.priority===1){
+    badges.push('<span class="badge-urgent" title="URGENT — flag manual" style="display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;background:#fef3c7;color:#d97706;border:0.8px solid #d97706;margin-right:3px">⚠ URGENT</span>');
+  }
+  return badges.join('');
 }
 
 function getSpec(size){
@@ -3097,7 +3284,7 @@ async function autoLoadCarryOver() {
       wh_cons  : String(d.gudang||'').trim(),
       kirim    : String(d.alamat||'').trim(),
       carry_over: true,
-      priority : 2,
+      priority : 4, // v4.53.0: HIGHEST — carry over menang dari SLA breach back date
       alasan   : String(d.remark||d.alasan_gagal||'Gagal kirim kemarin'),
     }));
 
@@ -3131,7 +3318,7 @@ function parseCarryOver(raw){
       qty:parseFloat(String(r[ciQty]||'0').replace(/[^0-9.]/g,''))||0,
       wh_cons:String(r[ciGud]||'').trim(),
       kirim:String(r[ciKirim]||'').trim(),
-      carry_over:true, priority:2, // HIGH priority
+      carry_over:true, priority:4, // v4.53.0: HIGHEST — carry over menang dari SLA back date
     });
   }
   return result;
@@ -5691,6 +5878,7 @@ function vcardHTML(r){
           ${noCDD?'<span style="background:#fee2e2;color:#991b1b;font-family:var(--mono);font-size:8px;padding:1px 4px;border-radius:3px;margin-left:3px;border:1px solid #fca5a5">⛔ NO CDD</span>':''}
           ${items.some(i=>i.is_vip&&i.window_ketat)?`<span style="background:#fef3c7;color:#92400e;font-family:var(--mono);font-size:8px;padding:1px 4px;border-radius:3px;margin-left:3px">⏱${items[0].window_tutup}</span>`:items.some(i=>i.is_vip)?`<span style="background:#f0fdf4;color:#166534;font-family:var(--mono);font-size:8px;padding:1px 4px;border-radius:3px;margin-left:3px">VIP ${items[0].window_tutup}</span>`:''}
           ${dBadge}
+          ${generateBadges({carry_over:items.some(i=>i.carry_over),priority:Math.max.apply(null,items.map(i=>i.priority||0).concat([0])),_do_age:items.reduce((m,i)=>Math.max(m,i._do_age||0),0)||null,_sla_reason:items.find(i=>i._sla_reason)?._sla_reason||null,remarks:items.map(i=>i.remarks||'').join(' ')})}
         </div>
         <div class="stop-dest">${dest.length>55?dest.slice(0,55)+'…':dest}</div>
         <div class="stop-items">${items.slice(0,2).map(i=>`${i.stock_name.slice(0,32)} (${i.qty})`).join(' · ')}${items.length>2?` +${items.length-2}`:''}</div>
@@ -9637,6 +9825,12 @@ function buildDataDORows(){
           source: opts.source,
           is_locked: false,
           rt: it,
+          // v4.53.0: SLA fields untuk badge generation
+          carry_over: it.carry_over || false,
+          priority: it.priority || 0,
+          _sla_reason: it._sla_reason || null,
+          _do_age: it._do_age != null ? it._do_age : null,
+          remarks: it.remarks || '',
         });
       }
       const row = map.get(dn);
@@ -9872,7 +10066,7 @@ function renderDataDO(){
       <td style="padding:6px 6px;font-size:10px;color:#64748b">${escapeHtml(fmtDateDisplay(row.do_date)||'—')}</td>
       <td style="padding:6px 6px">${driverCell}</td>
       <td style="padding:6px 6px"><span style="background:${st.bg};color:${st.fg};font-size:10px;padding:2px 6px;border-radius:3px;font-weight:600;white-space:nowrap">${st.label}</span></td>
-      <td style="padding:6px 6px;font-size:10px;font-weight:600">${escapeHtml((row.customer||'').slice(0,30))}</td>
+      <td style="padding:6px 6px;font-size:10px;font-weight:600">${generateBadges(row)}${escapeHtml((row.customer||'').slice(0,30))}</td>
       <td style="padding:6px 6px;font-size:10px;color:#64748b">${escapeHtml(row.gudang||'—')}</td>
       <td style="padding:6px 6px;text-align:right;font-family:ui-monospace,monospace;font-weight:600">${row.qty}</td>
       <td style="padding:6px 6px;font-size:10px;color:#64748b;font-family:ui-monospace,monospace">${sizeDisplay}</td>
@@ -11009,7 +11203,7 @@ function showLoad(msg){document.getElementById('loading').style.display='flex';s
 function setLoad(msg){document.getElementById('load-msg').textContent=msg;}
 function hideLoad(){document.getElementById('loading').style.display='none';}
 function resetApp(){
-  // v4.52.5: Deteksi sisa state dari sesi sebelumnya — tampilkan confirm kalau ada DO aktif
+  // v4.53.0: Deteksi sisa state dari sesi sebelumnya — tampilkan confirm kalau ada DO aktif
   const _staleSet = new Set();
   (routes||[]).forEach(r => (r.items||[]).forEach(i => _staleSet.add(i.doc_no)));
   (unassignedItems||[]).forEach(i => _staleSet.add(i.doc_no));
@@ -11029,8 +11223,8 @@ function resetApp(){
   routes=[];skipped=[];deferred=[];vendorItems=[];transferItems=[];carryOverItems=[];luarKotaPending=[];biayaData={};
   conflictItems=[];pendingTomorrowItems=[]; // v4.43
   assignedFromUnplot=[];
-  unassignedItems=[]; // v4.52.5 FIX: sebelumnya tidak di-reset → ghost DOs dari sesi lama ikut ke sesi baru
-  doDate=''; // v4.52.5: clear tanggal sesi
+  unassignedItems=[]; // v4.53.0 FIX: sebelumnya tidak di-reset → ghost DOs dari sesi lama ikut ke sesi baru
+  doDate=''; // v4.53.0: clear tanggal sesi
   gsConnected=false;
   document.getElementById('gs-status').style.display='none';
   setGsStatus('','loading');
