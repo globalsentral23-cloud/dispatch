@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.55.0</title>
+<title>Routing Optimizer v4.55.1</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.0</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.1</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -503,7 +503,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       <div class="dz-hint">Upload manual jika tidak pakai Google Sheets</div>
       <div class="dz-file" id="fn-master"></div>
     </div>
-    <!-- v4.55.0: Dropzone "DO Gagal Kirim" di-hide. Auto-load saat klik "Mulai Analisis"
+    <!-- v4.55.1: Dropzone "DO Gagal Kirim" di-hide. Auto-load saat klik "Mulai Analisis"
          via syncCarryOverFromSheets() yang call getPendingBesok + getFailedDOs. -->
     <div class="drop-zone" id="dz-gagal" style="display:none;border-color:#f59e0b;border-style:dashed;cursor:pointer" onclick="autoLoadCarryOver()">
       <div class="dz-icon">📥</div>
@@ -532,7 +532,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.0</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.1</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -542,11 +542,11 @@ body.dispatch-active .dispatch-bar{display:flex}
     <button class="tab-btn" onclick="switchTab('map',this)">🗺 Peta</button>
     <button class="tab-btn" onclick="switchTab('transfer',this)" style="display:none">Transfer Gudang</button>
     <button class="tab-btn" onclick="switchTab('skipped',this)" style="display:none">Ambil Sendiri</button>
-    <!-- v4.55.0: DO Vendor tab di-hide. Data tetap di-process untuk dev future. -->
+    <!-- v4.55.1: DO Vendor tab di-hide. Data tetap di-process untuk dev future. -->
     <button class="tab-btn" onclick="switchTab('vendor',this)" title="DO yang di-assign manual ke vendor — default kosong, isi via Data DO" style="display:none">DO Vendor (<span id="cnt-vendor">0</span>)</button>
-    <!-- v4.55.0: Kirim Besok → DO Gantung. Konsolidasi 5 jenis defer + carry over. -->
-    <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota" title="DO Gantung — DO carry over dari kemarin + DO baru hari ini yang tidak ke-route (luar kota, jabo overflow, low-util, KIRIM TGL X future). Manual decide per DO.">DO Gantung (<span id="cnt-pending-tab">0</span>)</button>
-    <!-- v4.55.0: DO Konflik tab di-hide. -->
+    <!-- v4.55.1: Kirim Besok → DO Gantung. Konsolidasi 5 jenis defer + carry over. -->
+    <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota" title="DO Gantung — DO Carry Over (dari kemarin) + DO Gantung Baru hari ini (DO Luar Kota, DO Overflow, DO Low-Util, KIRIM TGL X). Manual decide per DO via dispatcher.">DO Gantung (<span id="cnt-pending-tab">0</span>)</button>
+    <!-- v4.55.1: DO Konflik tab di-hide. -->
     <button class="tab-btn" onclick="switchTab('konflik',this)" id="tab-btn-konflik" style="display:none;color:#b91c1c">⚠ DO Konflik</button>
     <button class="tab-btn" id="tab-btn-biaya" onclick="switchTab('biaya',this)">💰 Biaya Ops</button>
     <button class="tab-btn" onclick="switchTab('settlement',this)">📋 Settlement T+1</button>
@@ -707,12 +707,12 @@ body.dispatch-active .dispatch-bar{display:flex}
   <div class="tab-pane" id="tab-luarkota">
     <div class="info-wrap">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
-        <div style="font-size:14px;font-weight:600">DO Gantung — DO yang tidak ke-route hari ini (manual decision dispatcher)</div>
+        <div style="font-size:14px;font-weight:600">DO Gantung — DO Carry Over kemarin + DO Gantung Baru hari ini (manual decision dispatcher)</div>
         <span id="sync-status-indicator" style="font-size:11px;color:#64748b;font-family:var(--mono)">⏸ Belum ada perubahan</span>
         <button onclick="downloadLuarKotaPending()" style="padding:6px 16px;border-radius:8px;background:var(--navy);border:none;color:#fff;font-size:12px;font-weight:600;cursor:pointer">⬇ Download</button>
       </div>
 
-      <!-- v4.55.0 SEKSI 0: Vendor Belum Konfirmasi — DO yang dispatcher pilih VENDOR kemarin
+      <!-- v4.55.1 SEKSI 0: Vendor Belum Konfirmasi — DO yang dispatcher pilih VENDOR kemarin
            tapi sampai sekarang belum di-konfirmasi delivered. Threshold: 12 jam (configurable di GAS). -->
       <div id="vendor-belum-konfirm-section" style="margin-bottom:24px;padding:12px;background:#fef3c7;border-radius:10px;border:2px solid #fbbf24;display:none">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -735,7 +735,7 @@ body.dispatch-active .dispatch-bar{display:flex}
         </div>
       </div>
 
-      <!-- v4.55.0 SEKSI A: DO Carry Over dari kemarin (Pending Besok + DO Status driver app) -->
+      <!-- v4.55.1 SEKSI A: DO Carry Over (sumber: sheet "Pending Besok" + getFailedDOs driver app) -->
       <div id="carryover-section" style="margin-bottom:24px;padding:12px;background:#fff7ed;border-radius:10px;border:1px solid #fed7aa;display:none">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
           <div style="width:12px;height:12px;border-radius:2px;background:#ea580c;flex-shrink:0"></div>
@@ -765,17 +765,17 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
 
       <!-- Summary cards (auto + manual defer dari capacity) -->
-      <div style="font-size:12px;color:#64748b;margin-bottom:6px">DO Baru hari ini: <span id="cnt-luarkota">0</span> luar kota + <span id="cnt-lowutil">0</span> low-util + <span id="cnt-jabo-overflow">0</span> jabo overflow</div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:6px">DO Gantung Baru: <span id="cnt-luarkota">0</span> DO Luar Kota + <span id="cnt-lowutil">0</span> DO Low-Util + <span id="cnt-jabo-overflow">0</span> DO Overflow</div>
       <!-- Auto-defer summary cards -->
       <div id="luar-kota-summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px"></div>
       <!-- Manual defer summary cards -->
       <div id="luar-kota-summary-manual" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
 
-      <!-- SEKSI 1: Pending Besok (Auto + Manual) -->
+      <!-- SEKSI 1: DO Luar Kota — Volume kurang, akan defer ke besok (sheet "Pending Besok") -->
       <div id="luarkota-section" style="margin-bottom:20px">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
           <div style="width:12px;height:12px;border-radius:2px;background:#f59e0b;flex-shrink:0"></div>
-          <div style="font-size:13px;font-weight:700;color:#92400e">🌍 DO Luar Kota — Volume Belum Cukup</div>
+          <div style="font-size:13px;font-weight:700;color:#92400e">🌍 DO Luar Kota — Volume Belum Cukup (defer ke besok)</div>
         </div>
         <div class="tbl-wrap">
           <table class="info-tbl">
@@ -789,11 +789,11 @@ body.dispatch-active .dispatch-bar{display:flex}
         </div>
       </div>
 
-      <!-- v4.55.0 SEKSI 1.5: Jabo Overflow — DO yang tidak muat di kendaraan internal -->
+      <!-- v4.55.1 SEKSI 1.5: DO Overflow — DO yang tidak muat di kendaraan internal -->
       <div id="jabo-overflow-section" style="margin-bottom:20px;display:none">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
           <div style="width:12px;height:12px;border-radius:2px;background:#8b5cf6;flex-shrink:0"></div>
-          <div style="font-size:13px;font-weight:700;color:#6d28d9">🚛 DO Jabo Overflow — Tidak Muat Kendaraan Internal</div>
+          <div style="font-size:13px;font-weight:700;color:#6d28d9">🚛 DO Overflow — Tidak Muat Kendaraan Internal</div>
           <span style="font-size:11px;color:var(--muted)">Pilih vendor (Turbo/Pegasus/Delta) atau pindah ke kendaraan internal yang masih sisa</span>
         </div>
         <div class="tbl-wrap">
@@ -811,7 +811,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       <div id="lowutil-section" style="margin-bottom:20px;display:none">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
           <div style="width:12px;height:12px;border-radius:2px;background:#06b6d4;flex-shrink:0"></div>
-          <div style="font-size:13px;font-weight:700;color:#0e7490">⚡ DO Ditunda — Util Kendaraan Rendah (&lt;30%)</div>
+          <div style="font-size:13px;font-weight:700;color:#0e7490">⚡ DO Low-Util — Utilisasi Kendaraan &lt;30%</div>
           <span style="font-size:11px;color:var(--muted)">Kendaraan dengan muatan kurang dari 30% ditunda ke hari berikutnya (lebih efisien)</span>
         </div>
         <div class="tbl-wrap">
@@ -907,6 +907,32 @@ body.dispatch-active .dispatch-bar{display:flex}
 </div>
 
 <script>
+/* ════════════════════════════════════════════════════════════════════
+ * v4.55.1 — VOCABULARY UNIFICATION (April 2026)
+ * ════════════════════════════════════════════════════════════════════
+ * Penamaan disesuaikan dengan flow whiteboard Hendrik (30 April 2026).
+ * Variable rename mapping (lama → baru):
+ *   luarKotaPending          → doLuarKota          (DO Luar Kota — volume kurang)
+ *   pendingTomorrowItems     → doLowUtil           (DO Low-Util — utilisasi <30%)
+ *   vendorItems              → doVendor            (DO via vendor: luar kota vendor + DO Overflow)
+ *   carryOverItems           → doCarryOverManual   (Carry Over Upload — dari Excel manual)
+ *   _gasCarryOverItems       → doCarryOverItems    (window global)
+ *   _gasCarryOver            → doCarryOver         (DO Carry Over — dari sheet GAS kemarin)
+ *   _gasFailedDOs            → doGagalKirim        (DO Gagal Kirim — dari driver app)
+ *   _gasVendorBelumKonfirmasi → doVendorBelumKonfirmasi (DO RELEASED via vendor >12 jam)
+ *   _gasVendorAwaitThresholdHours → doVendorAwaitThresholdHours
+ *
+ * Sub-kategori DO Gantung Baru (output hari ini):
+ *   1. DO Luar Kota         — Volume belum cukup, defer ke besok
+ *   2. DO Overflow          — Jabo overflow gak muat di internal
+ *   3. DO Low-Util          — Utilisasi <30%, defer
+ *   4. DO Carry Over        — Warisan kemarin yang re-pending
+ *   5. DO Tunggu Konfirmasi Vendor — RELEASED via vendor >12 jam
+ *
+ * Sheet "Pending Besok" + GAS function names TIDAK di-rename (API contract).
+ * Lihat GLOSSARY_v4_55_1.md untuk dokumentasi lengkap.
+ * ═══════════════════════════════════════════════════════════════════ */
+
 // ═══════════════════════════════════════════════════════
 // v4.41 — DISPATCHER TOKEN INTERCEPTOR
 // ═══════════════════════════════════════════════════════
@@ -977,7 +1003,7 @@ const GEO_CACHE_KEY = 'routing_geo_v3';
 const GSHEET_ID_KEY = 'routing_gsid';
 
 let files={sap:null,pg:null,master:null,gagal:null};
-let carryOverItems=[]; // DO gagal kirim kemarin
+let doCarryOverManual=[]; // DO gagal kirim kemarin
 let dispatchLog=[];    // log perubahan saat muat (skip/cancel/partial/pindah)
 let dispatchMode=false;
 // v4.47 D: Track perubahan routing setelah Sync. Reset ke false saat Sync sukses.
@@ -997,9 +1023,9 @@ let rtLiveMarkers = {};      // leaflet markers per plat
 let rtPollingTimer = null;
 let rtMusibahAlerts = [];    // [{plat, doc_no, alasan, jam}]
  // true = mode operasional saat muat
-let luarKotaPending=[]; // DO luar kota yang tidak cukup memenuhi 95%
-let routes=[],skipped=[],deferred=[],vendorItems=[],transferItems=[],pendingTomorrowItems=[];
-let unassignedItems=[]; // v4.55.0 FIX: reset di resetApp() — sebelumnya ghost DOs dari sesi lama bocor ke sesi baru
+let doLuarKota=[]; // DO luar kota yang tidak cukup memenuhi 95%
+let routes=[],skipped=[],deferred=[],doVendor=[],transferItems=[],doLowUtil=[];
+let unassignedItems=[]; // v4.55.1 FIX: reset di resetApp() — sebelumnya ghost DOs dari sesi lama bocor ke sesi baru
 let conflictItems=[]; // v4.43: DO with both vendor-trigger AND no_cdd/force_cde flag
 let assignedFromUnplot=[]; // DO yang di-assign dari tab Unplot ke kendaraan internal
 let biayaData={}; // expense tracking per route.id
@@ -1121,14 +1147,14 @@ const WH_COORDS={
 const LUAR_KW=/SEMARANG|SURABAYA|PURWOKERTO|KUDUS|BANJARMASIN|MEDAN|MAKASSAR|BALI|LOMBOK|MANADO|SAMARINDA|TARAKAN|PALEMBANG|PONTIANAK|BALIKPAPAN|DENPASAR|TABANAN/;
 // Daerah luar kota tapi bisa pakai vendor jika kendaraan penuh
 const VENDOR_FALLBACK_KW=/BANDUNG|CIMAHI|CIKAMPEK|CILEGON|CIANJUR|SUBANG|SUKABUMI|PURWAKARTA|GARUT/;
-// v4.55.0: Tambah compact-format wh names dari data curator v1.4 (CIKUDA/CK/DM).
+// v4.55.1: Tambah compact-format wh names dari data curator v1.4 (CIKUDA/CK/DM).
 // Sebelumnya cuma berisi format SAP raw ('GUDANG KEMENANGAN JAYA CIKUDA') sehingga
 // SAP curator output 'CIKUDA' tidak match → semua row SAP CIKUDA di-skip → 100+ DO hilang.
 const JABO_WH=new Set(['DOYONG','DAAN MOGOT','PASAR KEMIS 2','KOMP PASAR KEMIS 2','KOMP PASAR KEMIS','PASAR KEMIS','GUDANG KEMENANGAN JAYA CIKUDA','GUDANG KEMENANGAN JAYA CIKUDA 2','GUDANG KEMENANGAN JAYA CIKUDA 3','DIRECT','TAMPUNGAN','MUARA KARANG','CIKUDA','CIKUDA 2','CIKUDA 3','CK','DM']);
 const JABO_PG=new Set(['A11','A24','A35','R01','R02','R03','RO1','RO2','AD11','AD24','AD35','RD01','RD02','RD03','D01']);
 
 // ═══════════════════════════════════════════════════════
-// v4.55.0: HARI LIBUR + DELIVERY DATE (SLA WORKFLOW)
+// v4.55.1: HARI LIBUR + DELIVERY DATE (SLA WORKFLOW)
 // ═══════════════════════════════════════════════════════
 // Hari libur kalender merah Indonesia 2026 (hardcoded fallback).
 // Format: 'YYYY-MM-DD'. Bisa di-override dengan sheet "Hari Libur" di master.
@@ -1230,14 +1256,14 @@ async function loadHolidaysFromMaster(){
     }
     if(set.size){
       _holidayOverride = set;
-      console.log(`%c[v4.55.0] Loaded ${set.size} hari libur dari master sheet (override fallback)`, 'color:#0891b2;font-weight:bold');
+      console.log(`%c[v4.55.1] Loaded ${set.size} hari libur dari master sheet (override fallback)`, 'color:#0891b2;font-weight:bold');
     }
   }catch(e){
-    console.warn('[v4.55.0] loadHolidaysFromMaster error:', e);
+    console.warn('[v4.55.1] loadHolidaysFromMaster error:', e);
   }
 }
 // ═══════════════════════════════════════════════════════
-// END v4.55.0 holiday helpers
+// END v4.55.1 holiday helpers
 // ═══════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════
@@ -1295,7 +1321,7 @@ async function connectGSheets(){
       });
       files.masterData=processed;
       parseMasterData(processed);
-      await loadHolidaysFromMaster(); // v4.55.0: load hari libur dari master kalau ada
+      await loadHolidaysFromMaster(); // v4.55.1: load hari libur dari master kalau ada
       localStorage.setItem(GSHEET_ID_KEY, gsInput);
       gsConnected=true;
       const nSheet=Object.keys(processed).length;
@@ -1509,7 +1535,7 @@ function parseMasterData(masterData){
   });
 
   // Parse Vendor
-  // v4.55.0 FIX: Sebelumnya `vRows.filter(r=>r[0]&&!String(r[0]).includes('['))` cuma skip
+  // v4.55.1 FIX: Sebelumnya `vRows.filter(r=>r[0]&&!String(r[0]).includes('['))` cuma skip
   // baris dengan tag `[...]`, TAPI tidak skip header row "Kode Vendor". Akibatnya header
   // ke-parse jadi vendor palsu bernama "Nama Vendor/Ekspedisi" dengan tipe "Tipe".
   // Solusi: pakai pattern parser Kendaraan — detect header row by name, lalu loop dari i=1.
@@ -1553,7 +1579,7 @@ function parseMasterData(masterData){
         pic:      String(r[vi.pic]||'').trim(),
       });
     }
-    console.log(`%c[v4.55.0] Vendor parser: ${vRows.length-1} data rows → ${vendorList.length} vendor aktif`, 'color:#0891b2;font-weight:bold');
+    console.log(`%c[v4.55.1] Vendor parser: ${vRows.length-1} data rows → ${vendorList.length} vendor aktif`, 'color:#0891b2;font-weight:bold');
   }
 
   // Parse Kecamatan cache
@@ -1978,14 +2004,14 @@ function checkReady(){
 // MAIN ANALYSIS
 // ═══════════════════════════════════════════════════════
 async function startAnalysis(){
-  // v4.55.0: Defensive clear — pastikan pool kosong sebelum analisis baru
+  // v4.55.1: Defensive clear — pastikan pool kosong sebelum analisis baru
   // (failsafe kalau resetApp pernah skip reset karena user cancel confirm)
   unassignedItems=[];
   showLoad('Membaca data SAP...');await sleep(50);
   try{
     const sapRaw=await readExcel(files.sap);
 
-    // v4.55.0: Derive session gudang dari SAP file (definitive source).
+    // v4.55.1: Derive session gudang dari SAP file (definitive source).
     // Dipakai untuk filter GAS carry-over — SEBELUM showApp() dipanggil
     // sehingga UI elements (gudang-badge) belum tersedia.
     const _scanSapWh=(()=>{
@@ -2000,7 +2026,7 @@ async function startAnalysis(){
       }
       return Object.entries(_cnt).sort((a,b)=>b[1]-a[1])[0]?.[0]||'';
     })();
-    if(_scanSapWh) console.log(`[v4.55.0] Session gudang dari SAP: "${_scanSapWh}"`);
+    if(_scanSapWh) console.log(`[v4.55.1] Session gudang dari SAP: "${_scanSapWh}"`);
 
     setLoad('Membaca data PG...');
     const pgRaw=await readExcel(files.pg);
@@ -2010,40 +2036,40 @@ async function startAnalysis(){
       masterRaw=await readExcelAll(files.master);
       files.masterData=masterRaw;
       parseMasterData(masterRaw);
-      await loadHolidaysFromMaster(); // v4.55.0: load hari libur dari master kalau ada
+      await loadHolidaysFromMaster(); // v4.55.1: load hari libur dari master kalau ada
     }
     setLoad('Merge & filter data...');await sleep(30);
     // Load carry over DO if uploaded
-    carryOverItems=[];
+    doCarryOverManual=[];
     if(files.gagal){
       setLoad('Membaca DO gagal kirim kemarin...');
       const gagalRaw=await readExcel(files.gagal);
-      carryOverItems=parseCarryOver(gagalRaw);
-      setLoad(`${carryOverItems.length} carry over DO ditemukan...`);
+      doCarryOverManual=parseCarryOver(gagalRaw);
+      setLoad(`${doCarryOverManual.length} carry over DO ditemukan...`);
       await sleep(200);
     }
     const {active,skip,defer,transfer,vendor:autoVendor,conflict:autoConflict}=processData(sapRaw,pgRaw);
     skipped=skip;deferred=defer;transferItems=transfer;
     // v4.43: conflict items
     conflictItems = [...(autoConflict||[])];
-    // NOTE: vendorItems di-set SETELAH luar kota consolidation (v4.44 fix)
+    // NOTE: doVendor di-set SETELAH luar kota consolidation (v4.44 fix)
 
     // ─────────────────────────────────────────────────────────────────────────
     // v4.44 — LUAR KOTA CONSOLIDATION (multi-hari)
     // FIX: Luar kota items ada di autoVendor[] (dari processData), BUKAN di active[]!
     //      autoVendor = semua item yang di-auto-trigger ke vendor (luar kota, overflow, dll)
     // ─────────────────────────────────────────────────────────────────────────
-    luarKotaPending = []; // reset
+    doLuarKota = []; // reset
     const _releasedDocNos = []; // carry-over yang threshold-nya sudah terpenuhi
 
     // Load carry-over pending dari GAS (hari sebelumnya)
     const _gsUrl = document.getElementById('gs-id').value.trim();
-    let _gasCarryOver = [];
-    let _gasFailedDOs = [];
+    let doCarryOver = [];
+    let doGagalKirim = [];
     if(_gsUrl && _gsUrl.startsWith('https://script.google.com/') && gsConnected){
       try{
-        setLoad('Memuat pending besok dari kemarin...');
-        // v4.55.0 FIX: pakai _scanSapWh (dari SAP file, sudah tersedia).
+        setLoad('Memuat DO Carry Over dari kemarin...');
+        // v4.55.1 FIX: pakai _scanSapWh (dari SAP file, sudah tersedia).
         // Bug sebelumnya: _gudang diambil dari gudang-badge yang BELUM EXIST saat ini
         // (showApp() belum dipanggil) → _gudang selalu '' → GAS return SEMUA gudang
         // → DOs gudang lain (misal DOYONG 26Apr) masuk ke pool session ini.
@@ -2052,56 +2078,56 @@ async function startAnalysis(){
            document.querySelector('.gudang-badge'))?.textContent?.replace('GUDANG ','').trim() || '';
         const _pendResp = await fetch(_gsUrl+'?action=getPendingBesok'+(_gudang ? '&gudang='+encodeURIComponent(_gudang) : ''), {redirect:'follow'});
         const _pendData = await _pendResp.json();
-        _gasCarryOver = (_pendData.items || []);
-        if(_gasCarryOver.length > 0)
-          console.log(`%c[v4.45] Loaded ${_gasCarryOver.length} carry-over pending besok dari GAS (auto: ${_gasCarryOver.filter(i=>i.defer_type==='auto').length}, manual: ${_gasCarryOver.filter(i=>i.defer_type==='manual').length})`, 'color:#f97316;font-weight:bold');
-        // v4.55.0: Double-check filter gudang pada hasil GAS — kalau GAS masih return
+        doCarryOver = (_pendData.items || []);
+        if(doCarryOver.length > 0)
+          console.log(`%c[v4.45] Loaded ${doCarryOver.length} carry-over pending besok dari GAS (auto: ${doCarryOver.filter(i=>i.defer_type==='auto').length}, manual: ${doCarryOver.filter(i=>i.defer_type==='manual').length})`, 'color:#f97316;font-weight:bold');
+        // v4.55.1: Double-check filter gudang pada hasil GAS — kalau GAS masih return
         // items dari gudang lain (edge case: server-side filter belum ada), reject di sini.
-        if(_scanSapWh && _gasCarryOver.length>0){
+        if(_scanSapWh && doCarryOver.length>0){
           const _nw=s=>String(s||'').replace(/^GUDANG\s*/i,'').trim().toUpperCase();
           const _sn=_nw(_scanSapWh);
-          const _b4=_gasCarryOver.length;
-          _gasCarryOver=_gasCarryOver.filter(i=>{const _iw=_nw(i.gudang||i.wh_cons||i.wh||'');return !_iw||_iw===_sn;});
-          if(_gasCarryOver.length<_b4){
-            const _rej=_b4-_gasCarryOver.length;
-            console.warn(`[v4.55.0] GAS carry-over: ${_rej} DO dari gudang lain di-reject (session=${_scanSapWh})`);
+          const _b4=doCarryOver.length;
+          doCarryOver=doCarryOver.filter(i=>{const _iw=_nw(i.gudang||i.wh_cons||i.wh||'');return !_iw||_iw===_sn;});
+          if(doCarryOver.length<_b4){
+            const _rej=_b4-doCarryOver.length;
+            console.warn(`[v4.55.1] GAS carry-over: ${_rej} DO dari gudang lain di-reject (session=${_scanSapWh})`);
             window._carryOverCrossWarnMsg=(window._carryOverCrossWarnMsg?window._carryOverCrossWarnMsg+'\n\n':'')+`⚠ GAS CARRY-OVER: ${_rej} DO dari gudang lain diabaikan (session: ${_scanSapWh}).`;
           }
         }
 
-        // v4.55.0: ALSO load DO yang ditandai gagal kirim oleh driver app (tab DO Status).
+        // v4.55.1: ALSO load DO yang ditandai gagal kirim oleh driver app (tab DO Status).
         // Fungsi getFailedDOs di GAS Apps Script v3.4 sudah ada — return tasks dengan
         // shape { do_date, plat, driver, gudang, doc_no, customer, alamat, produk, qty,
         //         status, alasan_gagal }. Filter status='Gagal Kirim' otomatis di server side.
         setLoad('Memuat DO gagal kirim dari driver app...');
         const _failedResp = await fetch(_gsUrl+'?action=getFailedDOs', {redirect:'follow'});
         const _failedData = await _failedResp.json();
-        _gasFailedDOs = (_failedData.tasks || []);
+        doGagalKirim = (_failedData.tasks || []);
         // Filter gudang untuk session ini
-        if(_scanSapWh && _gasFailedDOs.length>0){
+        if(_scanSapWh && doGagalKirim.length>0){
           const _nw=s=>String(s||'').replace(/^GUDANG\s*/i,'').trim().toUpperCase();
           const _sn=_nw(_scanSapWh);
-          const _b4=_gasFailedDOs.length;
-          _gasFailedDOs=_gasFailedDOs.filter(i=>{const _iw=_nw(i.gudang||'');return !_iw||_iw===_sn;});
-          if(_gasFailedDOs.length<_b4){
-            console.warn(`[v4.55.0] getFailedDOs: ${_b4-_gasFailedDOs.length} DO dari gudang lain di-reject (session=${_scanSapWh})`);
+          const _b4=doGagalKirim.length;
+          doGagalKirim=doGagalKirim.filter(i=>{const _iw=_nw(i.gudang||'');return !_iw||_iw===_sn;});
+          if(doGagalKirim.length<_b4){
+            console.warn(`[v4.55.1] getFailedDOs: ${_b4-doGagalKirim.length} DO dari gudang lain di-reject (session=${_scanSapWh})`);
           }
         }
-        // Dedupe by doc_no — kalau DO sudah ada di _gasCarryOver (PENDING di sheet),
+        // Dedupe by doc_no — kalau DO sudah ada di doCarryOver (PENDING di sheet),
         // skip duplikat dari getFailedDOs (tab DO Status). Pending Besok prioritas.
-        if(_gasFailedDOs.length>0){
-          const _existingDocs = new Set(_gasCarryOver.map(i=>String(i.doc_no)));
-          const _b4 = _gasFailedDOs.length;
-          _gasFailedDOs = _gasFailedDOs.filter(i => !_existingDocs.has(String(i.doc_no)));
-          if(_b4-_gasFailedDOs.length > 0){
-            console.log(`%c[v4.55.0] getFailedDOs dedupe: ${_b4-_gasFailedDOs.length} DO sudah ada di Pending Besok, skip`, 'color:#0891b2');
+        if(doGagalKirim.length>0){
+          const _existingDocs = new Set(doCarryOver.map(i=>String(i.doc_no)));
+          const _b4 = doGagalKirim.length;
+          doGagalKirim = doGagalKirim.filter(i => !_existingDocs.has(String(i.doc_no)));
+          if(_b4-doGagalKirim.length > 0){
+            console.log(`%c[v4.55.1] getFailedDOs dedupe: ${_b4-doGagalKirim.length} DO sudah ada di Pending Besok, skip`, 'color:#0891b2');
           }
         }
-        if(_gasFailedDOs.length > 0){
-          console.log(`%c[v4.55.0] Loaded ${_gasFailedDOs.length} DO gagal kirim dari tab DO Status (driver app)`, 'color:#dc2626;font-weight:bold');
+        if(doGagalKirim.length > 0){
+          console.log(`%c[v4.55.1] Loaded ${doGagalKirim.length} DO gagal kirim dari tab DO Status (driver app)`, 'color:#dc2626;font-weight:bold');
         }
 
-        // v4.55.0: ALSO load vendor RELEASED yang umur > VENDOR_AWAITING_CONFIRM_HOURS jam
+        // v4.55.1: ALSO load vendor RELEASED yang umur > VENDOR_AWAITING_CONFIRM_HOURS jam
         // (default 12 jam). Ini DO yang dispatcher pilih VENDOR kemarin tapi belum tahu
         // sudah delivered atau belum. Akan tampil di section "Vendor Belum Konfirmasi"
         // di tab DO Gantung untuk review per-DO.
@@ -2109,38 +2135,38 @@ async function startAnalysis(){
         try {
           const _vendorAwaitResp = await fetch(_gsUrl+'?action=getVendorBelumKonfirmasi'+(_gudang ? '&gudang='+encodeURIComponent(_gudang) : ''), {redirect:'follow'});
           const _vendorAwaitData = await _vendorAwaitResp.json();
-          window._gasVendorBelumKonfirmasi = (_vendorAwaitData.items || []);
-          window._gasVendorAwaitThresholdHours = _vendorAwaitData.threshold_hours || 12;
+          window.doVendorBelumKonfirmasi = (_vendorAwaitData.items || []);
+          window.doVendorAwaitThresholdHours = _vendorAwaitData.threshold_hours || 12;
           // Filter gudang lagi defensive
-          if(_scanSapWh && window._gasVendorBelumKonfirmasi.length>0){
+          if(_scanSapWh && window.doVendorBelumKonfirmasi.length>0){
             const _nw=s=>String(s||'').replace(/^GUDANG\s*/i,'').trim().toUpperCase();
             const _sn=_nw(_scanSapWh);
-            window._gasVendorBelumKonfirmasi = window._gasVendorBelumKonfirmasi.filter(i=>{
+            window.doVendorBelumKonfirmasi = window.doVendorBelumKonfirmasi.filter(i=>{
               const _iw=_nw(i.gudang||i.wh_cons||'');
               return !_iw||_iw===_sn;
             });
           }
-          if(window._gasVendorBelumKonfirmasi.length > 0){
-            console.log(`%c[v4.55.0] Loaded ${window._gasVendorBelumKonfirmasi.length} vendor belum konfirmasi (threshold: ${window._gasVendorAwaitThresholdHours} jam)`, 'color:#f97316;font-weight:bold');
+          if(window.doVendorBelumKonfirmasi.length > 0){
+            console.log(`%c[v4.55.1] Loaded ${window.doVendorBelumKonfirmasi.length} vendor belum konfirmasi (threshold: ${window.doVendorAwaitThresholdHours} jam)`, 'color:#f97316;font-weight:bold');
           }
         } catch(e){
-          console.warn('[v4.55.0] Gagal load vendor belum konfirmasi:', e.message);
-          window._gasVendorBelumKonfirmasi = [];
-          window._gasVendorAwaitThresholdHours = 12;
+          console.warn('[v4.55.1] Gagal load vendor belum konfirmasi:', e.message);
+          window.doVendorBelumKonfirmasi = [];
+          window.doVendorAwaitThresholdHours = 12;
         }
       }catch(e){
-        console.warn('[v4.55.0] Gagal load carry-over dari GAS:', e.message);
+        console.warn('[v4.55.1] Gagal load carry-over dari GAS:', e.message);
       }
     }
 
-    // v4.55.0: Convert _gasFailedDOs ke format yang sama dengan _gasCarryOver, lalu merge.
-    // Field mapping dari getFailedDOs response → _gasCarryOver shape:
+    // v4.55.1: Convert doGagalKirim ke format yang sama dengan doCarryOver, lalu merge.
+    // Field mapping dari getFailedDOs response → doCarryOver shape:
     //   doc_no, customer, alamat, qty (= QTY Kirim), gudang (raw), do_date,
     //   alasan_gagal (= reason), plat, driver
     // Field tambahan: defer_type='auto' (treat sama dengan auto carry over),
     // _from_failed_dos=true (untuk badge dan trace), priority=4 (max).
-    if(_gasFailedDOs.length > 0){
-      const _converted = _gasFailedDOs.map(f => ({
+    if(doGagalKirim.length > 0){
+      const _converted = doGagalKirim.map(f => ({
         doc_no:       String(f.doc_no||'').trim(),
         customer:     String(f.customer||'').trim(),
         kirim:        String(f.alamat||'').trim(),
@@ -2156,24 +2182,24 @@ async function startAnalysis(){
         previous_driver: String(f.driver||'').trim(),
         _from_failed_dos: true,
       }));
-      _gasCarryOver = [..._gasCarryOver, ..._converted];
-      console.log(`%c[v4.55.0] Total carry-over after merge: ${_gasCarryOver.length} (Pending Besok + DO Status)`, 'color:#10b981;font-weight:bold');
+      doCarryOver = [...doCarryOver, ..._converted];
+      console.log(`%c[v4.55.1] Total carry-over after merge: ${doCarryOver.length} (Pending Besok + DO Status)`, 'color:#10b981;font-weight:bold');
     }
 
-    // v4.55.0: Save to window for tab DO Gantung render access (_renderCarryOverSection).
-    // _gasCarryOver di sini sudah filter wh + dedupe + merge failed DOs.
-    window._gasCarryOverItems = _gasCarryOver.slice();
+    // v4.55.1: Save to window for tab DO Gantung render access (_renderCarryOverSection).
+    // doCarryOver di sini sudah filter wh + dedupe + merge failed DOs.
+    window.doCarryOverItems = doCarryOver.slice();
 
     // Identifikasi doc_no carry-over
-    const _carryOverDocNos = new Set(_gasCarryOver.map(i=>i.doc_no));
+    const _carryOverDocNos = new Set(doCarryOver.map(i=>i.doc_no));
     const _minVol = CFG.luar_kota_min_vol_m3 || 8.0;
     const _minWt  = CFG.luar_kota_min_wt_kg  || 6000;
 
     // v4.45: Split carry-over by defer_type
     // - manual → langsung masuk active routing (dispatcher decide lagi)
     // - auto   → masuk threshold evaluation (konsolidasi luar kota)
-    const _carryOverManual = _gasCarryOver.filter(i => i.defer_type === 'manual');
-    const _carryOverAuto   = _gasCarryOver.filter(i => i.defer_type !== 'manual');
+    const _carryOverManual = doCarryOver.filter(i => i.defer_type === 'manual');
+    const _carryOverAuto   = doCarryOver.filter(i => i.defer_type !== 'manual');
     if(_carryOverManual.length > 0)
       console.log(`%c[v4.45] Manual carry-over ${_carryOverManual.length} item → masuk active routing`, 'color:#3b82f6;font-weight:bold');
 
@@ -2249,7 +2275,7 @@ async function startAnalysis(){
         console.log(`%c[v4.44] RELEASE ${grp.area}: ${grp.items.length} item, ${grp.totalVol.toFixed(2)}m³ >= ${_minVol}m³`, 'color:#22c55e;font-weight:bold');
       } else {
         grp.items.forEach(item => {
-          luarKotaPending.push({
+          doLuarKota.push({
             ...item,
             wh_cons              : grp.wh,
             luar_kota_area       : grp.area,
@@ -2275,11 +2301,11 @@ async function startAnalysis(){
       vendor_reason: i.vendor_reason || ('Manual defer carry-over dari '+i.last_update_date),
     }));
     const _activeFinal = [..._activeNonLuarKota, ..._activeFromRelease, ..._manualCarryOverActive];
-    // vendorItems = non-luar-kota autoVendor + luar-kota yang released (ke Pegasus)
-    vendorItems = [..._autoVendorNonLuarKota, ..._vendorFromRelease];
+    // doVendor = non-luar-kota autoVendor + luar-kota yang released (ke Pegasus)
+    doVendor = [..._autoVendorNonLuarKota, ..._vendorFromRelease];
     // Simpan referensi untuk sync ke GAS saat klik Sync
-    window.__pendingLuarKotaToSave   = luarKotaPending.filter(i => !i.is_pending_carryover);
-    window.__pendingCarryOverToUpdate = luarKotaPending.filter(i =>  i.is_pending_carryover);
+    window.__pendingLuarKotaToSave   = doLuarKota.filter(i => !i.is_pending_carryover);
+    window.__pendingCarryOverToUpdate = doLuarKota.filter(i =>  i.is_pending_carryover);
     window.__releasedDocNosToGAS     = _releasedDocNos;
     // ─────────────────────────────────────────────────────────────────────────
     // END v4.44 luar kota consolidation
@@ -2296,11 +2322,11 @@ async function startAnalysis(){
       rt.is_suggestion = true;
       if(rt.items) rt.items.forEach(it => { it.is_suggestion = true; });
     });
-    // Merge: routing overflow vendor (tambah ke vendorItems yang sudah ada)
-    vendorItems = [...vendorItems, ...(routingVendor||[])];
+    // Merge: routing overflow vendor (tambah ke doVendor yang sudah ada)
+    doVendor = [...doVendor, ...(routingVendor||[])];
     // v4.52.1: vendor items dari auto-routing juga is_suggestion (manual approve)
     (routingVendor||[]).forEach(it => { it.is_suggestion = true; });
-    pendingTomorrowItems=pendingTomorrow||[]; // v4.42 Step 5 output
+    doLowUtil=pendingTomorrow||[]; // v4.42 Step 5 output
     initBiaya(); // hitung estimasi biaya per kendaraan
     setLoad('Membangun dashboard...');await sleep(30);
     hideLoad();
@@ -2311,15 +2337,15 @@ async function startAnalysis(){
       const inputDOs = new Set((_activeFinal||[]).map(it => it.doc_no).filter(Boolean));
       const outputDOs = new Set();
       (routes||[]).forEach(rt => (rt.items||[]).forEach(it => outputDOs.add(it.doc_no)));
-      (vendorItems||[]).forEach(it => outputDOs.add(it.doc_no));
-      (pendingTomorrowItems||[]).forEach(it => outputDOs.add(it.doc_no));
+      (doVendor||[]).forEach(it => outputDOs.add(it.doc_no));
+      (doLowUtil||[]).forEach(it => outputDOs.add(it.doc_no));
       const inN = inputDOs.size, outN = outputDOs.size;
       const ratio = inN > 0 ? Math.round((outN / inN) * 100) : 100;
       // Tampilkan warning kalau ratio < 50%
       if(inN >= 5 && ratio < 50){
         alert(`⚠ ALERT: Hanya ${outN} dari ${inN} DO (${ratio}%) yang ke-plot.\n\nKemungkinan masalah:\n1. Tanggal SAP (${doDate}) tidak match dengan filter routing\n2. Sebagian besar DO punya tgl_kirim berbeda dari mode\n3. Filter scope/zone terlalu ketat\n\nCek tab "Kirim Besok" atau verifikasi tanggal di header.`);
       }
-      // v4.55.0: Tampilkan warning kalau ada carry over cross-gudang yang ditolak
+      // v4.55.1: Tampilkan warning kalau ada carry over cross-gudang yang ditolak
       if(window._carryOverCrossWarnMsg){
         alert(window._carryOverCrossWarnMsg);
         window._carryOverCrossWarnMsg = null;
@@ -2473,13 +2499,13 @@ function processData(sapRaw,pgRaw){
   }
   doDate = _modeDate || fmtDate(sapRaw[1]?.[SC.do_date]);
 
-  // v4.55.0: DELIVERY_DATE = next workday setelah doDate (= T+1 calendar, skip libur+Minggu).
+  // v4.55.1: DELIVERY_DATE = next workday setelah doDate (= T+1 calendar, skip libur+Minggu).
   // Dipakai untuk compare instruksi "KIRIM TGL X" supaya DO yang target besok = route, bukan defer.
   // Fallback ke doDate kalau gagal calc.
   const _deliveryIso = nextWorkday(doDate);
   const DELIVERY_DATE = _deliveryIso ? fmtDate(_deliveryIso) : doDate;
   window._deliveryDateInfo = { generate: doDate, delivery: DELIVERY_DATE, deliveryIso: _deliveryIso };
-  console.log(`%c[v4.55.0] Generate date T = ${doDate} → DELIVERY_DATE T+1 (workday) = ${DELIVERY_DATE}`, 'color:#0891b2;font-weight:bold');
+  console.log(`%c[v4.55.1] Generate date T = ${doDate} → DELIVERY_DATE T+1 (workday) = ${DELIVERY_DATE}`, 'color:#0891b2;font-weight:bold');
 
   // Warning kalau distribusi tanggal lebih dari 1 (informative, tidak blocking)
   if(_dateCount.size > 1){
@@ -2800,7 +2826,7 @@ function processData(sapRaw,pgRaw){
 
     // Luar kota dekat (Bandung, Cikampek, Cilegon, Cianjur, Subang, Sukabumi, Purwakarta)
     // → Minimal 95% kapasitas kendaraan, tidak boleh CDE
-    // → Jika tidak cukup volume → masuk luarKotaPending (download besok)
+    // → Jika tidak cukup volume → masuk doLuarKota (download besok)
     if(VENDOR_FALLBACK_KW.test(row.kirim.toUpperCase())){
       const kecAfter=row.kirim.split(';').pop().trim().toUpperCase();
       if(VENDOR_FALLBACK_KW.test(kecAfter)){
@@ -2814,7 +2840,7 @@ function processData(sapRaw,pgRaw){
     }
 
     // Deferred date
-    // v4.55.0: compare dengan DELIVERY_DATE (= T+1 workday), bukan TODAY (= T).
+    // v4.55.1: compare dengan DELIVERY_DATE (= T+1 workday), bukan TODAY (= T).
     // Sebelumnya "KIRIM TGL [besok]" salah masuk defer karena dianggap future.
     // Sekarang:
     //   X < DELIVERY_DATE  → SLA breach (priority 3)
@@ -2832,7 +2858,7 @@ function processData(sapRaw,pgRaw){
       }
     }
 
-    // v4.55.0: SLA priority boost berdasarkan umur DO (calendar days dari issue).
+    // v4.55.1: SLA priority boost berdasarkan umur DO (calendar days dari issue).
     // umur ≥ 2 → priority 3 (back date — kalau tidak terkirim T+1, breach SLA 2 hari).
     // Boost ini OVERRIDE priority dari URGENT/TOP URGENT manual (max-of).
     const _umur = daysBetween(row.do_date, TODAY);
@@ -2932,11 +2958,11 @@ function processData(sapRaw,pgRaw){
     active.push(row);
   });
 
-  // ── v4.55.0: CROSS-GUDANG GUARD — filter carry over sebelum merge ──────────
+  // ── v4.55.1: CROSS-GUDANG GUARD — filter carry over sebelum merge ──────────
   // parseCarryOver() baca SEMUA rows dari routing xlsx tanpa filter gudang.
   // Jika file xlsx berisi rute multi-gudang (misal DOYONG+CIKUDA), DOs gudang lain
   // akan ikut masuk dan mencemari session ini. Guard ini menolak item tsb + warn user.
-  if(carryOverItems&&carryOverItems.length>0){
+  if(doCarryOverManual&&doCarryOverManual.length>0){
     // Derive session gudang dari SAP active items (dominant wh)
     const _whCount={};
     active.forEach(a=>{ if(a.wh) _whCount[a.wh]=(_whCount[a.wh]||0)+1; });
@@ -2945,7 +2971,7 @@ function processData(sapRaw,pgRaw){
     const _normWh=s=>String(s||'').replace(/^GUDANG\s*/i,'').trim().toUpperCase();
     const _sesNorm=_sessionWh.map(_normWh);
     const _allowed=[], _rejected=[];
-    carryOverItems.forEach(co=>{
+    doCarryOverManual.forEach(co=>{
       const _coNorm=_normWh(co.wh_cons);
       // Allow if no wh info, or if matches session gudang
       if(!_coNorm||_sesNorm.some(w=>w===_coNorm||w.includes(_coNorm)||_coNorm.includes(w))){
@@ -2958,14 +2984,14 @@ function processData(sapRaw,pgRaw){
       const _rejWhs=[...new Set(_rejected.map(c=>c.wh_cons||'unknown'))].join(', ');
       const _rejDOs=_rejected.map(c=>c.doc_no).join(', ');
       window._carryOverCrossWarnMsg=`⚠ CARRY OVER CROSS-GUDANG TERDETEKSI\n\n${_rejected.length} DO dari gudang LAIN diabaikan:\nGudang: ${_rejWhs}\nDO: ${_rejDOs}\n\nHanya DO dari gudang ${_sessionWh.join('/')} yang diproses.\nCek apakah file carry over benar.`;
-      console.warn('[v4.55.0] Carry over cross-gudang rejected:',_rejected.length,'DOs from',_rejWhs);
-      carryOverItems=[..._allowed]; // update global — hanya sisakan yang valid
+      console.warn('[v4.55.1] Carry over cross-gudang rejected:',_rejected.length,'DOs from',_rejWhs);
+      doCarryOverManual=[..._allowed]; // update global — hanya sisakan yang valid
     }
   }
 
   // Merge carry over items from yesterday with high priority
-  if(carryOverItems&&carryOverItems.length>0){
-    carryOverItems.forEach(co=>{
+  if(doCarryOverManual&&doCarryOverManual.length>0){
+    doCarryOverManual.forEach(co=>{
       // Skip if same DO already in today's active list
       if(active.some(a=>a.doc_no===co.doc_no)) return;
       const sp=getSpec('');
@@ -3266,13 +3292,13 @@ function extractDeferDate(ct,today){
 function _normalizeDateStr(s){
   if(!s) return null;
   s = String(s).trim();
-  // v4.55.0: Handle ISO format YYYY-MM-DD (failsafe — fmtDate sudah translate, tapi kalau-kalau).
+  // v4.55.1: Handle ISO format YYYY-MM-DD (failsafe — fmtDate sudah translate, tapi kalau-kalau).
   const _iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if(_iso){
     const [, y, mo, d] = _iso;
     return `${d.padStart(2,'0')}/${mo.padStart(2,'0')}/${y.slice(-2)}`;
   }
-  // v4.55.0: tambahkan dot ke separator untuk handle "30.04.26" (HG standard format).
+  // v4.55.1: tambahkan dot ke separator untuk handle "30.04.26" (HG standard format).
   const m = s.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
   if(!m) return null;
   let [, d, mo, y] = m;
@@ -3306,7 +3332,7 @@ function isSameDay(dateStr,today){
 
 function fmtDate(v){
   if(!v) return '';
-  // v4.55.0: Handle ISO format (YYYY-MM-DD) dari data curator v1.4 → convert ke dd.mm.yy (HG standard).
+  // v4.55.1: Handle ISO format (YYYY-MM-DD) dari data curator v1.4 → convert ke dd.mm.yy (HG standard).
   // Sebelumnya string langsung di-return as-is sehingga "2026-04-30" lolos ke downstream
   // → _normalizeDateStr salah parse "26" sebagai hari, "30" sebagai tahun → display "26/04/2030".
   if(typeof v==='string'){
@@ -3321,7 +3347,7 @@ function fmtDate(v){
   return String(v);
 }
 
-// v4.55.0: Generate badge HTML untuk DO/item.
+// v4.55.1: Generate badge HTML untuk DO/item.
 // Multi-badge stacking: DO bisa punya 🔄 PENDING + 🔥 TOP sekaligus.
 // Input: object dengan .priority, .carry_over, ._sla_reason, ._do_age, .remarks/text
 // Output: HTML string (badges di-concatenate dengan spasi).
@@ -3476,22 +3502,22 @@ async function autoLoadCarryOver() {
       return;
     }
 
-    // Convert ke format carryOverItems
-    carryOverItems = failedDOs.map(d => ({
+    // Convert ke format doCarryOverManual
+    doCarryOverManual = failedDOs.map(d => ({
       doc_no   : String(d.doc_no||'').trim(),
       customer : String(d.customer||'').trim(),
       qty      : parseFloat(d.qty)||0,
       wh_cons  : String(d.gudang||'').trim(),
       kirim    : String(d.alamat||'').trim(),
       carry_over: true,
-      priority : 4, // v4.55.0: HIGHEST — carry over menang dari SLA breach back date
+      priority : 4, // v4.55.1: HIGHEST — carry over menang dari SLA breach back date
       alasan   : String(d.remark||d.alasan_gagal||'Gagal kirim kemarin'),
     }));
 
-    if (fn) fn.textContent = `✅ ${carryOverItems.length} DO carry over dimuat`;
+    if (fn) fn.textContent = `✅ ${doCarryOverManual.length} DO carry over dimuat`;
     if (dz) dz.style.background = '#fef9c3';
     checkReady();
-    console.log(`[CarryOver] ✅ ${carryOverItems.length} DO gagal kemarin dimuat`);
+    console.log(`[CarryOver] ✅ ${doCarryOverManual.length} DO gagal kemarin dimuat`);
   } catch(e) {
     if (fn) fn.textContent = '⚠ Gagal: ' + e.message;
     if (dz) dz.style.background = '#fef2f2';
@@ -3518,7 +3544,7 @@ function parseCarryOver(raw){
       qty:parseFloat(String(r[ciQty]||'0').replace(/[^0-9.]/g,''))||0,
       wh_cons:String(r[ciGud]||'').trim(),
       kirim:String(r[ciKirim]||'').trim(),
-      carry_over:true, priority:4, // v4.55.0: HIGHEST — carry over menang dari SLA back date
+      carry_over:true, priority:4, // v4.55.1: HIGHEST — carry over menang dari SLA back date
     });
   }
   return result;
@@ -3537,10 +3563,10 @@ function downloadDeferred(){
 }
 
 function downloadVendorDO(filter){
-  const items = !filter || filter==='all' ? vendorItems
-    : filter==='jabo'     ? vendorItems.filter(r=>!r.luar_kota&&!r.vendor_fallback)
-    : filter==='luarkota' ? vendorItems.filter(r=> r.luar_kota|| r.vendor_fallback)
-    : vendorItems;
+  const items = !filter || filter==='all' ? doVendor
+    : filter==='jabo'     ? doVendor.filter(r=>!r.luar_kota&&!r.vendor_fallback)
+    : filter==='luarkota' ? doVendor.filter(r=> r.luar_kota|| r.vendor_fallback)
+    : doVendor;
   if(!items.length){alert('Tidak ada data');return;}
   const wb=XLSX.utils.book_new();
   const h=['DO No','Gudang','Customer','Tujuan Kirim','QTY','Volume (m³)','Alasan','Vendor Assigned'];
@@ -4121,7 +4147,7 @@ function buildRoutes(active){
   vehicles.sort((a,b)=>a.rank-b.rank);
 
   // ═══════════════════════════════════════════════════════════════════════
-  // v4.55.0: STRICT PER-WAREHOUSE SESSION
+  // v4.55.1: STRICT PER-WAREHOUSE SESSION
   // ═══════════════════════════════════════════════════════════════════════
   // Setiap dispatcher session HANYA boleh pakai kendaraan dari gudang session-nya sendiri.
   // CIKUDA dispatcher → hanya kendaraan CIKUDA. DM dispatcher → hanya kendaraan DM. dst.
@@ -4137,10 +4163,10 @@ function buildRoutes(active){
     const _filteredOut = vehicles.filter(v => v.wh !== _sessionWh).map(v => `${v.plat}/${v.driver}(${v.wh.replace('GUDANG ','')})`);
     vehicles.splice(0, vehicles.length, ...vehicles.filter(v => v.wh === _sessionWh));
     if(_filteredOut.length > 0){
-      console.log(`%c[v4.55.0 STRICT SESSION] Session=${_sessionWh}: ${_beforeCount} → ${vehicles.length} kendaraan (${_filteredOut.length} kendaraan gudang lain di-eject)`, 'color:#dc2626;font-weight:bold');
+      console.log(`%c[v4.55.1 STRICT SESSION] Session=${_sessionWh}: ${_beforeCount} → ${vehicles.length} kendaraan (${_filteredOut.length} kendaraan gudang lain di-eject)`, 'color:#dc2626;font-weight:bold');
       console.log(`  Di-eject: ${_filteredOut.slice(0,10).join(', ')}${_filteredOut.length>10?` ...+${_filteredOut.length-10}`:''}`);
     } else {
-      console.log(`%c[v4.55.0 STRICT SESSION] Session=${_sessionWh}: ${vehicles.length} kendaraan (sudah pure same-wh)`, 'color:#10b981;font-weight:bold');
+      console.log(`%c[v4.55.1 STRICT SESSION] Session=${_sessionWh}: ${vehicles.length} kendaraan (sudah pure same-wh)`, 'color:#10b981;font-weight:bold');
     }
   }
   // ═══════════════════════════════════════════════════════════════════════
@@ -4632,7 +4658,7 @@ function buildRoutes(active){
         let best=null,bestScore=-999;
         for(const s of finalState.values()){
           const v=s.vehicle;
-          // v4.55.0: hard boundary — kendaraan harus dari gudang yang sama dengan DO.
+          // v4.55.1: hard boundary — kendaraan harus dari gudang yang sama dengan DO.
           // Kalau vehicles sudah filtered di buildRoutes, ini redundant tapi explicit.
           if(s.wh !== doWH) continue;
           if(forceCDE&&!/CDE/i.test(v.tipe)) continue;
@@ -4691,7 +4717,7 @@ function buildRoutes(active){
     }
   }
   // ── CROSS-WAREHOUSE PASS: CIKUDA overflow → DAAN MOGOT absorb ──────────
-  // v4.55.0: DISABLED. User explicit: setiap dispatcher session hanya pakai kendaraan
+  // v4.55.1: DISABLED. User explicit: setiap dispatcher session hanya pakai kendaraan
   // dari gudangnya sendiri. CIKUDA overflow harus ke vendor third-party, bukan ke DM.
   // Block di-bypass via early return; code di-keep untuk audit trail.
   if(false) {
@@ -5561,7 +5587,7 @@ function showApp(){
   document.getElementById('upload-screen').style.display='none';
   document.getElementById('app-screen').style.display='block';
   document.getElementById('tb-date').textContent=doDate||'—';
-  vendorState=[]; // luarKotaPending TIDAK di-reset di sini (v4.45: populated sebelum showApp)
+  vendorState=[]; // doLuarKota TIDAK di-reset di sini (v4.45: populated sebelum showApp)
   renderKPI();renderRouting();renderTransfer();renderSkipped();renderDeferred();renderVendor();renderLuarKotaPending();renderKonflik();renderBiaya();
   // Terapkan filter gudang sesuai user setelah render
   setTimeout(()=>applyGudangFilterLock(), 100);
@@ -5925,8 +5951,8 @@ function renderKPI(){
   const knek=myRoutes.filter(r=>r.has_knek).length;
   const warn=myRoutes.filter(r=>!r.eta_ok).length;
   const totalQty=myRoutes.reduce((a,r)=>a+r.items.reduce((b,i)=>b+i.qty,0),0);
-  const jaboOverflow=vendorItems.filter(r=>!r.luar_kota&&!r.vendor_fallback).length;
-  const luarKotaVendor=vendorItems.filter(r=>r.luar_kota||r.vendor_fallback).length;
+  const jaboOverflow=doVendor.filter(r=>!r.luar_kota&&!r.vendor_fallback).length;
+  const luarKotaVendor=doVendor.filter(r=>r.luar_kota||r.vendor_fallback).length;
 
   // Utilisasi berat agregat — primary metric untuk keramik
   const swt=CFG.safety_wt||0.90;
@@ -5944,33 +5970,33 @@ function renderKPI(){
   // - TOTAL DO AKTIF: reduce per-route sum → DO multi-route ke-double-count
   // - TRANSFER: label "DO" tapi count line items
   // - JABO OVERFLOW: label "DO" tapi count line items
-  // - PENDING BESOK: cuma count luarKotaPending, miss pendingTomorrowItems (low_util)
+  // - PENDING BESOK: cuma count doLuarKota, miss doLowUtil (low_util)
   const totalDOAktif = new Set(myRoutes.flatMap(r => r.items.map(i => i.doc_no))).size;
   const transferUniqueDO = new Set(transferItems.map(i => i.doc_no)).size;
-  const jaboUniqueDO = new Set(vendorItems.filter(r=>!r.luar_kota && !r.vendor_fallback).map(r=>r.doc_no)).size;
-  const luarKotaUniqueDO = new Set(vendorItems.filter(r=>r.luar_kota || r.vendor_fallback).map(r=>r.doc_no)).size;
-  const pendingBesokTotal = (luarKotaPending||[]).length + (pendingTomorrowItems||[]).length;
+  const jaboUniqueDO = new Set(doVendor.filter(r=>!r.luar_kota && !r.vendor_fallback).map(r=>r.doc_no)).size;
+  const luarKotaUniqueDO = new Set(doVendor.filter(r=>r.luar_kota || r.vendor_fallback).map(r=>r.doc_no)).size;
+  const pendingBesokTotal = (doLuarKota||[]).length + (doLowUtil||[]).length;
 
   document.getElementById('kpi-bar').innerHTML=[
-    ['TOTAL DO AKTIF',totalDOAktif,'DO'],
+    ['DO AKTIF',totalDOAktif,'DO'],
     ['TOTAL DUS',totalQty.toLocaleString('id'),'keseluruhan'],
     ['RUTE 1',r1,'kendaraan'],
 
     ['🔁 TRIP 2',rT2,'kendaraan'],
     ['TRANSFER',transferUniqueDO,'DO'],
     ['SKIP',skipped.length,'item'],
-    ['TGL LAIN',deferred.length,'item'],
-    ['⚠ JABO OVERFLOW',jaboUniqueDO,'DO'],
-    ['LUAR KOTA',luarKotaUniqueDO,'DO via vendor'],
+    ['KIRIM TGL X',deferred.length,'item'],
+    ['DO OVERFLOW',jaboUniqueDO,'DO'],
+    ['DO LUAR KOTA VENDOR',luarKotaUniqueDO,'DO'],
     ['KNEK',knek,'kendaraan'],
     ['⚠ ETA LEWAT 15.00',warn,'kendaraan'],
-    ['PENDING BESOK',pendingBesokTotal,'item'],
-    ['CARRY OVER',carryOverItems.length,'dari kemarin'],
+    ['DO GANTUNG BARU',pendingBesokTotal,'item'],
+    ['CARRY OVER UPLOAD',doCarryOverManual.length,'dari Excel'],
     ['⚖ UTIL BERAT',utilWtPct+'%','rata-rata armada'],
     ['📦 UTIL VOLUME',utilVolPct+'%','rata-rata armada'],
   ].map(([l,v,s])=>`<div class="kpi"><div class="kpi-lbl">${l}</div><div class="kpi-val"${
     l.includes('ETA')&&v>0?' style="color:var(--red)"':
-    l.includes('JABO OVERFLOW')&&v>0?' style="color:var(--amber)"':
+    l.includes('DO OVERFLOW')&&v>0?' style="color:var(--amber)"':
     l.includes('TRIP 2')&&v>0?' style="color:var(--green)"':
     l.includes('UTIL BERAT')?' style="color:var(--navy);font-weight:700"':
     l.includes('UTIL VOLUME')?' style="color:var(--blue)"':''
@@ -6309,7 +6335,7 @@ function renderDeferred(){
   _updatePendingTabCount();
 }
 
-// v4.50.2: Pindahkan DO defer (yang tanggal=today, kapasitas habis) ke luarKotaPending
+// v4.50.2: Pindahkan DO defer (yang tanggal=today, kapasitas habis) ke doLuarKota
 // Q2 confirm HG: Manual + warning visual — flag merah, kasih tombol "Pindah ke Pending Besok"
 async function moveDeferToPending(docNo, deferIdx, evt){
   evt && evt.stopPropagation();
@@ -6331,8 +6357,8 @@ async function moveDeferToPending(docNo, deferIdx, evt){
   // Remove dari deferred[]
   deferred.splice(deferIdx, 1);
 
-  // Push ke luarKotaPending (manual defer mode)
-  luarKotaPending.push({
+  // Push ke doLuarKota (manual defer mode)
+  doLuarKota.push({
     ...it,
     defer_type: 'manual',
     pending_reason: `Kirim today (${fmtDateDisplay(it.deferred_date)}) — kapasitas internal habis, manual defer`,
@@ -6359,26 +6385,26 @@ async function moveDeferToPending(docNo, deferIdx, evt){
 // v4.47 F: aggregate counter untuk tab "Pending" (gabungan deferred + luar kota + low-util)
 function _updatePendingTabCount() {
   const cntDef = (deferred||[]).length;
-  const cntLuar = (luarKotaPending||[]).filter(i => !i.is_low_util).length;
-  const cntLowUtil = (pendingTomorrowItems||[]).length;
-  // v4.55.0: count carry over + jabo overflow + vendor belum konfirm
-  const cntCarry = (window._gasCarryOverItems||[]).length;
-  const cntJaboOverflow = (vendorItems||[]).filter(r => !r.luar_kota && !r.vendor_fallback).length;
-  const cntVendorBelumKonfirm = (window._gasVendorBelumKonfirmasi||[]).length;
+  const cntLuar = (doLuarKota||[]).filter(i => !i.is_low_util).length;
+  const cntLowUtil = (doLowUtil||[]).length;
+  // v4.55.1: count carry over + DO Overflow + vendor belum konfirm
+  const cntCarry = (window.doCarryOverItems||[]).length;
+  const cntJaboOverflow = (doVendor||[]).filter(r => !r.luar_kota && !r.vendor_fallback).length;
+  const cntVendorBelumKonfirm = (window.doVendorBelumKonfirmasi||[]).length;
   const total = cntDef + cntLuar + cntLowUtil + cntCarry + cntJaboOverflow + cntVendorBelumKonfirm;
   const el = document.getElementById('cnt-pending-tab');
   if (el) el.textContent = total;
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// v4.55.0 — DO GANTUNG SECTIONS
-// Render Carry Over (sumber: window._gasCarryOverItems) dan
-// Jabo Overflow (sumber: vendorItems filter !luar_kota).
+// v4.55.1 — DO GANTUNG SECTIONS
+// Render Carry Over (sumber: window.doCarryOverItems) dan
+// DO Overflow (sumber: doVendor filter !luar_kota).
 // Sort: by tanggal ASC (paling tua di atas) untuk SLA visibility.
 // ═══════════════════════════════════════════════════════════════════
 
-// v4.55.0: Render section "Vendor Belum Konfirmasi"
-// Sumber: window._gasVendorBelumKonfirmasi (dari getVendorBelumKonfirmasi GAS endpoint)
+// v4.55.1: Render section "Vendor Belum Konfirmasi"
+// Sumber: window.doVendorBelumKonfirmasi (dari getVendorBelumKonfirmasi GAS endpoint)
 // Sort: by age_hours DESC (paling tua di atas)
 function _renderVendorBelumKonfirmasi(){
   const sect = document.getElementById('vendor-belum-konfirm-section');
@@ -6387,8 +6413,8 @@ function _renderVendorBelumKonfirmasi(){
   const thresEl = document.getElementById('vbk-threshold');
   if(!sect || !tbody) return;
 
-  const items = (window._gasVendorBelumKonfirmasi||[]).slice();
-  const threshold = window._gasVendorAwaitThresholdHours || 12;
+  const items = (window.doVendorBelumKonfirmasi||[]).slice();
+  const threshold = window.doVendorAwaitThresholdHours || 12;
   if(cntEl) cntEl.textContent = items.length;
   if(thresEl) thresEl.textContent = threshold;
 
@@ -6440,7 +6466,7 @@ function _renderVendorBelumKonfirmasi(){
   }).join('');
 }
 
-// v4.55.0: Action handler untuk button di section Vendor Belum Konfirmasi.
+// v4.55.1: Action handler untuk button di section Vendor Belum Konfirmasi.
 // type='delivered' → no-op API call, hanya hapus dari local state + re-render.
 // type='repending' → call repending_DO endpoint, status RELEASED→PENDING di sheet,
 //                    item dipindah ke carry over section.
@@ -6450,10 +6476,10 @@ async function vendorAwaitConfirm(docNo, type, btn){
   if(type === 'delivered'){
     if(!confirm(`Konfirmasi DO ${docNo} sudah delivered oleh vendor?\n\nDO tetap RELEASED di spreadsheet (tidak ada perubahan).\nDO akan hilang dari section ini.`)) return;
     // Hapus dari local state
-    window._gasVendorBelumKonfirmasi = (window._gasVendorBelumKonfirmasi||[])
+    window.doVendorBelumKonfirmasi = (window.doVendorBelumKonfirmasi||[])
       .filter(i => String(i.doc_no) !== String(docNo));
     _renderVendorBelumKonfirmasi();
-    console.log(`%c[v4.55.0] DO ${docNo} dikonfirmasi delivered (local only, status sheet tetap RELEASED)`, 'color:#22c55e;font-weight:bold');
+    console.log(`%c[v4.55.1] DO ${docNo} dikonfirmasi delivered (local only, status sheet tetap RELEASED)`, 'color:#22c55e;font-weight:bold');
     return;
   }
 
@@ -6481,16 +6507,16 @@ async function vendorAwaitConfirm(docNo, type, btn){
       const data = await resp.json();
       if(data.error) throw new Error(data.error);
 
-      console.log(`%c[v4.55.0] Re-pending DO ${docNo}: updated=${data.updated||0}`, 'color:#dc2626;font-weight:bold');
+      console.log(`%c[v4.55.1] Re-pending DO ${docNo}: updated=${data.updated||0}`, 'color:#dc2626;font-weight:bold');
 
       // Hapus dari vendor belum konfirmasi
-      const movedItem = (window._gasVendorBelumKonfirmasi||[])
+      const movedItem = (window.doVendorBelumKonfirmasi||[])
         .find(i => String(i.doc_no) === String(docNo));
-      window._gasVendorBelumKonfirmasi = (window._gasVendorBelumKonfirmasi||[])
+      window.doVendorBelumKonfirmasi = (window.doVendorBelumKonfirmasi||[])
         .filter(i => String(i.doc_no) !== String(docNo));
 
       // Tambah ke carry over (in-memory) supaya langsung kelihatan
-      if(movedItem && Array.isArray(window._gasCarryOverItems)){
+      if(movedItem && Array.isArray(window.doCarryOverItems)){
         // Convert ke shape carry over
         const carryOverItem = {
           doc_no: movedItem.doc_no,
@@ -6515,7 +6541,7 @@ async function vendorAwaitConfirm(docNo, type, btn){
           is_pending_carryover: true,
           _from_repending: true  // flag visual
         };
-        window._gasCarryOverItems.push(carryOverItem);
+        window.doCarryOverItems.push(carryOverItem);
       }
 
       // Re-render kedua section
@@ -6525,7 +6551,7 @@ async function vendorAwaitConfirm(docNo, type, btn){
 
       alert(`✓ DO ${docNo} di-pending lagi.\n\nDO sudah muncul di section "DO Carry Over" untuk dispatch hari ini.`);
     } catch(err) {
-      console.error(`[v4.55.0] Gagal re-pending DO ${docNo}:`, err.message);
+      console.error(`[v4.55.1] Gagal re-pending DO ${docNo}:`, err.message);
       alert(`Gagal re-pending DO ${docNo}:\n${err.message}\n\nCoba lagi atau cek koneksi GAS.`);
       if(btn){ btn.disabled = false; btn.textContent = '↩ Belum, pending lagi'; }
     }
@@ -6538,7 +6564,7 @@ function _renderCarryOverSection(){
   const cntEl = document.getElementById('cnt-carryover');
   if(!sect || !tbody) return;
 
-  const items = (window._gasCarryOverItems||[]).slice();
+  const items = (window.doCarryOverItems||[]).slice();
   if(cntEl) cntEl.textContent = items.length;
   if(items.length === 0){
     sect.style.display = 'none';
@@ -6548,7 +6574,7 @@ function _renderCarryOverSection(){
   sect.style.display = 'block';
 
   // Sort: by First Defer Date / DO Date ASC (paling tua di atas).
-  // v4.55.0: pakai field name yang benar dari GAS getPendingBesok (first_defer_date, days_pending).
+  // v4.55.1: pakai field name yang benar dari GAS getPendingBesok (first_defer_date, days_pending).
   const _parseDate = s => {
     if(!s) return new Date('2099-12-31'); // missing date → terakhir
     const iso = _toIsoDate(s);
@@ -6563,10 +6589,10 @@ function _renderCarryOverSection(){
 
   tbody.innerHTML = items.map(r => {
     const docNo = String(r.doc_no||'-');
-    // v4.55.0: prefer first_defer_date (GAS field), fallback ke do_date untuk new items.
+    // v4.55.1: prefer first_defer_date (GAS field), fallback ke do_date untuk new items.
     const tglAsalRaw = r.first_defer_date || r.do_date || r.tanggal_pertama_defer || '';
     const tglDisplay = tglAsalRaw ? (fmtDateDisplay(tglAsalRaw) || tglAsalRaw) : '-';
-    // v4.55.0: prefer days_pending (GAS field), fallback compute. Guard against fallback parse hasil 2099.
+    // v4.55.1: prefer days_pending (GAS field), fallback compute. Guard against fallback parse hasil 2099.
     const hariPending = (r.days_pending !== undefined && r.days_pending !== null)
       ? r.days_pending
       : ((r.hari_pending !== undefined && r.hari_pending !== null)
@@ -6579,7 +6605,7 @@ function _renderCarryOverSection(){
             })());
     const customer = String(r.customer||'-').slice(0,28);
     const tujuan = String(r.alamat_kirim || r.kirim || r.alamat || '-').slice(0,55);
-    const size = String(r.size || '-'); // v4.55.0: kolom Size (penting, jangan dihilangkan)
+    const size = String(r.size || '-'); // v4.55.1: kolom Size (penting, jangan dihilangkan)
     const qty = parseFloat(r.qty)||0;
     const vol = parseFloat(r.volume_m3 || r.total_vol)||0;
     const sumber = r._from_failed_dos ? '🚛 Driver App' : '📋 Pending Besok';
@@ -6608,8 +6634,8 @@ function _renderJaboOverflowSection(){
   const cntEl = document.getElementById('cnt-jabo-overflow');
   if(!sect || !tbody) return;
 
-  // Filter: jabo overflow = vendorItems yang bukan luar kota & bukan vendor_fallback
-  const items = (vendorItems||[]).filter(r => !r.luar_kota && !r.vendor_fallback).slice();
+  // Filter: DO Overflow = doVendor yang bukan luar kota & bukan vendor_fallback
+  const items = (doVendor||[]).filter(r => !r.luar_kota && !r.vendor_fallback).slice();
   if(cntEl) cntEl.textContent = items.length;
   if(items.length === 0){
     sect.style.display = 'none';
@@ -6632,7 +6658,7 @@ function _renderJaboOverflowSection(){
     const tglDO = fmtDateDisplay(r.do_date) || r.do_date || '-';
     const customer = String(r.customer||'-').slice(0,28);
     const tujuan = String(r.kirim||'-').slice(0,55);
-    const size = String(r.size || '-'); // v4.55.0: kolom Size (penting, jangan dihilangkan)
+    const size = String(r.size || '-'); // v4.55.1: kolom Size (penting, jangan dihilangkan)
     const qty = parseFloat(r.qty)||0;
     const vol = parseFloat(r.total_vol)||0;
     return `<tr style="background:#faf5ff">
@@ -6648,7 +6674,7 @@ function _renderJaboOverflowSection(){
   }).join('');
 }
 
-// v4.55.0: Build dropdown 4-aksi untuk DO di tab DO Gantung.
+// v4.55.1: Build dropdown 4-aksi untuk DO di tab DO Gantung.
 // Aksi: Internal (kendaraan sisa kapasitas) / Vendor / Tunda / Cancel.
 // onChange handler: gantungAction(docNo, source, value).
 function _buildGantungActionDropdown(docNo, source){
@@ -6660,7 +6686,7 @@ function _buildGantungActionDropdown(docNo, source){
       }).join('')
     : '';
 
-  // Build vendor options dari vendorList yang sudah di-fix di v4.55.0
+  // Build vendor options dari vendorList yang sudah di-fix di v4.55.1
   const vendorOpts = (typeof vendorList !== 'undefined' && Array.isArray(vendorList))
     ? vendorList.map(v => `<option value="VENDOR:${escapeHtml(v.kode)}">📦 ${escapeHtml(v.nama)} [${escapeHtml(v.tipe||'')}]</option>`).join('')
     : '';
@@ -6676,10 +6702,10 @@ function _buildGantungActionDropdown(docNo, source){
   </select>`;
 }
 
-// v4.55.0: Handler untuk dropdown aksi di tab DO Gantung.
-// Sync ke spreadsheet di-handle di v4.55.0 (placeholder cuma update local state).
+// v4.55.1: Handler untuk dropdown aksi di tab DO Gantung.
+// Sync ke spreadsheet di-handle di v4.55.1 (placeholder cuma update local state).
 // ═══════════════════════════════════════════════════════════════════
-// v4.55.0 — SYNC INFRASTRUCTURE
+// v4.55.1 — SYNC INFRASTRUCTURE
 // Hybrid sync: append/update DO Gantung ke sheet "Pending Besok" via
 // GAS endpoint savePendingBesok (sudah ada di v3.4 + LockService di v3.5).
 // Debounce 2 detik supaya tidak banjir request saat dispatcher edit cepat.
@@ -6694,7 +6720,7 @@ window._lastSyncTime = null;
 window._syncRetryCount = 0;
 window._pendingSyncQueue = []; // items waiting to be synced
 
-// v4.55.0: Update status indicator UI di tab DO Gantung.
+// v4.55.1: Update status indicator UI di tab DO Gantung.
 // State: idle / syncing / synced / failed
 function _updateSyncStatus(state, message){
   const el = document.getElementById('sync-status-indicator');
@@ -6727,27 +6753,27 @@ function _updateSyncStatus(state, message){
   el.innerHTML = html;
 }
 
-// v4.55.0: Build payload dari semua DO yang ada di Gantung sekarang.
+// v4.55.1: Build payload dari semua DO yang ada di Gantung sekarang.
 // CHANGE vs v4.54.1: line_idx sequential per docNo + full-row signature dedup.
 // Ini fix bug split-line items hilang saat sync (Opsi B — preserve all rows).
 //
 // Flow line_idx assignment:
 // 1. Process carry over dari sheet (sudah punya line_idx) → preserve original
 // 2. Track docNoMaxLineIdx per docNo dari carry over
-// 3. Process new sources (jabo overflow, luar kota, low-util) → assign max+1 sequentially
+// 3. Process new sources (DO Overflow, luar kota, low-util) → assign max+1 sequentially
 // 4. Cross-source dedup pakai full row signature untuk prevent counting overlap
 //
-// Sumber: window._gasCarryOverItems (carry over dari kemarin) +
-//         vendorItems jabo overflow (tambahan baru dari sesi ini) +
-//         luarKotaPending (auto + manual) +
-//         pendingTomorrowItems (low-util defer).
+// Sumber: window.doCarryOverItems (carry over dari kemarin) +
+//         doVendor DO Overflow (tambahan baru dari sesi ini) +
+//         doLuarKota (auto + manual) +
+//         doLowUtil (low-util defer).
 // Return: array of items dalam format yang savePendingBesok v4.2 expect (incl. line_idx).
 function _buildGantungSyncPayload(){
   const payload = [];
   const seenSig = new Set(); // cross-source dedup by full row signature
   const docNoMaxLineIdx = {}; // track max line_idx per docNo (carry over + new)
 
-  // v4.55.0: Full row signature untuk prevent counting same item dari multiple sources.
+  // v4.55.1: Full row signature untuk prevent counting same item dari multiple sources.
   // Includes qty + alamat supaya truly-different items tidak di-collapse.
   const _rowSig = (item) => {
     return String(item.doc_no || '').trim().toUpperCase() + '|' +
@@ -6760,7 +6786,7 @@ function _buildGantungSyncPayload(){
 
   // 1. Carry over dari sheet (item.line_idx sudah ada dari getPendingBesok v4.2)
   // Preserve original line_idx supaya update target row yang benar di sheet.
-  (window._gasCarryOverItems || []).forEach(it => {
+  (window.doCarryOverItems || []).forEach(it => {
     const docNo = String(it.doc_no || '').trim();
     if(!docNo) return;
     const sig = _rowSig(it);
@@ -6819,19 +6845,19 @@ function _buildGantungSyncPayload(){
     });
   };
 
-  // 2. Jabo overflow (vendorItems !luar_kota)
-  (vendorItems || []).filter(r => !r.luar_kota && !r.vendor_fallback).forEach(it => _addNew(it, 'auto'));
+  // 2. Jabo overflow (doVendor !luar_kota)
+  (doVendor || []).filter(r => !r.luar_kota && !r.vendor_fallback).forEach(it => _addNew(it, 'auto'));
 
   // 3. Luar kota pending (existing)
-  (luarKotaPending || []).forEach(it => _addNew(it, it.defer_type || 'auto'));
+  (doLuarKota || []).forEach(it => _addNew(it, it.defer_type || 'auto'));
 
   // 4. Low-util defer (existing)
-  (pendingTomorrowItems || []).forEach(it => _addNew(it, 'auto'));
+  (doLowUtil || []).forEach(it => _addNew(it, 'auto'));
 
   return payload;
 }
 
-// v4.55.0: Sync DO Gantung ke spreadsheet.
+// v4.55.1: Sync DO Gantung ke spreadsheet.
 // forceFlush=true: bypass debounce, langsung kirim (untuk WA Blast).
 // forceFlush=false: schedule via debounce 2 detik.
 function syncDoGantungToSheet(forceFlush){
@@ -6862,7 +6888,7 @@ function syncDoGantungToSheet(forceFlush){
   }, 2000);
 }
 
-// v4.55.0: Actual sync request — POST ke savePendingBesok.
+// v4.55.1: Actual sync request — POST ke savePendingBesok.
 // Retry 3x dengan exponential backoff kalau gagal.
 async function _doActualSync(gsUrl, retryCount){
   retryCount = retryCount || 0;
@@ -6870,7 +6896,7 @@ async function _doActualSync(gsUrl, retryCount){
 
   // Kalau sync sebelumnya masih jalan, skip — debounce next call
   if(window._syncInFlight){
-    console.log('[v4.55.0] Sync already in flight, skip');
+    console.log('[v4.55.1] Sync already in flight, skip');
     return;
   }
 
@@ -6898,7 +6924,7 @@ async function _doActualSync(gsUrl, retryCount){
     if(data.error){
       // LOCK_TIMEOUT atau error lain — retry kalau belum max
       if(data.code === 'LOCK_TIMEOUT' && retryCount < MAX_RETRY){
-        console.warn(`[v4.55.0] Sync lock timeout, retry ${retryCount+1}/${MAX_RETRY}`);
+        console.warn(`[v4.55.1] Sync lock timeout, retry ${retryCount+1}/${MAX_RETRY}`);
         window._syncInFlight = false;
         const backoff = 1000 * Math.pow(2, retryCount); // 1s, 2s, 4s
         setTimeout(() => _doActualSync(gsUrl, retryCount + 1), backoff);
@@ -6910,11 +6936,11 @@ async function _doActualSync(gsUrl, retryCount){
     window._lastSyncTime = Date.now();
     window._syncRetryCount = 0;
     _updateSyncStatus('synced');
-    console.log(`%c[v4.55.0] Sync OK: inserted=${data.inserted||0}, updated=${data.updated||0}, skipped=${data.skipped||0}`, 'color:#059669;font-weight:bold');
+    console.log(`%c[v4.55.1] Sync OK: inserted=${data.inserted||0}, updated=${data.updated||0}, skipped=${data.skipped||0}`, 'color:#059669;font-weight:bold');
   } catch(err) {
-    console.error('[v4.55.0] Sync failed:', err.message);
+    console.error('[v4.55.1] Sync failed:', err.message);
     if(retryCount < MAX_RETRY){
-      console.warn(`[v4.55.0] Retry ${retryCount+1}/${MAX_RETRY}`);
+      console.warn(`[v4.55.1] Retry ${retryCount+1}/${MAX_RETRY}`);
       window._syncInFlight = false;
       const backoff = 1000 * Math.pow(2, retryCount);
       setTimeout(() => _doActualSync(gsUrl, retryCount + 1), backoff);
@@ -6926,7 +6952,7 @@ async function _doActualSync(gsUrl, retryCount){
   }
 }
 
-// v4.55.0: Soft-delete sebuah DO dari Pending Besok sheet (status RELEASED/CANCELED).
+// v4.55.1: Soft-delete sebuah DO dari Pending Besok sheet (status RELEASED/CANCELED).
 // Dipanggil saat dispatcher action Internal (re-route), Vendor, atau Cancel.
 // releasedVia: 'vendor' | 'internal' | 'manual' | '' — hanya dipakai saat status=RELEASED
 //              untuk track via apa DO di-release (penting untuk section "Belum Konfirmasi").
@@ -6937,7 +6963,7 @@ async function _markDoGantungReleased(docNo, status, releasedVia){
   status = (['RELEASED','CANCELED'].includes(String(status||'').toUpperCase()))
     ? String(status).toUpperCase() : 'RELEASED';
 
-  // v4.55.0: whitelist released_via — GAS akan reject value selain ini
+  // v4.55.1: whitelist released_via — GAS akan reject value selain ini
   const VIA = ['vendor','internal','manual',''];
   releasedVia = VIA.includes(String(releasedVia||'').toLowerCase())
     ? String(releasedVia||'').toLowerCase() : '';
@@ -6957,13 +6983,13 @@ async function _markDoGantungReleased(docNo, status, releasedVia){
     const data = await resp.json();
     if(data.error) throw new Error(data.error);
     const viaSuffix = (status==='RELEASED' && releasedVia) ? ` via=${releasedVia}` : '';
-    console.log(`%c[v4.55.0] Marked DO ${docNo} as ${status}${viaSuffix} (updated=${data.updated||0})`, 'color:#7c3aed');
+    console.log(`%c[v4.55.1] Marked DO ${docNo} as ${status}${viaSuffix} (updated=${data.updated||0})`, 'color:#7c3aed');
   } catch(err) {
-    console.error(`[v4.55.0] Gagal mark DO ${docNo} as ${status}:`, err.message);
+    console.error(`[v4.55.1] Gagal mark DO ${docNo} as ${status}:`, err.message);
   }
 }
 
-// v4.55.0: Warning saat dispatcher mau refresh/close browser tapi sync belum selesai
+// v4.55.1: Warning saat dispatcher mau refresh/close browser tapi sync belum selesai
 window.addEventListener('beforeunload', function(e){
   if(window._syncDebounceTimer || window._syncInFlight){
     const msg = 'Ada perubahan DO Gantung yang belum tersync. Yakin keluar?';
@@ -6975,7 +7001,7 @@ window.addEventListener('beforeunload', function(e){
 
 function gantungAction(docNo, source, value, selectEl){
   if(!value){ return; }
-  console.log(`%c[v4.55.0] gantungAction: doc=${docNo}, source=${source}, action=${value}`, 'color:#0891b2');
+  console.log(`%c[v4.55.1] gantungAction: doc=${docNo}, source=${source}, action=${value}`, 'color:#0891b2');
 
   // EC4: Detect TUNDA double-click — kalau DO ini sudah ditunda sebelumnya
   const prevAction = (window._gantungState||{})[docNo];
@@ -7027,7 +7053,7 @@ function gantungAction(docNo, source, value, selectEl){
       action: 'VENDOR', target: vendorKode, vendor_nama: vendor.nama,
       timestamp: Date.now()
     };
-    // v4.55.0: Mark RELEASED dengan released_via='vendor' supaya muncul
+    // v4.55.1: Mark RELEASED dengan released_via='vendor' supaya muncul
     // di section "Vendor Belum Konfirmasi" besok kalau belum delivered.
     _markDoGantungReleased(docNo, 'RELEASED', 'vendor');
     alert(`✅ DO ${docNo} → vendor ${vendor.nama}\n\nDispatcher kontak ${vendor.pic||'PIC'} untuk delivery confirmation.\n\nDO ditandai RELEASED. Jika besok belum delivered, akan muncul di section "Vendor Belum Konfirmasi" untuk re-pending.`);
@@ -7155,11 +7181,11 @@ function findBestVendorForItem(item, vendorList){
   return candidates[0].vendor;
 }
 
-// Build assignment map untuk semua vendorItems. Dipanggil sekali
+// Build assignment map untuk semua doVendor. Dipanggil sekali
 // di renderVendor, hasilnya disimpan di window.__vendorAssignMap
 // supaya sendVendorOrder tinggal baca, tidak recompute.
 //
-// v4.55.0: Auto-assignment vendor DIMATIKAN. Semua vendorItems masuk unassigned,
+// v4.55.1: Auto-assignment vendor DIMATIKAN. Semua doVendor masuk unassigned,
 // dispatcher pilih vendor manual via dropdown aksi di tab DO Gantung.
 // Manual override (manual_vendor_kode) tetap dihormati.
 function buildVendorAssignmentMap(){
@@ -7171,13 +7197,13 @@ function buildVendorAssignmentMap(){
   const assignMap = new Map(); // item reference → vendor object
   const unassigned = [];
 
-  vendorItems.forEach(item=>{
+  doVendor.forEach(item=>{
     const manual = manualAssignMap.get(item);
     if(manual){
       assignMap.set(item, manual);
       return;
     }
-    // v4.55.0: TIDAK auto-pick vendor lagi. Item tanpa manual assign → unassigned.
+    // v4.55.1: TIDAK auto-pick vendor lagi. Item tanpa manual assign → unassigned.
     // Dispatcher harus action manual di tab DO Gantung.
     if(item.manual_vendor_kode){
       const v = vendorState.find(x => x.kode === item.manual_vendor_kode);
@@ -7197,8 +7223,8 @@ function renderVendor(){
   if(!vendorState.length) initVendorState();
 
   // v4.50.4: tab counter pakai unique DO (consistent dengan label "DO" di KPI JABO OVERFLOW + LUAR KOTA)
-  // Sebelumnya count line items → misleading (44 vendorItems = 14 unique DO)
-  document.getElementById('cnt-vendor').textContent = new Set(vendorItems.map(r=>r.doc_no)).size;
+  // Sebelumnya count line items → misleading (44 doVendor = 14 unique DO)
+  document.getElementById('cnt-vendor').textContent = new Set(doVendor.map(r=>r.doc_no)).size;
 
   // Build assignment map (single source of truth untuk renderVendor + sendVendorOrder)
   const { assignMap, unassigned } = buildVendorAssignmentMap();
@@ -7206,7 +7232,7 @@ function renderVendor(){
   // Group items: (wh_cons, vendor_kode) → items[]
   const grouping = {};
 
-  vendorItems.forEach(item=>{
+  doVendor.forEach(item=>{
     const vendor = assignMap.get(item);
     if(!vendor) return; // sudah masuk unassigned
     const wh = String(item.wh_cons||item.wh||'UNKNOWN').replace('GUDANG ','').toUpperCase();
@@ -7290,7 +7316,7 @@ function renderVendor(){
     const internalOptsU = optsListU.map(o=>o.html).join('');
 
     unassignedTbody.innerHTML = unassigned.map(r=>{
-      const itemIdx = vendorItems.indexOf(r);
+      const itemIdx = doVendor.indexOf(r);
       const assignSel = `<select class="reassign-sel" onchange="reassignDO(${itemIdx},this.value)"
           style="font-size:10px;max-width:200px;border:0.5px solid var(--border2);border-radius:4px;padding:3px 6px;background:var(--card);color:var(--text)">
         <option value="">— Pilih Vendor —</option>
@@ -7389,7 +7415,7 @@ function renderVendorGroup(group, wh){
         </tr></thead>
         <tbody>
           ${items.map(r=>{
-            const itemIdx=vendorItems.indexOf(r);
+            const itemIdx=doVendor.indexOf(r);
             const assignSel=`<select class="reassign-sel" onchange="reassignDO(${itemIdx},this.value)"
                 style="font-size:9px;max-width:160px;border:0.5px solid var(--border2);border-radius:4px;padding:2px 4px;background:var(--card);color:var(--text)">
               <option value="">— Pindah —</option>
@@ -7419,9 +7445,9 @@ function renderVendorGroup(group, wh){
 
 // v4.43: Build WhatsApp URL + open
 function sendVendorOrder(wh, vendorKode){
-  // v4.55.0: Force flush sync DO Gantung — pastikan assignment vendor tersimpan
+  // v4.55.1: Force flush sync DO Gantung — pastikan assignment vendor tersimpan
   // sebelum kirim WA order ke vendor.
-  try { syncDoGantungToSheet(true); } catch(e){ console.warn('[v4.55.0] Force flush sync gagal:', e); }
+  try { syncDoGantungToSheet(true); } catch(e){ console.warn('[v4.55.1] Force flush sync gagal:', e); }
   const vendor = vendorState.find(v=>v.kode===vendorKode);
   if(!vendor){
     alert('Vendor tidak ditemukan: '+vendorKode);
@@ -7448,7 +7474,7 @@ function sendVendorOrder(wh, vendorKode){
   }
   const assignMap = window.__vendorAssignMap || new Map();
 
-  const items = vendorItems.filter(it=>{
+  const items = doVendor.filter(it=>{
     const itWh = String(it.wh_cons||it.wh||'').replace('GUDANG ','').toUpperCase();
     if(itWh !== wh) return false;
     const assigned = assignMap.get(it);
@@ -7618,7 +7644,7 @@ function konflikDihubungi(docNo){
 function konflikTunda(docNo){
   const items = conflictItems.filter(i=>i.doc_no===docNo);
   items.forEach(it=>{
-    pendingTomorrowItems.push({
+    doLowUtil.push({
       ...it,
       pending_reason: 'DO Konflik — perlu resolve (alamat tidak bisa kendaraan besar)',
       tunda_date: doDate,
@@ -8086,7 +8112,7 @@ function _dispatchActionExecute(rid, docNos, action, route){
       ],
       onOk:(vals)=>{
         const targetVal = String(vals.target_route||'');
-        // v4.47 A2: Branch — kalau target = VEN_<kode>, pindah DO ke vendorItems
+        // v4.47 A2: Branch — kalau target = VEN_<kode>, pindah DO ke doVendor
         if (targetVal.startsWith('VEN_')) {
           const vendorKode = targetVal.substring(4);
           const vendor = vendorList.find(v => v.kode === vendorKode);
@@ -8101,12 +8127,12 @@ function _dispatchActionExecute(rid, docNos, action, route){
             const moveItems=route.items.filter(i=>i.doc_no===dn);
             moveItems.forEach(mi=>{
               route.items.splice(route.items.indexOf(mi),1);
-              // Tag manual vendor sebelum push ke vendorItems
+              // Tag manual vendor sebelum push ke doVendor
               mi.manual_vendor_kode = vendor.kode;
               mi.is_manual_vendor   = true;
               mi.vendor_reason      = vals.alasan || 'Pindah ke vendor dari dispatch';
               mi.vendor_trigger_reason = mi.vendor_reason;
-              vendorItems.push(mi);
+              doVendor.push(mi);
             });
           });
           biayaData[route.id]=calcBiaya(route);
@@ -8451,10 +8477,10 @@ function printSJRevisi(){
 // ── WA Blast Generator ────────────────────────────────────────────────────────
 function generateWABlast(){
   if(!routes.length){alert('Belum ada routing');return;}
-  // v4.55.0: Force flush sync DO Gantung — pastikan semua perubahan dispatcher
+  // v4.55.1: Force flush sync DO Gantung — pastikan semua perubahan dispatcher
   // sudah tersimpan ke spreadsheet sebelum kirim WA Blast.
   // Ini async tapi non-blocking; status indicator akan tampil syncing/synced.
-  try { syncDoGantungToSheet(true); } catch(e){ console.warn('[v4.55.0] Force flush sync gagal:', e); }
+  try { syncDoGantungToSheet(true); } catch(e){ console.warn('[v4.55.1] Force flush sync gagal:', e); }
   // v4.47 D: Guard — kalau routesDirty, force Sync dulu
   if (routesDirty) {
     if (confirm('⚠ Routing sudah berubah sejak Sync terakhir.\n\nDriver app akan baca data lama kalau tidak Sync ulang.\n\nKlik OK untuk Sync sekarang, lalu generate WA Blast otomatis.')) {
@@ -9033,9 +9059,9 @@ function exportExcel(){
   // Sheet 4: Ditunda — DO yang di-defer ke besok (luar kota / low util / explicit defer)
   // v4.49 fix Q3: consolidate 3 sources supaya Excel align dengan UI tab Pending:
   //   - deferred[]            — explicit defer date dari SAP remarks (manual user tag)
-  //   - luarKotaPending[]     — auto + manual defer (volume luar kota tidak cukup)
-  //   - pendingTomorrowItems[] — low utilization defer (kendaraan <30%)
-  // Dedupe by doc_no (priority: deferred > luarKotaPending > pendingTomorrow).
+  //   - doLuarKota[]     — auto + manual defer (volume luar kota tidak cukup)
+  //   - doLowUtil[] — low utilization defer (kendaraan <30%)
+  // Dedupe by doc_no (priority: deferred > doLuarKota > pendingTomorrow).
   const ditundaMap = new Map();
   // (1) deferred[] (explicit defer date)
   (deferred||[]).forEach(r => {
@@ -9047,8 +9073,8 @@ function exportExcel(){
       });
     }
   });
-  // (2) luarKotaPending[] (luar kota / volume tidak cukup)
-  (luarKotaPending||[]).forEach(r => {
+  // (2) doLuarKota[] (luar kota / volume tidak cukup)
+  (doLuarKota||[]).forEach(r => {
     if (!ditundaMap.has(r.doc_no)) {
       ditundaMap.set(r.doc_no, {
         ...r,
@@ -9057,8 +9083,8 @@ function exportExcel(){
       });
     }
   });
-  // (3) pendingTomorrowItems[] (low util)
-  (pendingTomorrowItems||[]).forEach(r => {
+  // (3) doLowUtil[] (low util)
+  (doLowUtil||[]).forEach(r => {
     if (!ditundaMap.has(r.doc_no)) {
       ditundaMap.set(r.doc_no, {
         ...r,
@@ -9079,7 +9105,7 @@ function exportExcel(){
 
   // Sheet 5: Vendor — DO yang dikirim via vendor pihak ke-3
   const h5=[...hCommon, 'Vendor','Alasan'];
-  const rows5=[h5,...vendorItems.map(r=>[
+  const rows5=[h5,...doVendor.map(r=>[
     r.doc_no, r.wh_cons||r.wh, r.customer, r.stock_name||'', r.shade||'', r.size||'',
     r.qty, r.uom||'DUS', _s(r.remarks,100), _s(r.kirim,150),
     r.kecamatan||'', r.kota||'', r.salesman||'',
@@ -9606,7 +9632,7 @@ function printSJVendor(vendorKodeEncoded){
 // ─────────────────────────────────────────────────────────────────
 
 /**
- * Tambah items ke luarKotaPending + auto-save ke GAS.
+ * Tambah items ke doLuarKota + auto-save ke GAS.
  * source: 'vendor-manual' | 'routing-manual' | 'auto'
  */
 async function _addToPendingBesok(items, source){
@@ -9618,11 +9644,11 @@ async function _addToPendingBesok(items, source){
       || item.luar_kota_area
       || extractKotaFromAlamat(item.kirim||'');
     // Progress bar hanya relevan untuk auto-defer
-    const existing = luarKotaPending.filter(p => p.kota_tujuan === kota && p.defer_type === 'auto');
+    const existing = doLuarKota.filter(p => p.kota_tujuan === kota && p.defer_type === 'auto');
     const existVol = existing.reduce((a,p)=>a+(p.total_vol||0),0);
     const newVol = existVol + (item.total_vol||0);
     const pct = _deferType === 'auto' ? Math.round(newVol / _minVol * 100) : 0;
-    luarKotaPending.push({
+    doLuarKota.push({
       ...item,
       luar_kota           : _deferType === 'auto',
       luar_kota_area      : _deferType === 'auto' ? kota : '',
@@ -9693,7 +9719,7 @@ function extractLuarKotaArea(alamat){ return extractKotaFromAlamat(alamat); }
 
 /**
  * Batalkan / kembalikan DO dari Pending Besok.
- * DO dikembalikan ke vendorItems (DO Unplot) + di-CANCELED di GAS.
+ * DO dikembalikan ke doVendor (DO Unplot) + di-CANCELED di GAS.
  */
 // ═══════════════════════════════════════════════════════════════════════════
 // v4.49: pendingAction — Skip/Cancel/Pindah untuk DO di tab Pending
@@ -9706,7 +9732,7 @@ function extractLuarKotaArea(alamat){ return extractKotaFromAlamat(alamat); }
 //   → Pindah = pulihkan ke routing HARI INI via unit internal/vendor
 //              → reuse emergencyRestoreToToday() logic (sudah ada flow IDLE/route/vendor)
 //
-// source: 'luar_kota' (luarKotaPending) atau 'low_util' (pendingTomorrowItems)
+// source: 'luar_kota' (doLuarKota) atau 'low_util' (doLowUtil)
 async function pendingAction(docNo, action, source, evt){
   evt && evt.stopPropagation();
   if (!dispatchMode) {
@@ -9732,11 +9758,11 @@ async function _pendingActionExecute(docNo, action, source){
   // Locate item
   let item = null, srcArr = null, idx = -1;
   if (source === 'luar_kota') {
-    srcArr = luarKotaPending;
-    idx = luarKotaPending.findIndex(p => p.doc_no === docNo);
+    srcArr = doLuarKota;
+    idx = doLuarKota.findIndex(p => p.doc_no === docNo);
   } else if (source === 'low_util') {
-    srcArr = pendingTomorrowItems;
-    idx = (pendingTomorrowItems||[]).findIndex(p => p.doc_no === docNo);
+    srcArr = doLowUtil;
+    idx = (doLowUtil||[]).findIndex(p => p.doc_no === docNo);
   }
   if (idx < 0) { alert(`DO ${docNo} tidak ditemukan di Pending (${source}).`); return; }
   item = srcArr[idx];
@@ -9841,15 +9867,15 @@ async function _pendingActionExecute(docNo, action, source){
 // LEGACY (v4.44): tetap di-keep untuk backward compat kalau ada call lama,
 // tapi tidak lagi terhubung ke UI button. Use pendingAction(docNo,'cancel',...) instead.
 async function batalkanPendingBesok(docNo){
-  const idx = luarKotaPending.findIndex(p=>p.doc_no===docNo);
+  const idx = doLuarKota.findIndex(p=>p.doc_no===docNo);
   if(idx < 0){ alert('DO tidak ditemukan di Pending Besok'); return; }
-  const item = luarKotaPending[idx];
+  const item = doLuarKota[idx];
   if(!confirm(`Batalkan pending DO ${docNo} (${item.customer})?
 
 DO akan dikembalikan ke DO Vendor.`)) return;
-  luarKotaPending.splice(idx,1);
-  // Kembalikan ke vendorItems sebagai unplot
-  vendorItems.push({
+  doLuarKota.splice(idx,1);
+  // Kembalikan ke doVendor sebagai unplot
+  doVendor.push({
     ...item,
     vendor_reason: (item.vendor_reason||'')+ ' [dikembalikan dari pending]',
     is_pending_carryover: false,
@@ -9877,7 +9903,7 @@ DO akan dikembalikan ke DO Vendor.`)) return;
 // untuk DO yang sudah di-defer ke Pending besok, dispatcher bisa "pulihkan"
 // dengan assign langsung ke kendaraan internal idle / route existing / vendor.
 //
-// source: 'luar_kota' (luarKotaPending array) atau 'low_util' (pendingTomorrowItems)
+// source: 'luar_kota' (doLuarKota array) atau 'low_util' (doLowUtil)
 async function emergencyRestoreToToday(docNo, source){
   // v4.47.5: Guard — Emergency hanya boleh dipakai saat Dispatch Mode AKTIF
   if (!dispatchMode) {
@@ -9887,15 +9913,15 @@ async function emergencyRestoreToToday(docNo, source){
   // Cari item di pending list yang sesuai
   let item = null; let pendingIdx = -1; let pendingArr = null;
   if (source === 'luar_kota') {
-    pendingIdx = luarKotaPending.findIndex(p=>p.doc_no===docNo);
+    pendingIdx = doLuarKota.findIndex(p=>p.doc_no===docNo);
     if (pendingIdx < 0) { alert('DO tidak ditemukan di pending Luar Kota'); return; }
-    item = luarKotaPending[pendingIdx];
-    pendingArr = luarKotaPending;
+    item = doLuarKota[pendingIdx];
+    pendingArr = doLuarKota;
   } else if (source === 'low_util') {
-    pendingIdx = (pendingTomorrowItems||[]).findIndex(p=>p.doc_no===docNo);
+    pendingIdx = (doLowUtil||[]).findIndex(p=>p.doc_no===docNo);
     if (pendingIdx < 0) { alert('DO tidak ditemukan di pending Low Util'); return; }
-    item = pendingTomorrowItems[pendingIdx];
-    pendingArr = pendingTomorrowItems;
+    item = doLowUtil[pendingIdx];
+    pendingArr = doLowUtil;
   } else { alert('Source tidak valid'); return; }
 
   // Build dropdown opts: IDLE (utamakan) → existing routes → vendor
@@ -9971,11 +9997,11 @@ async function emergencyRestoreToToday(docNo, source){
 
       try {
       if (target.startsWith('VENDOR_KODE:')) {
-        // Push ke vendorItems → vendor card akan ditampilkan
+        // Push ke doVendor → vendor card akan ditampilkan
         const kode = target.replace('VENDOR_KODE:','');
         const vendor = vendorState.find(v => v.kode === kode);
         if (!vendor) { alert('Vendor tidak ditemukan'); return; }
-        vendorItems.push({
+        doVendor.push({
           ...item,
           manual_vendor_kode: kode,
           is_manual_vendor: true,
@@ -9986,7 +10012,7 @@ async function emergencyRestoreToToday(docNo, source){
         });
         // Tambah ke vendor.assigned_dos kalau struktur ini dipakai
         if (vendor.assigned_dos) {
-          const lastItem = vendorItems[vendorItems.length - 1];
+          const lastItem = doVendor[doVendor.length - 1];
           if (!vendor.assigned_dos.find(d => d.doc_no === lastItem.doc_no)) {
             vendor.assigned_dos.push(lastItem);
           }
@@ -10116,24 +10142,24 @@ async function emergencyRestoreToToday(docNo, source){
 }
 
 function renderLuarKotaPending(){
-  // v4.55.0: Render section "Vendor Belum Konfirmasi" — DOs RELEASED via vendor > threshold jam.
-  // Source: window._gasVendorBelumKonfirmasi (set in startAnalysis after GAS fetch).
+  // v4.55.1: Render section "Vendor Belum Konfirmasi" — DOs RELEASED via vendor > threshold jam.
+  // Source: window.doVendorBelumKonfirmasi (set in startAnalysis after GAS fetch).
   // Tampil di atas Carry Over karena perlu review duluan.
   _renderVendorBelumKonfirmasi();
 
-  // v4.55.0: Render section "DO Carry Over" — DOs from getPendingBesok + getFailedDOs.
-  // Source: window._gasCarryOverItems (set in startAnalysis after GAS fetch).
+  // v4.55.1: Render section "DO Carry Over" — DOs from getPendingBesok + getFailedDOs.
+  // Source: window.doCarryOverItems (set in startAnalysis after GAS fetch).
   // Sort: by Tanggal Pertama Defer / DO Date ASC (paling tua di atas).
   _renderCarryOverSection();
 
-  // v4.55.0: Render section "DO Jabo Overflow" — DO yang tidak muat di kendaraan internal.
-  // Source: vendorItems filter (!luar_kota && !vendor_fallback).
+  // v4.55.1: Render section "DO Overflow" — DO yang tidak muat di kendaraan internal.
+  // Source: doVendor filter (!luar_kota && !vendor_fallback).
   _renderJaboOverflowSection();
 
-  const pendingAuto   = luarKotaPending.filter(r => r.defer_type === 'auto');
-  const pendingManual = luarKotaPending.filter(r => r.defer_type !== 'auto');
-  const cnt = luarKotaPending.length;
-  const cntLowUtil = (pendingTomorrowItems||[]).length;
+  const pendingAuto   = doLuarKota.filter(r => r.defer_type === 'auto');
+  const pendingManual = doLuarKota.filter(r => r.defer_type !== 'auto');
+  const cnt = doLuarKota.length;
+  const cntLowUtil = (doLowUtil||[]).length;
   document.getElementById('cnt-luarkota').textContent=cnt;
   const cntLU = document.getElementById('cnt-lowutil');
   if(cntLU) cntLU.textContent = cntLowUtil;
@@ -10239,7 +10265,7 @@ function renderLuarKotaPending(){
   if(lowUtilSect && lowUtilTbody){
     if(cntLowUtil > 0){
       lowUtilSect.style.display = 'block';
-      lowUtilTbody.innerHTML = (pendingTomorrowItems||[]).map(r=>{
+      lowUtilTbody.innerHTML = (doLowUtil||[]).map(r=>{
         return `<tr style="background:#ecfeff">
           <td style="font-family:var(--mono);font-size:10px">${r.doc_no||'-'}</td>
           <td>${r.wh_cons||r.wh||'-'}</td>
@@ -10269,8 +10295,8 @@ function renderLuarKotaPending(){
 }
 
 function downloadLuarKotaPending(){
-  const hasLuar = luarKotaPending.length > 0;
-  const hasLowUtil = (pendingTomorrowItems||[]).length > 0;
+  const hasLuar = doLuarKota.length > 0;
+  const hasLowUtil = (doLowUtil||[]).length > 0;
   if(!hasLuar && !hasLowUtil){alert('Tidak ada DO pending');return;}
   const wb=XLSX.utils.book_new();
 
@@ -10279,7 +10305,7 @@ function downloadLuarKotaPending(){
     const h=['DO No','Gudang','Customer','Area Tujuan','Tujuan Kirim','Nama Barang',
       'Shade','Size','QTY','UOM','Volume (m³)','Remarks',
       'Volume Saat Ini (m³)','Threshold 95% (m³)','% Terpenuhi','Keterangan'];
-    const rows=[h,...luarKotaPending.map(r=>[
+    const rows=[h,...doLuarKota.map(r=>[
       r.doc_no,r.wh_cons,r.customer,r.luar_kota_area||'',r.kirim,
       r.stock_name,r.shade,r.size,r.qty,r.uom||'DUS',
       (r.total_vol||0).toFixed(3),String(r.remarks||'').slice(0,100),
@@ -10296,7 +10322,7 @@ function downloadLuarKotaPending(){
   if(hasLowUtil){
     const h2=['DO No','Gudang','Customer','Kota Tujuan','Tujuan Kirim','Nama Barang',
       'Shade','Size','QTY','UOM','Volume (m³)','Kendaraan Rencana','Driver','Alasan'];
-    const rows2=[h2,...pendingTomorrowItems.map(r=>[
+    const rows2=[h2,...doLowUtil.map(r=>[
       r.doc_no||'',r.wh_cons||r.wh||'',r.customer||'',r.kota||r.zona||'',r.kirim||'',
       r.stock_name||'',r.shade||'',r.size||'',r.qty||0,r.uom||'DUS',
       (r.total_vol||0).toFixed(3),r.previous_plat||'',r.previous_driver||'',
@@ -10375,12 +10401,12 @@ function changeUnits(vi,delta){
 
 function renderVendorDOList(){
   // v4.50.4: count unique DO consistent dengan KPI label
-  document.getElementById('cnt-vendor').textContent=new Set(vendorItems.map(r=>r.doc_no)).size;
+  document.getElementById('cnt-vendor').textContent=new Set(doVendor.map(r=>r.doc_no)).size;
   // v4.43: Delegate ke renderVendor() yang sudah handle grouping per Gudang × Vendor
   renderVendor();
 }
 function reassignDO(itemIdx,assignStr){
-  const item=vendorItems[itemIdx];
+  const item=doVendor[itemIdx];
   vendorState.forEach(v=>{v.assigned_dos=v.assigned_dos.filter(d=>d!==item)});
 
   if(assignStr.startsWith('VENDOR:')){
@@ -10456,8 +10482,8 @@ function reassignDO(itemIdx,assignStr){
         delta_km    : deltaKM,
       });
 
-      const idx=vendorItems.indexOf(item);
-      if(idx>=0) vendorItems.splice(idx,1);
+      const idx=doVendor.indexOf(item);
+      if(idx>=0) doVendor.splice(idx,1);
       renderRouting();renderKPI();renderBiaya();
     }
 
@@ -10469,8 +10495,8 @@ function reassignDO(itemIdx,assignStr){
 
 Volume: ${totalVol.toFixed(3)} m³
 DO ini akan di-defer dan dikonsolidasi dengan hari berikutnya.`)) return;
-    const idx=vendorItems.indexOf(item);
-    if(idx>=0) vendorItems.splice(idx,1);
+    const idx=doVendor.indexOf(item);
+    if(idx>=0) doVendor.splice(idx,1);
     _addToPendingBesok([item], 'vendor-manual');
     renderVendor();renderKPI();renderLuarKotaPending();
     return;
@@ -10536,8 +10562,8 @@ DO ini akan di-defer dan dikonsolidasi dengan hari berikutnya.`)) return;
       is_idle     : true,
     });
 
-    const idx=vendorItems.indexOf(item);
-    if(idx>=0) vendorItems.splice(idx,1);
+    const idx=doVendor.indexOf(item);
+    if(idx>=0) doVendor.splice(idx,1);
     renderRouting();renderKPI();renderBiaya();
   }
 
@@ -10765,7 +10791,7 @@ function buildDataDORows(){
           source: opts.source,
           is_locked: false,
           rt: it,
-          // v4.55.0: SLA fields untuk badge generation
+          // v4.55.1: SLA fields untuk badge generation
           carry_over: it.carry_over || false,
           priority: it.priority || 0,
           _sla_reason: it._sla_reason || null,
@@ -10788,8 +10814,8 @@ function buildDataDORows(){
   }
 
   // 2. From vendor items (DO Unplot — no driver yet)
-  if(typeof vendorItems !== 'undefined'){
-    _add(vendorItems, { source:'vendor' });
+  if(typeof doVendor !== 'undefined'){
+    _add(doVendor, { source:'vendor' });
   }
 
   // 3. Transfer items
@@ -11134,7 +11160,7 @@ function dataDOInlineAssign(docNo, value){
   _dataDOExecuteAssign([docNo], value);
 }
 
-// v4.51.1: assign DO ke vendor — pindah dari internal route ke vendorItems
+// v4.51.1: assign DO ke vendor — pindah dari internal route ke doVendor
 function _dataDOAssignToVendor(docNos, vendorKode){
   const vendor = (vendorState||[]).find(v => v.kode === vendorKode);
   if(!vendor){ alert('Vendor tidak ditemukan.'); return; }
@@ -11149,8 +11175,8 @@ function _dataDOAssignToVendor(docNos, vendorKode){
       oldRoute.total_wt = oldRoute.items.reduce((a,i)=>a+(i.weight_kg||0),0);
       oldRoute.total_vol = oldRoute.items.reduce((a,i)=>a+(i.volume||0),0);
     } else {
-      // Sudah di vendorItems → cuma update vendor_kode
-      do_items = (typeof vendorItems !== 'undefined' ? vendorItems : []).filter(i => i.doc_no === docNo);
+      // Sudah di doVendor → cuma update vendor_kode
+      do_items = (typeof doVendor !== 'undefined' ? doVendor : []).filter(i => i.doc_no === docNo);
     }
     if(!do_items.length) return;
 
@@ -11162,11 +11188,11 @@ function _dataDOAssignToVendor(docNos, vendorKode){
       it.vendor_trigger_reason = it.vendor_trigger_reason || 'Manual';
     });
 
-    // Pindahkan dari route ke vendorItems[] (kalau dari route)
-    if(oldRoute && typeof vendorItems !== 'undefined'){
+    // Pindahkan dari route ke doVendor[] (kalau dari route)
+    if(oldRoute && typeof doVendor !== 'undefined'){
       do_items.forEach(it => {
-        if(!vendorItems.find(v => v.doc_no===it.doc_no && v.stock_code===it.stock_code)){
-          vendorItems.push(it);
+        if(!doVendor.find(v => v.doc_no===it.doc_no && v.stock_code===it.stock_code)){
+          doVendor.push(it);
         }
       });
     }
@@ -11211,8 +11237,8 @@ function dataDOApprove(docNo){
       rt.is_suggestion = false;
     }
   });
-  // Mark items in vendorItems
-  (vendorItems||[]).forEach(it => {
+  // Mark items in doVendor
+  (doVendor||[]).forEach(it => {
     if(it.doc_no === docNo && it.is_suggestion){
       it.is_suggestion = false;
       approved++;
@@ -11252,10 +11278,10 @@ function dataDOReject(docNo){
       rt.total_vol = rt.items.reduce((a,i)=>a+(i.volume||0),0);
     }
   });
-  // Hapus juga dari vendorItems kalau ada
-  const removedFromVendor = (vendorItems||[]).filter(it => it.doc_no === docNo);
-  if(typeof vendorItems !== 'undefined'){
-    vendorItems = vendorItems.filter(it => it.doc_no !== docNo);
+  // Hapus juga dari doVendor kalau ada
+  const removedFromVendor = (doVendor||[]).filter(it => it.doc_no === docNo);
+  if(typeof doVendor !== 'undefined'){
+    doVendor = doVendor.filter(it => it.doc_no !== docNo);
   }
   removedItems.push(...removedFromVendor);
 
@@ -11297,7 +11323,7 @@ function dataDOApproveAllSaran(){
   // Hitung total suggestion DOs
   const suggestedDOs = new Set();
   (routes||[]).forEach(rt => (rt.items||[]).forEach(it => { if(it.is_suggestion) suggestedDOs.add(it.doc_no); }));
-  (vendorItems||[]).forEach(it => { if(it.is_suggestion) suggestedDOs.add(it.doc_no); });
+  (doVendor||[]).forEach(it => { if(it.is_suggestion) suggestedDOs.add(it.doc_no); });
 
   const n = suggestedDOs.size;
   if(n === 0){ alert('Tidak ada DO Saran Auto yang menunggu approve.'); return; }
@@ -11309,7 +11335,7 @@ function dataDOApproveAllSaran(){
     rt.is_suggestion = false;
     (rt.items||[]).forEach(it => { it.is_suggestion = false; });
   });
-  (vendorItems||[]).forEach(it => { it.is_suggestion = false; });
+  (doVendor||[]).forEach(it => { it.is_suggestion = false; });
 
   dispatchLog.push({
     route_id: null, doc_no: '*ALL*', action: 'approve_all_suggestion',
@@ -11473,11 +11499,11 @@ function _dataDOExecuteAssign(docNos, plat){
       oldRoute.total_wt = oldRoute.items.reduce((a,i)=>a+(i.weight_kg||0),0);
       oldRoute.total_vol = oldRoute.items.reduce((a,i)=>a+(i.volume||0),0);
     } else {
-      // Coba dari vendorItems
-      do_items = (typeof vendorItems !== 'undefined' ? vendorItems : []).filter(i => i.doc_no === docNo);
-      if(typeof vendorItems !== 'undefined'){
-        for(let i = vendorItems.length-1; i >= 0; i--){
-          if(vendorItems[i].doc_no === docNo) vendorItems.splice(i, 1);
+      // Coba dari doVendor
+      do_items = (typeof doVendor !== 'undefined' ? doVendor : []).filter(i => i.doc_no === docNo);
+      if(typeof doVendor !== 'undefined'){
+        for(let i = doVendor.length-1; i >= 0; i--){
+          if(doVendor[i].doc_no === docNo) doVendor.splice(i, 1);
         }
       }
       // v4.52.1: Coba juga dari unassignedItems pool (DO yang reject dari suggestion)
@@ -12143,11 +12169,11 @@ function showLoad(msg){document.getElementById('loading').style.display='flex';s
 function setLoad(msg){document.getElementById('load-msg').textContent=msg;}
 function hideLoad(){document.getElementById('loading').style.display='none';}
 function resetApp(){
-  // v4.55.0: Deteksi sisa state dari sesi sebelumnya — tampilkan confirm kalau ada DO aktif
+  // v4.55.1: Deteksi sisa state dari sesi sebelumnya — tampilkan confirm kalau ada DO aktif
   const _staleSet = new Set();
   (routes||[]).forEach(r => (r.items||[]).forEach(i => _staleSet.add(i.doc_no)));
   (unassignedItems||[]).forEach(i => _staleSet.add(i.doc_no));
-  (luarKotaPending||[]).forEach(i => _staleSet.add(i.doc_no));
+  (doLuarKota||[]).forEach(i => _staleSet.add(i.doc_no));
   if(_staleSet.size > 0){
     if(!confirm(`⚠ Ada ${_staleSet.size} DO dari sesi sebelumnya (${doDate||'tanggal tidak diketahui'}).\n\nSemua data sesi ini akan dihapus dan diganti dengan upload baru.\n\nLanjutkan?`)) return;
   }
@@ -12160,11 +12186,11 @@ function resetApp(){
   });
   document.getElementById('analyze-btn').disabled=true;
   document.getElementById('up-note').textContent='Upload file SAP + PG dan connect Google Sheets atau upload data master';
-  routes=[];skipped=[];deferred=[];vendorItems=[];transferItems=[];carryOverItems=[];luarKotaPending=[];biayaData={};
-  conflictItems=[];pendingTomorrowItems=[]; // v4.43
+  routes=[];skipped=[];deferred=[];doVendor=[];transferItems=[];doCarryOverManual=[];doLuarKota=[];biayaData={};
+  conflictItems=[];doLowUtil=[]; // v4.43
   assignedFromUnplot=[];
-  unassignedItems=[]; // v4.55.0 FIX: sebelumnya tidak di-reset → ghost DOs dari sesi lama ikut ke sesi baru
-  doDate=''; // v4.55.0: clear tanggal sesi
+  unassignedItems=[]; // v4.55.1 FIX: sebelumnya tidak di-reset → ghost DOs dari sesi lama ikut ke sesi baru
+  doDate=''; // v4.55.1: clear tanggal sesi
   gsConnected=false;
   document.getElementById('gs-status').style.display='none';
   setGsStatus('','loading');
@@ -12221,7 +12247,7 @@ function openTambahDO() {
     ogVendor.label = '🤝 VENDOR / SUB KONTRAK';
     vendorList.forEach(vd => {
       // Hitung berapa DO sudah di-assign ke vendor ini
-      const assignedCount = (vendorItems||[]).filter(i =>
+      const assignedCount = (doVendor||[]).filter(i =>
         i.manual_vendor_kode === vd.kode ||
         (window.__vendorAssignMap && window.__vendorAssignMap[i.doc_no]?.kode === vd.kode)
       ).length;
@@ -12277,7 +12303,7 @@ function openTambahDO() {
   const vendorWrap = document.getElementById('tdo-vendor-reason-wrap');
   if (vendorWrap) vendorWrap.style.display = 'none';
 
-  // v4.55.0: Reset radio target ke "today" + apply visibility
+  // v4.55.1: Reset radio target ke "today" + apply visibility
   const todayRadio = document.querySelector('input[name="tdo-target"][value="today"]');
   if (todayRadio) todayRadio.checked = true;
   if (typeof _toggleTambahDOTarget === 'function') _toggleTambahDOTarget();
@@ -12291,7 +12317,7 @@ function closeTambahDO() {
   document.getElementById('modal-tambah-do').style.display = 'none';
 }
 
-// v4.55.0: Toggle conditional UI di modal Tambah DO berdasar pilihan radio target.
+// v4.55.1: Toggle conditional UI di modal Tambah DO berdasar pilihan radio target.
 // Kalau pilih "gantung", hide field "Assign ke Kendaraan" dan ubah teks tombol.
 function _toggleTambahDOTarget() {
   const targetEl = document.querySelector('input[name="tdo-target"]:checked');
@@ -12320,7 +12346,7 @@ function saveTambahDO() {
   const rawVal  = document.getElementById('tdo-kendaraan').value;
   const catatan = document.getElementById('tdo-catatan').value.trim();
 
-  // v4.55.0: Detect target — kirim hari ini atau simpan ke Gantung
+  // v4.55.1: Detect target — kirim hari ini atau simpan ke Gantung
   const targetEl = document.querySelector('input[name="tdo-target"]:checked');
   const target = targetEl ? targetEl.value : 'today';
 
@@ -12336,15 +12362,15 @@ function saveTambahDO() {
 
   // Cek duplikat DO No (semua sumber: routes + vendor + skipped + carry over)
   const allDocNosRoutes = routes.flatMap(r => r.items.map(i => String(i.doc_no)));
-  const allDocNosVendor = (vendorItems||[]).map(i => String(i.doc_no));
-  const allDocNosCarry  = (window._gasCarryOverItems||[]).map(i => String(i.doc_no));
+  const allDocNosVendor = (doVendor||[]).map(i => String(i.doc_no));
+  const allDocNosCarry  = (window.doCarryOverItems||[]).map(i => String(i.doc_no));
   if (allDocNosRoutes.includes(String(docNo)) || allDocNosVendor.includes(String(docNo)) || allDocNosCarry.includes(String(docNo))) {
     showTDOErr(`DO No ${docNo} sudah ada di sistem. Gunakan nomor DO yang berbeda.`);
     return;
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // v4.55.0 — BRANCH GANTUNG: target=gantung → masuk DO Gantung, sync sheet
+  // v4.55.1 — BRANCH GANTUNG: target=gantung → masuk DO Gantung, sync sheet
   // ═══════════════════════════════════════════════════════════════════════
   if (target === 'gantung') {
     // Derive session gudang dari first route (semua route session pasti 1 gudang)
@@ -12376,9 +12402,9 @@ function saveTambahDO() {
       _from_manual_t1: true,
     };
 
-    // Push ke window._gasCarryOverItems supaya muncul di tab DO Gantung section "Carry Over"
-    if(!window._gasCarryOverItems) window._gasCarryOverItems = [];
-    window._gasCarryOverItems.push(newItem);
+    // Push ke window.doCarryOverItems supaya muncul di tab DO Gantung section "Carry Over"
+    if(!window.doCarryOverItems) window.doCarryOverItems = [];
+    window.doCarryOverItems.push(newItem);
 
     closeTambahDO();
     renderLuarKotaPending(); // refresh tab
@@ -12427,7 +12453,7 @@ function saveTambahDO() {
       vendor_reason         : userReason || 'Manual assign dari Tambah DO',
       vendor_trigger_reason : userReason || 'Manual assign dari Tambah DO',
     };
-    vendorItems.push(newVendorItem);
+    doVendor.push(newVendorItem);
     setRoutesDirty(true);
     closeTambahDO();
     showApp();
@@ -12592,7 +12618,7 @@ async function syncManualDO(item, route) {
       <button onclick="closeTambahDO()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#94a3b8">×</button>
     </div>
 
-    <!-- v4.55.0: Radio "Target Pengiriman" — pilih kirim hari ini atau simpan ke Gantung -->
+    <!-- v4.55.1: Radio "Target Pengiriman" — pilih kirim hari ini atau simpan ke Gantung -->
     <div style="background:#faf5ff;border:1.5px solid #c4b5fd;border-radius:10px;padding:12px;margin-bottom:12px">
       <div style="font-size:11px;font-weight:700;color:#6d28d9;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Target Pengiriman</div>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:6px 0">
@@ -12632,7 +12658,7 @@ async function syncManualDO(item, route) {
         <input id="tdo-qty" type="number" min="1" placeholder="0"
           style="width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px">
       </div>
-      <!-- v4.55.0: Wrapper di-id supaya bisa di-hide kalau target=gantung -->
+      <!-- v4.55.1: Wrapper di-id supaya bisa di-hide kalau target=gantung -->
       <div id="tdo-kendaraan-wrap" style="grid-column:1/-1">
         <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px">Assign ke Kendaraan *</label>
         <select id="tdo-kendaraan"
