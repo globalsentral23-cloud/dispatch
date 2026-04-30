@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.52.1</title>
+<title>Routing Optimizer v4.52.3</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.52.1</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.52.3</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -530,7 +530,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.52.1</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.52.3</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -934,7 +934,7 @@ let rtMusibahAlerts = [];    // [{plat, doc_no, alasan, jam}]
  // true = mode operasional saat muat
 let luarKotaPending=[]; // DO luar kota yang tidak cukup memenuhi 95%
 let routes=[],skipped=[],deferred=[],vendorItems=[],transferItems=[],pendingTomorrowItems=[];
-let unassignedItems=[]; // v4.52.1 Stage B: DO yang reject dari suggestion, kembali ke pool
+let unassignedItems=[]; // v4.52.3 FIX: reset di resetApp() — sebelumnya ghost DOs dari sesi lama bocor ke sesi baru
 let conflictItems=[]; // v4.43: DO with both vendor-trigger AND no_cdd/force_cde flag
 let assignedFromUnplot=[]; // DO yang di-assign dari tab Unplot ke kendaraan internal
 let biayaData={}; // expense tracking per route.id
@@ -1753,6 +1753,9 @@ function checkReady(){
 // MAIN ANALYSIS
 // ═══════════════════════════════════════════════════════
 async function startAnalysis(){
+  // v4.52.3: Defensive clear — pastikan pool kosong sebelum analisis baru
+  // (failsafe kalau resetApp pernah skip reset karena user cancel confirm)
+  unassignedItems=[];
   showLoad('Membaca data SAP...');await sleep(50);
   try{
     const sapRaw=await readExcel(files.sap);
@@ -1962,6 +1965,11 @@ async function startAnalysis(){
       // Tampilkan warning kalau ratio < 50%
       if(inN >= 5 && ratio < 50){
         alert(`⚠ ALERT: Hanya ${outN} dari ${inN} DO (${ratio}%) yang ke-plot.\n\nKemungkinan masalah:\n1. Tanggal SAP (${doDate}) tidak match dengan filter routing\n2. Sebagian besar DO punya tgl_kirim berbeda dari mode\n3. Filter scope/zone terlalu ketat\n\nCek tab "Kirim Besok" atau verifikasi tanggal di header.`);
+      }
+      // v4.52.3: Tampilkan warning kalau ada carry over cross-gudang yang ditolak
+      if(window._carryOverCrossWarnMsg){
+        alert(window._carryOverCrossWarnMsg);
+        window._carryOverCrossWarnMsg = null;
       }
       // Tampilkan date distribution warning kalau ada
       if(window._dateDistWarning){
@@ -2544,6 +2552,37 @@ function processData(sapRaw,pgRaw){
 
     active.push(row);
   });
+
+  // ── v4.52.3: CROSS-GUDANG GUARD — filter carry over sebelum merge ──────────
+  // parseCarryOver() baca SEMUA rows dari routing xlsx tanpa filter gudang.
+  // Jika file xlsx berisi rute multi-gudang (misal DOYONG+CIKUDA), DOs gudang lain
+  // akan ikut masuk dan mencemari session ini. Guard ini menolak item tsb + warn user.
+  if(carryOverItems&&carryOverItems.length>0){
+    // Derive session gudang dari SAP active items (dominant wh)
+    const _whCount={};
+    active.forEach(a=>{ if(a.wh) _whCount[a.wh]=(_whCount[a.wh]||0)+1; });
+    const _sessionWh=Object.entries(_whCount).sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
+    // Normalize helper: strip "GUDANG " prefix, uppercase
+    const _normWh=s=>String(s||'').replace(/^GUDANG\s*/i,'').trim().toUpperCase();
+    const _sesNorm=_sessionWh.map(_normWh);
+    const _allowed=[], _rejected=[];
+    carryOverItems.forEach(co=>{
+      const _coNorm=_normWh(co.wh_cons);
+      // Allow if no wh info, or if matches session gudang
+      if(!_coNorm||_sesNorm.some(w=>w===_coNorm||w.includes(_coNorm)||_coNorm.includes(w))){
+        _allowed.push(co);
+      } else {
+        _rejected.push(co);
+      }
+    });
+    if(_rejected.length>0){
+      const _rejWhs=[...new Set(_rejected.map(c=>c.wh_cons||'unknown'))].join(', ');
+      const _rejDOs=_rejected.map(c=>c.doc_no).join(', ');
+      window._carryOverCrossWarnMsg=`⚠ CARRY OVER CROSS-GUDANG TERDETEKSI\n\n${_rejected.length} DO dari gudang LAIN diabaikan:\nGudang: ${_rejWhs}\nDO: ${_rejDOs}\n\nHanya DO dari gudang ${_sessionWh.join('/')} yang diproses.\nCek apakah file carry over benar.`;
+      console.warn('[v4.52.3] Carry over cross-gudang rejected:',_rejected.length,'DOs from',_rejWhs);
+      carryOverItems=[..._allowed]; // update global — hanya sisakan yang valid
+    }
+  }
 
   // Merge carry over items from yesterday with high priority
   if(carryOverItems&&carryOverItems.length>0){
@@ -10932,6 +10971,14 @@ function showLoad(msg){document.getElementById('loading').style.display='flex';s
 function setLoad(msg){document.getElementById('load-msg').textContent=msg;}
 function hideLoad(){document.getElementById('loading').style.display='none';}
 function resetApp(){
+  // v4.52.3: Deteksi sisa state dari sesi sebelumnya — tampilkan confirm kalau ada DO aktif
+  const _staleSet = new Set();
+  (routes||[]).forEach(r => (r.items||[]).forEach(i => _staleSet.add(i.doc_no)));
+  (unassignedItems||[]).forEach(i => _staleSet.add(i.doc_no));
+  (luarKotaPending||[]).forEach(i => _staleSet.add(i.doc_no));
+  if(_staleSet.size > 0){
+    if(!confirm(`⚠ Ada ${_staleSet.size} DO dari sesi sebelumnya (${doDate||'tanggal tidak diketahui'}).\n\nSemua data sesi ini akan dihapus dan diganti dengan upload baru.\n\nLanjutkan?`)) return;
+  }
   document.getElementById('app-screen').style.display='none';
   document.getElementById('upload-screen').style.display='flex';
   files={sap:null,pg:null,master:null};
@@ -10944,6 +10991,8 @@ function resetApp(){
   routes=[];skipped=[];deferred=[];vendorItems=[];transferItems=[];carryOverItems=[];luarKotaPending=[];biayaData={};
   conflictItems=[];pendingTomorrowItems=[]; // v4.43
   assignedFromUnplot=[];
+  unassignedItems=[]; // v4.52.3 FIX: sebelumnya tidak di-reset → ghost DOs dari sesi lama ikut ke sesi baru
+  doDate=''; // v4.52.3: clear tanggal sesi
   gsConnected=false;
   document.getElementById('gs-status').style.display='none';
   setGsStatus('','loading');
