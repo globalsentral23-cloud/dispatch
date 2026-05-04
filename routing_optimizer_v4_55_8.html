@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.55.8</title>
+<title>Routing Optimizer v4.55.9</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.8</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.9</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -532,7 +532,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.8</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.9</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -542,8 +542,8 @@ body.dispatch-active .dispatch-bar{display:flex}
     <button class="tab-btn" onclick="switchTab('map',this)" style="display:none">🗺 Peta</button>
     <button class="tab-btn" onclick="switchTab('transfer',this)" style="display:none">Transfer Gudang</button>
     <button class="tab-btn" onclick="switchTab('skipped',this)" style="display:none">Ambil Sendiri</button>
-    <!-- v4.55.5: DO Vendor tab di-hide. Data tetap di-process untuk dev future. -->
-    <button class="tab-btn" onclick="switchTab('vendor',this)" title="DO yang di-assign manual ke vendor — default kosong, isi via Data DO" style="display:none">DO Vendor (<span id="cnt-vendor">0</span>)</button>
+    <!-- v4.55.9: Tab DO Vendor di-unhide. Diperlukan untuk dispatcher lihat list DO yang udah di-assign ke vendor + akses tombol "Kirim Order via WhatsApp" untuk batch send. -->
+    <button class="tab-btn" onclick="switchTab('vendor',this)" title="DO yang di-assign manual ke vendor — lihat list & kirim WA batch order">DO Vendor (<span id="cnt-vendor">0</span>)</button>
     <!-- v4.55.5: Kirim Besok → DO Gantung. Konsolidasi 5 jenis defer + carry over. -->
     <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota" title="DO Gantung — DO Carry Over (dari kemarin) + DO Gantung Baru hari ini (DO Luar Kota, DO Overflow, DO Low-Util, KIRIM TGL X). Manual decide per DO via dispatcher.">DO Gantung (<span id="cnt-pending-tab">0</span>)</button>
     <!-- v4.55.5: DO Konflik tab di-hide. -->
