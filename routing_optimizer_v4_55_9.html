@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.55.9</title>
+<title>Routing Optimizer v4.55.10</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.9</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.10</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -532,7 +532,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.9</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.10</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -891,30 +891,14 @@ body.dispatch-active .dispatch-bar{display:flex}
   </div>
 
   <div class="tab-pane" id="tab-vendor">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-        <div style="font-size:14px;font-weight:600">Vendor Tersedia</div>
-        <button class="save-master-btn" onclick="downloadVendorMaster()">⬇ Download Master Updated</button>
-        <span style="font-size:11px;color:var(--muted)">Perubahan di sini berlaku hari ini saja</span>
-      </div>
-      <div class="vendor-top" id="vendor-cards"></div>
-
-      <!-- v4.43: Grouping per Gudang × Vendor -->
-      <div id="vendor-groups-v443" style="margin-top:14px;display:flex;flex-direction:column;gap:14px"></div>
-
-      <!-- v4.43: DO tanpa assigned vendor (manual assign needed) -->
-      <div id="vendor-unassigned-section" style="margin-top:20px;display:none">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-          <div style="width:12px;height:12px;border-radius:2px;background:#f59e0b;flex-shrink:0"></div>
-          <div style="font-size:13px;font-weight:700;color:#92400e">⚠ DO Belum Ter-Assign Vendor — Perlu Pilih Manual (<span id="cnt-vendor-unassigned">0</span> item)</div>
-        </div>
-        <div class="tbl-wrap">
-          <table class="info-tbl">
-            <thead><tr><th>DO No</th><th>Gudang</th><th>Customer</th><th>Tujuan</th><th>QTY</th><th>Vol (m³)</th><th>Assign Vendor</th><th>Alasan Trigger</th></tr></thead>
-            <tbody id="tbody-vendor-unassigned"></tbody>
-          </table>
-        </div>
+      <!-- v4.55.10: Restructure — hapus master cards, fokus tabel DO list grouped per vendor -->
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+        <div style="font-size:14px;font-weight:700;color:var(--navy)">📦 DO Assigned ke Vendor</div>
+        <span style="font-size:11px;color:var(--muted)">Daftar DO yang sudah di-assign vendor manual via tab DO Gantung. Klik tombol "Kirim Order WA" per group untuk send batch ke vendor.</span>
       </div>
 
+      <!-- v4.55.10: Container untuk tabel grouped per vendor (mirror DO Overflow format) -->
+      <div id="vendor-groups-v443" style="display:flex;flex-direction:column;gap:14px"></div>
     </div>
   </div>
   <div class="tab-pane" id="tab-konflik">
@@ -8137,21 +8121,22 @@ function buildVendorAssignmentMap(){
 function renderVendor(){
   // v4.43: Grouping per Gudang × Vendor + tombol Kirim Order WhatsApp
   // v4.43.1: pakai buildVendorAssignmentMap sebagai single source of truth
+  // v4.55.10: HAPUS master cards + unassigned section. Workflow vendor assign sudah pindah ke DO Gantung.
+  //           Tab Vendor cuma show list DO yang sudah di-assign manual.
   if(!vendorState.length) initVendorState();
 
   // v4.50.4: tab counter pakai unique DO (consistent dengan label "DO" di KPI JABO OVERFLOW + LUAR KOTA)
-  // Sebelumnya count line items → misleading (44 doVendor = 14 unique DO)
   document.getElementById('cnt-vendor').textContent = new Set(doVendor.map(r=>r.doc_no)).size;
 
   // Build assignment map (single source of truth untuk renderVendor + sendVendorOrder)
-  const { assignMap, unassigned } = buildVendorAssignmentMap();
+  const { assignMap } = buildVendorAssignmentMap();
 
   // Group items: (wh_cons, vendor_kode) → items[]
   const grouping = {};
 
   doVendor.forEach(item=>{
     const vendor = assignMap.get(item);
-    if(!vendor) return; // sudah masuk unassigned
+    if(!vendor) return; // tidak ter-assign vendor (mestinya kosong di v4.55.10)
     const wh = String(item.wh_cons||item.wh||'UNKNOWN').replace('GUDANG ','').toUpperCase();
     const key = `${wh}|${vendor.kode}`;
     if(!grouping[key]){
@@ -8164,198 +8149,162 @@ function renderVendor(){
   const container = document.getElementById('vendor-groups-v443');
   const groupKeys = Object.keys(grouping).sort((a,b)=>a.localeCompare(b));
 
-  if(groupKeys.length === 0 && unassigned.length === 0){
-    container.innerHTML = '<div style="text-align:center;color:var(--dim);padding:32px;background:#f0fdf4;border-radius:10px">✅ Semua DO berhasil di-plot ke kendaraan internal — tidak ada yang perlu vendor</div>';
-  } else {
-    // Group by warehouse first
-    const byWh = {};
-    groupKeys.forEach(k=>{
-      const g = grouping[k];
-      if(!byWh[g.wh]) byWh[g.wh] = [];
-      byWh[g.wh].push(g);
-    });
+  if(groupKeys.length === 0){
+    container.innerHTML = '<div style="text-align:center;color:var(--dim);padding:32px;background:#f0fdf4;border-radius:10px;border:1px dashed #86efac"><div style="font-size:24px;margin-bottom:6px">✅</div><div style="font-size:13px;font-weight:600;color:#166534">Belum ada DO yang di-assign vendor</div><div style="font-size:11px;color:var(--muted);margin-top:4px">Assign DO ke vendor lewat tab <b>DO Gantung</b> — DO akan muncul di sini setelah assignment.</div></div>';
+    return;
+  }
 
-    container.innerHTML = Object.entries(byWh).map(([wh, groups])=>{
-      const totalDO = groups.reduce((s,g)=>s+new Set(g.items.map(i=>i.doc_no)).size, 0);
-      const totalItems = groups.reduce((s,g)=>s+g.items.length, 0);
+  // Group by warehouse first, then by vendor
+  const byWh = {};
+  groupKeys.forEach(k=>{
+    const g = grouping[k];
+    if(!byWh[g.wh]) byWh[g.wh] = [];
+    byWh[g.wh].push(g);
+  });
 
-      return `
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
-          <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)">
-            🏭 GUDANG ${wh} — ${totalDO} DO (${totalItems} item) via vendor
-          </div>
-          ${groups.map(g => renderVendorGroup(g, wh)).join('')}
+  container.innerHTML = Object.entries(byWh).map(([wh, groups])=>{
+    const totalDO = groups.reduce((s,g)=>s+new Set(g.items.map(i=>i.doc_no)).size, 0);
+    const totalItems = groups.reduce((s,g)=>s+g.items.length, 0);
+
+    return `
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px">
+        <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)">
+          🏭 GUDANG ${wh} — ${totalDO} DO (${totalItems} item) via vendor
         </div>
-      `;
-    }).join('');
-  }
-
-  // Render unassigned section
-  const unassignedSection = document.getElementById('vendor-unassigned-section');
-  const unassignedTbody = document.getElementById('tbody-vendor-unassigned');
-  document.getElementById('cnt-vendor-unassigned').textContent = unassigned.length;
-
-  if(unassigned.length === 0){
-    unassignedSection.style.display = 'none';
-  } else {
-    unassignedSection.style.display = '';
-    const vendorOpts = vendorState.filter(v=>v.available)
-      .map((v,vi)=>`<option value="VENDOR:${vi}">📦 ${v.nama} [${v.tipe}]</option>`).join('');
-    const svolU=CFG.safety_vol||0.85, swtU=CFG.safety_wt||0.90;
-    // v4.47.2: Include idle vehicles juga (sebelumnya cuma routes)
-    // v4.47.3 fix: pakai getAllVehicles() — variable global tidak ada
-    const allVehiclesU = getAllVehicles();
-    const assignedPlatsU = new Set(routes.map(r=>r.vehicle.plat));
-    const optsListU = [];
-    allVehiclesU.forEach(v => {
-      if (assignedPlatsU.has(v.plat)) return;
-      const sisaVol = (v.vol_m3 * svolU).toFixed(2);
-      optsListU.push({
-        isIdle: true,
-        sisaVol: parseFloat(sisaVol),
-        html: `<option value="IDLE:${v.plat}|${v.wh}|${v.vol_m3}">🟢 ${v.plat} / ${v.driver} [${v.tipe}] · ${String(v.wh||'').replace('GUDANG ','')} (idle, ${sisaVol}m³)</option>`
-      });
-    });
-    routes
-      .filter(r=> r.total_vol<r.vehicle.vol_m3*svolU*0.98 && r.total_wt<r.vehicle.max_kg*swtU*0.98)
-      .forEach(r=>{
-        const sv=(r.vehicle.vol_m3*svolU-r.total_vol).toFixed(2);
-        optsListU.push({
-          isIdle: false,
-          sisaVol: parseFloat(sv),
-          html: `<option value="KEND:${r.id}">🚛 ${r.vehicle.plat} / ${r.vehicle.driver} (${sv}m³)</option>`
-        });
-      });
-    optsListU.sort((a,b)=>{
-      if (a.isIdle !== b.isIdle) return a.isIdle ? -1 : 1;
-      return b.sisaVol - a.sisaVol;
-    });
-    const internalOptsU = optsListU.map(o=>o.html).join('');
-
-    unassignedTbody.innerHTML = unassigned.map(r=>{
-      const itemIdx = doVendor.indexOf(r);
-      const assignSel = `<select class="reassign-sel" onchange="reassignDO(${itemIdx},this.value)"
-          style="font-size:10px;max-width:200px;border:0.5px solid var(--border2);border-radius:4px;padding:3px 6px;background:var(--card);color:var(--text)">
-        <option value="">— Pilih Vendor —</option>
-        ${internalOptsU?`<optgroup label="Kendaraan Internal">${internalOptsU}</optgroup>`:''}
-        ${vendorOpts?`<optgroup label="Vendor">${vendorOpts}</optgroup>`:''}
-      </select>`;
-      return `<tr style="background:#fffbeb">
-        <td style="font-family:var(--mono);font-size:10px">${r.doc_no}</td>
-        <td style="font-size:11px">${(r.wh_cons||'').replace('GUDANG ','')}</td>
-        <td style="font-size:11px;font-weight:600">${(r.customer||'').slice(0,28)}</td>
-        <td style="color:var(--muted);max-width:180px;font-size:10px">${(r.kirim||'').slice(0,60)}</td>
-        <td style="font-family:var(--mono);font-weight:700;color:var(--amber)">${r.qty||0}</td>
-        <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${(r.total_vol||0).toFixed(3)}</td>
-        <td>${assignSel}</td>
-        <td style="font-size:10px;color:var(--amber)">${r.vendor_trigger_reason||r.vendor_reason||'—'}</td>
-      </tr>`;
-    }).join('');
-  }
-
-  // Note: renderAssignedFromUnplot was used in old version, no longer called in new flow
+        ${groups.map(g => renderVendorGroup(g, wh)).join('')}
+      </div>
+    `;
+  }).join('');
 }
 
 // v4.43: Render a single vendor group (per wh × vendor)
+// v4.55.10: Restructure tabel — kolom mirror DO Overflow (DO No | Tgl | Customer | Tujuan | Size | QTY | Berat | Vol | Aksi).
+//           Tombol "Kirim WA Batch" tetap di header. Dropdown action 4 actions: pindah vendor, pindah internal, batalkan, mark WA sent.
 function renderVendorGroup(group, wh){
   const {vendor, items} = group;
   const uniqueDOs = [...new Set(items.map(i=>i.doc_no))];
-  const totalDus = items.reduce((s,i)=>s+(i.qty||0), 0);
-  const totalVol = items.reduce((s,i)=>s+(i.total_vol||0), 0);
-  const totalWt = items.reduce((s,i)=>s+(i.total_wt||0), 0);
+  const totalDus = items.reduce((s,i)=>s+(parseFloat(i.qty)||0), 0);
+  const totalVol = items.reduce((s,i)=>s+(parseFloat(i.total_vol)||0), 0);
+  const totalWt  = items.reduce((s,i)=>s+(parseFloat(i.total_wt)||0), 0);
 
-  const vendorOpts = vendorState.filter(v=>v.available && v.kode!==vendor.kode)
-    .map((v,vi)=>{
-      const realIdx = vendorState.indexOf(v);
-      return `<option value="VENDOR:${realIdx}">📦 ${v.nama} [${v.tipe}]</option>`;
-    }).join('');
-  const svol=CFG.safety_vol||0.85, swt=CFG.safety_wt||0.90;
-  // v4.47.2: Include IDLE vehicles (belum ada di routes) + sudah ke-plot dengan sisa kapasitas.
-  // HG insight: maksimalkan unit sendiri sebelum vendor.
-  // v4.47.3 fix: pakai getAllVehicles() — variable global tidak ada
+  // Build vendor dropdown options (untuk action "Pindah ke Vendor Lain") — exclude vendor sekarang
+  const vendorOptsOther = vendorState.filter(v=>v.available && v.kode!==vendor.kode)
+    .map(v => `<option value="VENDOR:${escapeHtml(v.kode)}">📦 ${escapeHtml(v.nama)} [${escapeHtml(v.tipe||'')}]</option>`).join('');
+
+  // Build internal kendaraan options (untuk action "Pindah ke Internal")
+  const svol = CFG.safety_vol||0.85, swt = CFG.safety_wt||0.90;
+  const internalOptsList = [];
+  // (1) Kendaraan idle dari gudang yang sama
   const allVehiclesG = getAllVehicles();
   const assignedPlats = new Set(routes.map(r=>r.vehicle.plat));
   const whUpper = String(wh||'').toUpperCase();
-  // Helper: format option dari spec kendaraan + sisa kapasitas
-  const optsList = [];
-  // (1) Kendaraan idle dari gudang yang sama — sisa = full capacity
   allVehiclesG.forEach(v => {
-    if (assignedPlats.has(v.plat)) return;
-    if (!String(v.wh||'').toUpperCase().includes(whUpper)) return;
+    if(assignedPlats.has(v.plat)) return;
+    if(!String(v.wh||'').toUpperCase().includes(whUpper)) return;
     const sisaVol = (v.vol_m3 * svol).toFixed(2);
-    optsList.push({
-      isIdle: true,
-      sisaVol: parseFloat(sisaVol),
-      html: `<option value="IDLE:${v.plat}|${v.wh}|${v.vol_m3}">🟢 ${v.plat} / ${v.driver} [${v.tipe}] (idle, kosong ${sisaVol}m³)</option>`
+    internalOptsList.push({
+      isIdle: true, sisaVol: parseFloat(sisaVol),
+      html: `<option value="IDLE:${escapeHtml(v.plat)}|${escapeHtml(v.wh)}|${v.vol_m3}">🟢 ${escapeHtml(v.plat)} / ${escapeHtml(v.driver||'')} [${escapeHtml(v.tipe||'')}] (idle, ${sisaVol}m³)</option>`
     });
   });
-  // (2) Kendaraan yang sudah ke-plot dengan sisa kapasitas
+  // (2) Routes yang masih ada sisa kapasitas
   routes
-    .filter(r=> r.wh.toUpperCase().includes(whUpper) && r.total_vol<r.vehicle.vol_m3*svol*0.98 && r.total_wt<r.vehicle.max_kg*swt*0.98)
-    .forEach(r=>{
+    .filter(r => r.wh.toUpperCase().includes(whUpper) && r.total_vol < r.vehicle.vol_m3*svol*0.98 && r.total_wt < r.vehicle.max_kg*swt*0.98)
+    .forEach(r => {
       const sv = (r.vehicle.vol_m3*svol - r.total_vol).toFixed(2);
-      optsList.push({
-        isIdle: false,
-        sisaVol: parseFloat(sv),
-        html: `<option value="KEND:${r.id}">🚛 ${r.vehicle.plat} / ${r.vehicle.driver} (sisa ${sv}m³)</option>`
+      const skg = Math.max(0, r.vehicle.max_kg*swt - r.total_wt).toFixed(0);
+      internalOptsList.push({
+        isIdle: false, sisaVol: parseFloat(sv),
+        html: `<option value="KEND:${r.id}">🚛 ${escapeHtml(r.vehicle.plat)} / ${escapeHtml(r.vehicle.driver||'')} (sisa ${Number(skg).toLocaleString('id-ID')}kg / ${sv}m³)</option>`
       });
     });
-  // Sort: idle dulu (paling utama dipakai), kemudian by sisa terbesar
-  optsList.sort((a,b)=>{
-    if (a.isIdle !== b.isIdle) return a.isIdle ? -1 : 1;
+  internalOptsList.sort((a,b) => {
+    if(a.isIdle !== b.isIdle) return a.isIdle ? -1 : 1;
     return b.sisaVol - a.sisaVol;
   });
-  const internalOpts = optsList.map(o=>o.html).join('');
+  const internalOpts = internalOptsList.map(o=>o.html).join('');
 
+  // Tombol Kirim WA Batch (header group)
   const telpAvail = vendor.telp && !/\[ISI|\[Telp/i.test(vendor.telp);
   const whatsappBtn = telpAvail
-    ? `<button onclick="sendVendorOrder('${wh}','${vendor.kode}')" style="padding:8px 16px;border-radius:8px;background:#22c55e;color:#fff;border:none;font-weight:700;font-size:12px;cursor:pointer;box-shadow:0 2px 4px rgba(34,197,94,.3)">📱 Kirim Order via WhatsApp</button>`
-    : `<button onclick="alert('Nomor WA vendor belum diisi. Silakan update di sheet Vendor master.')" style="padding:8px 16px;border-radius:8px;background:#94a3b8;color:#fff;border:none;font-size:12px;cursor:pointer" title="Nomor telp vendor belum diisi">⚠ Nomor WA belum diisi</button>`;
+    ? `<button onclick="sendVendorOrder('${escapeHtml(wh)}','${escapeHtml(vendor.kode)}')" style="padding:8px 16px;border-radius:8px;background:#22c55e;color:#fff;border:none;font-weight:700;font-size:12px;cursor:pointer;box-shadow:0 2px 4px rgba(34,197,94,.3)">📱 Kirim Order WhatsApp Batch</button>`
+    : `<button onclick="alert('Nomor WA vendor belum diisi. Update di sheet Vendor master dulu.')" style="padding:8px 16px;border-radius:8px;background:#94a3b8;color:#fff;border:none;font-size:12px;cursor:pointer" title="Nomor telp vendor belum diisi">⚠ Nomor WA belum diisi</button>`;
 
+  // Build tabel rows mirror DO Overflow format
+  const tbodyRows = items.map((r, idx) => {
+    const docNo = String(r.doc_no||'-');
+    const tglDO = (typeof fmtDateDisplay === 'function' ? fmtDateDisplay(r.do_date) : r.do_date) || r.do_date || '-';
+    const customer = String(r.customer||'-').slice(0,28);
+    const tujuan = String(r.kirim||'-').slice(0,55);
+    const size = String(r.size || '-');
+    const qty = parseFloat(r.qty)||0;
+    const vol = parseFloat(r.total_vol)||0;
+    const wt = parseFloat(r.total_wt)||0;
+    const escDoc = escapeHtml(docNo);
+
+    // Badge "WA Sent" — local state via item.wa_sent_at
+    const waSentAt = r.wa_sent_at;
+    const waBadge = waSentAt
+      ? `<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:#dcfce7;color:#166534;margin-right:3px" title="Dikirim ${new Date(waSentAt).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})}">✅ WA</span>`
+      : `<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:#fef9c3;color:#78350f;margin-right:3px" title="Belum kirim WA">⏳ WA</span>`;
+
+    // Build action dropdown (4 actions)
+    const actionDropdown = `<select onchange="vendorRowAction('${escDoc}','${escapeHtml(vendor.kode)}',this.value,this)" style="font-size:10px;max-width:200px;border:1px solid var(--border2);border-radius:4px;padding:3px 6px;background:var(--card);color:var(--text)">
+      <option value="">— Pilih Aksi —</option>
+      ${vendorOptsOther ? `<optgroup label="🔄 Pindah ke Vendor Lain">${vendorOptsOther}</optgroup>` : ''}
+      ${internalOpts ? `<optgroup label="🚛 Pindah ke Kendaraan Internal">${internalOpts}</optgroup>` : ''}
+      <optgroup label="── Aksi Lain ──">
+        <option value="MARK_WA">${waSentAt ? '↩ Unmark WA Sent' : '✅ Mark Sudah Kirim WA'}</option>
+        <option value="BATAL">↩ Batalkan Assignment (kembali ke DO Gantung)</option>
+      </optgroup>
+    </select>`;
+
+    return `<tr style="background:${waSentAt ? '#f0fdf4' : '#faf5ff'}">
+      <td style="font-family:var(--mono);font-size:10px;font-weight:700">${waBadge}${docNo}</td>
+      <td style="font-family:var(--mono);font-size:10px">${tglDO}</td>
+      <td style="font-size:10px;font-weight:600">${escapeHtml(customer)}</td>
+      <td style="color:var(--muted);max-width:200px;font-size:10px">${escapeHtml(tujuan)}</td>
+      <td style="font-family:var(--mono);font-size:10px">${escapeHtml(size)}</td>
+      <td style="font-family:var(--mono);font-weight:600">${qty}</td>
+      <td style="font-family:var(--mono);font-size:10px;font-weight:700;text-align:right">${fmtKg(wt)}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--muted);text-align:right">${fmtVol(vol)}</td>
+      <td>${actionDropdown}</td>
+    </tr>`;
+  }).join('');
+
+  // Build group with header (vendor info + WA batch button) + tabel
   return `
     <div style="background:var(--amber-l);border:1px solid var(--amber);border-radius:8px;padding:10px 12px;margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px;flex-wrap:wrap">
         <div>
-          <div style="font-size:12px;font-weight:700;color:var(--amber)">${vendor.nama} <span style="font-weight:normal;color:var(--muted)">(${vendor.tipe})</span></div>
+          <div style="font-size:13px;font-weight:700;color:var(--amber)">📦 ${escapeHtml(vendor.nama)} <span style="font-weight:normal;color:var(--muted);font-size:11px">(${escapeHtml(vendor.tipe||'-')})</span></div>
           <div style="font-size:10px;color:var(--muted);margin-top:2px">
-            PIC: ${vendor.pic||'-'} ${telpAvail?`| Telp: ${vendor.telp}`:''}
+            PIC: ${escapeHtml(vendor.pic||'-')} ${telpAvail ? `| Telp: ${escapeHtml(vendor.telp)}` : ''}
           </div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${uniqueDOs.length} DO · ${totalDus} DUS · ${totalVol.toFixed(1)}m³ · ${Math.round(totalWt/1000)}t</span>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:10px;color:var(--muted);font-family:var(--mono)">${uniqueDOs.length} DO · ${totalDus} DUS · ${fmtKg(totalWt)} kg · ${fmtVol(totalVol)} m³</span>
           ${whatsappBtn}
         </div>
       </div>
-      <table class="info-tbl" style="font-size:11px">
-        <thead><tr>
-          <th>DO No</th><th>Customer</th><th>Tujuan</th><th>QTY</th><th>Size</th><th>UOM</th><th>Vol</th><th>Kriteria</th><th>Pindah</th>
-        </tr></thead>
-        <tbody>
-          ${items.map(r=>{
-            const itemIdx=doVendor.indexOf(r);
-            const assignSel=`<select class="reassign-sel" onchange="reassignDO(${itemIdx},this.value)"
-                style="font-size:9px;max-width:160px;border:0.5px solid var(--border2);border-radius:4px;padding:2px 4px;background:var(--card);color:var(--text)">
-              <option value="">— Pindah —</option>
-              ${internalOpts?`<optgroup label="Kendaraan Internal (sisa)">${internalOpts}</optgroup>`:''}
-              ${vendorOpts?`<optgroup label="Vendor Lain">${vendorOpts}</optgroup>`:''}
-              <optgroup label="──────────────">
-                <option value="PENDING_BESOK">📅 Pending Besok</option>
-              </optgroup>
-            </select>`;
-            return `<tr>
-              <td style="font-family:var(--mono);font-size:9px">${r.doc_no}</td>
-              <td style="font-size:10px;font-weight:600">${(r.customer||'').slice(0,22)}</td>
-              <td style="color:var(--muted);max-width:140px;font-size:9px">${(r.kirim||'').slice(0,45)}</td>
-              <td style="font-family:var(--mono);font-weight:600;font-size:10px">${r.qty||0}</td>
-              <td style="font-family:var(--mono);font-size:9px;color:var(--muted)">${(r.size||'').slice(0,12)}</td>
-              <td style="font-family:var(--mono);font-size:9px;color:var(--muted)">${r.uom||'DUS'}</td>
-              <td style="font-family:var(--mono);font-size:9px;color:var(--muted)">${(r.total_vol||0).toFixed(2)}</td>
-              <td style="font-size:9px;color:#92400e">${(r.vendor_trigger_reason||r.vendor_reason||'—').slice(0,50)}</td>
-              <td>${assignSel}</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
+      <div class="tbl-wrap" style="background:var(--card);border-radius:6px;overflow:hidden">
+        <table class="info-tbl" style="font-size:11px;width:100%">
+          <thead style="background:#f1f5f9">
+            <tr>
+              <th style="text-align:left;padding:6px">DO No</th>
+              <th style="text-align:left;padding:6px">Tgl DO</th>
+              <th style="text-align:left;padding:6px">Customer</th>
+              <th style="text-align:left;padding:6px">Tujuan</th>
+              <th style="text-align:left;padding:6px">Size</th>
+              <th style="text-align:right;padding:6px">QTY</th>
+              <th style="text-align:right;padding:6px">Berat (kg)</th>
+              <th style="text-align:right;padding:6px">Vol (m³)</th>
+              <th style="text-align:left;padding:6px">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>${tbodyRows}</tbody>
+        </table>
+      </div>
     </div>
   `;
 }
@@ -8435,6 +8384,139 @@ function sendVendorOrder(wh, vendorKode){
   const win = window.open(waUrl, '_blank');
   if(!win){
     alert('Browser memblokir pop-up. Silakan allow pop-up untuk situs ini lalu coba lagi.');
+    return;
+  }
+  // v4.55.10: Auto-mark wa_sent_at untuk semua items di group ini supaya badge berubah
+  // dari "⏳ WA" jadi "✅ WA" — audit trail per DO.
+  const _ts = Date.now();
+  items.forEach(it => { it.wa_sent_at = _ts; });
+  try { renderVendor(); }catch(e){}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// v4.55.10 — VENDOR ROW ACTION HANDLER
+// 4 actions per row di tab DO Vendor:
+//   1. VENDOR:<kode>  → Pindah ke vendor lain (auto-buka WA ke vendor baru)
+//   2. KEND:<id> / IDLE:<plat>  → Pindah ke kendaraan internal
+//   3. MARK_WA  → Toggle mark sudah/belum kirim WA (audit trail)
+//   4. BATAL  → Batalkan assignment, DO kembali ke pool DO Gantung
+// ═══════════════════════════════════════════════════════════════════
+async function vendorRowAction(docNo, currentVendorKode, value, selectEl){
+  if(!value){ return; }
+
+  // Cari item di doVendor
+  const item = (doVendor||[]).find(i => String(i.doc_no) === String(docNo));
+  if(!item){
+    alert('Item DO tidak ditemukan: '+docNo);
+    if(selectEl) selectEl.value = '';
+    return;
+  }
+
+  // ── ACTION 1: Pindah ke Vendor Lain ──
+  if(value.startsWith('VENDOR:')){
+    const newVendorKode = value.replace('VENDOR:','');
+    const newVendor = (vendorState||[]).find(v => v.kode === newVendorKode);
+    if(!newVendor){
+      alert('Vendor tidak ditemukan: '+newVendorKode);
+      if(selectEl) selectEl.value = '';
+      return;
+    }
+    const oldVendor = (vendorState||[]).find(v => v.kode === currentVendorKode);
+    const oldName = oldVendor ? oldVendor.nama : currentVendorKode;
+    if(!confirm(`Pindah DO ${docNo} dari ${oldName} → ${newVendor.nama}?\n\nWA otomatis akan dibuka ke ${newVendor.nama}.`)){
+      if(selectEl) selectEl.value = '';
+      return;
+    }
+    try {
+      // Update assignment
+      item.manual_vendor_kode = newVendorKode;
+      item.wa_sent_at = null; // reset WA sent — vendor baru harus dapat order baru
+      // Persist via _markDoGantungReleased (status tetap RELEASED, released_via tetap vendor)
+      await _markDoGantungReleased(docNo, 'RELEASED', 'vendor');
+      // Re-build assignment map → tab Vendor pickup vendor baru
+      try{ buildVendorAssignmentMap(); }catch(e){}
+      // Auto-buka WA ke vendor baru (mirror flow DO Gantung)
+      const waOpened = _openWaSingle(docNo, newVendorKode);
+      if(waOpened){
+        item.wa_sent_at = Date.now();
+      }
+      renderVendor();
+    } catch(err){
+      alert('Gagal pindah vendor: '+err.message);
+      if(selectEl) selectEl.value = '';
+    }
+    return;
+  }
+
+  // ── ACTION 2: Pindah ke Kendaraan Internal ──
+  if(value.startsWith('KEND:') || value.startsWith('IDLE:')){
+    if(!confirm(`Pindah DO ${docNo} ke kendaraan internal?\n\nDO akan dihapus dari assignment vendor.\nDispatcher harus tambah DO ke loading list secara manual.`)){
+      if(selectEl) selectEl.value = '';
+      return;
+    }
+    try {
+      // Hapus dari doVendor + clear vendor flag
+      const idx = doVendor.indexOf(item);
+      if(idx >= 0) doVendor.splice(idx, 1);
+      delete item.manual_vendor_kode;
+      delete item.wa_sent_at;
+      // Persist: status berubah dari RELEASED via vendor → RELEASED via internal
+      await _markDoGantungReleased(docNo, 'RELEASED', 'internal');
+      // Re-build map + re-render
+      try{ buildVendorAssignmentMap(); }catch(e){}
+      renderVendor();
+      // Update tab counter Vendor
+      try{ document.getElementById('cnt-vendor').textContent = new Set((doVendor||[]).map(r=>r.doc_no)).size; }catch(e){}
+      alert(`✅ DO ${docNo} dipindah ke internal.\n\n⚠ Reminder: Tambah DO ke loading list kendaraan secara manual.`);
+    } catch(err){
+      alert('Gagal pindah ke internal: '+err.message);
+      if(selectEl) selectEl.value = '';
+    }
+    return;
+  }
+
+  // ── ACTION 3: Mark WA Sent (toggle) ──
+  if(value === 'MARK_WA'){
+    if(item.wa_sent_at){
+      // Currently marked — unmark
+      item.wa_sent_at = null;
+    } else {
+      // Mark sebagai sent
+      item.wa_sent_at = Date.now();
+    }
+    renderVendor();
+    return;
+  }
+
+  // ── ACTION 4: Batalkan Assignment (kembali ke DO Gantung) ──
+  if(value === 'BATAL'){
+    if(!confirm(`Batalkan assignment vendor untuk DO ${docNo}?\n\nDO akan kembali ke tab DO Gantung untuk evaluate ulang.\nStatus berubah dari RELEASED → PENDING.`)){
+      if(selectEl) selectEl.value = '';
+      return;
+    }
+    try {
+      // Hapus dari doVendor + clear flags
+      const idx = doVendor.indexOf(item);
+      if(idx >= 0) doVendor.splice(idx, 1);
+      delete item.manual_vendor_kode;
+      delete item.wa_sent_at;
+      // Hapus _gantungState supaya DO muncul kembali di list DO Gantung
+      if(window._gantungState && window._gantungState[docNo]){
+        delete window._gantungState[docNo];
+      }
+      // Persist via _markDoGantungReleased dengan status PENDING (revert)
+      await _markDoGantungReleased(docNo, 'PENDING', '');
+      try{ buildVendorAssignmentMap(); }catch(e){}
+      renderVendor();
+      try{ document.getElementById('cnt-vendor').textContent = new Set((doVendor||[]).map(r=>r.doc_no)).size; }catch(e){}
+      // Re-render DO Gantung biar DO muncul kembali
+      try{ if(typeof renderLuarKotaPending === 'function') renderLuarKotaPending(); }catch(e){}
+      alert(`✅ Assignment DO ${docNo} dibatalkan.\n\nDO sekarang kembali ke tab DO Gantung — bisa di-action ulang.`);
+    } catch(err){
+      alert('Gagal batalkan assignment: '+err.message);
+      if(selectEl) selectEl.value = '';
+    }
+    return;
   }
 }
 
@@ -11323,6 +11405,9 @@ function renderVendorTab(){
 
 function renderVendorCards(){
   const cont=document.getElementById('vendor-cards');
+  // v4.55.10: vendor-cards container dihapus — function ini jadi no-op kalau gak ada element.
+  // Tetap dipertahankan supaya legacy callers (toggleVendorAvail, changeUnits, reassignDO) gak crash.
+  if(!cont) return;
   cont.innerHTML=vendorState.map((v,vi)=>`
     <div class="vendor-card${v.available?'':' unavail'}" id="vc-${v.kode}">
       <div class="vc-head">
@@ -11715,7 +11800,7 @@ function switchTab(tab,btn){
   if (fbar) fbar.style.display = (tab==='routing'?'flex':'none');
   if(tab==='map') setTimeout(updateLiveMarkersOnMap, 200);
   if(tab==='map'){setTimeout(()=>{initMap();renderMap();},100);}
-  if(tab==='vendor'){renderVendorTab();}
+  if(tab==='vendor'){renderVendor();}
   if(tab==='luarkota'){renderLuarKotaPending();}
   if(tab==='settlement'){renderSettlement();}
   if(tab==='datado'){renderDataDO();}
