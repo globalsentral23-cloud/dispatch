@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.55.10</title>
+<title>Routing Optimizer v4.55.11</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.10</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.11</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -532,7 +532,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.10</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.11</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -6093,20 +6093,27 @@ function renderKPI(){
   const luarKotaVendorLineCount = doVendor.filter(r=>r.luar_kota || r.vendor_fallback).length; // v4.55.5: line items (was unique DO)
   const pendingBesokTotal = (doLuarKota||[]).length + (doLowUtil||[]).length;
   const carryOverFromSheet = (window.doCarryOverItems||[]).length; // v4.55.5: source baru (formerly doCarryOverManual)
+  // v4.55.11: KPI baru — DO Routing (yang sudah ke-plot kendaraan internal) + DO Gantung total (carry over + jabo + luar kota + low util)
+  const totalDORouting = totalDOAktif; // sama dengan DO AKTIF, alias semantik untuk dispatcher
+  const doGantungTotal = pendingBesokTotal + jaboLineCount + carryOverFromSheet + luarKotaVendorLineCount;
 
   document.getElementById('kpi-bar').innerHTML=[
     ['DO AKTIF',totalDOAktif,'DO'],
+    ['🚛 DO ROUTING',totalDORouting,'sudah ke-plot'],          // v4.55.11: alias DO Aktif untuk visibility dispatcher
+    ['📦 DO GANTUNG',doGantungTotal,'menunggu decision'],       // v4.55.11: total semua DO yang belum ke-plot internal
     ['TOTAL DUS',totalQty.toLocaleString('id'),'keseluruhan'],
     ['RUTE 1',r1,'kendaraan'],
 
     ['🔁 TRIP 2',rT2,'kendaraan'],
     ['TRANSFER',transferUniqueDO,'DO'],
-    ['SKIP',skipped.length,'item'],
+    // v4.55.11: KPI 'SKIP' dihide — workflow Ambil Sendiri/Skip tidak relevan lagi.
+    // ['SKIP',skipped.length,'item'],
     ['KIRIM TGL X',deferred.length,'item'],
     ['DO OVERFLOW',jaboLineCount,'item'],                          // v4.55.5: line items (was unique DO)
     // v4.55.5: DO LUAR KOTA VENDOR removed — auto-vendor matikan, semua luar kota → DO Gantung
     ['KNEK',knek,'kendaraan'],
-    ['⚠ ETA LEWAT 15.00',warn,'kendaraan'],
+    // v4.55.11: KPI 'ETA LEWAT 15.00' dihide — tidak relevan lagi.
+    // ['⚠ ETA LEWAT 15.00',warn,'kendaraan'],
     ['DO GANTUNG BARU',pendingBesokTotal,'item'],
     ['CARRY OVER',carryOverFromSheet,'dari kemarin'],              // v4.55.5: repurpose — source dari sheet, bukan Excel upload
     ['⚖ UTIL BERAT',utilWtPct+'%','rata-rata armada'],
@@ -6114,6 +6121,8 @@ function renderKPI(){
   ].map(([l,v,s])=>`<div class="kpi"><div class="kpi-lbl">${l}</div><div class="kpi-val"${
     l.includes('ETA')&&v>0?' style="color:var(--red)"':
     l.includes('DO OVERFLOW')&&v>0?' style="color:var(--amber)"':
+    l.includes('DO GANTUNG')&&v>0?' style="color:var(--amber)"':                // v4.55.11: highlight DO Gantung
+    l.includes('DO ROUTING')&&v>0?' style="color:var(--green)"':                 // v4.55.11: green untuk DO Routing
     l.includes('TRIP 2')&&v>0?' style="color:var(--green)"':
     l.includes('UTIL BERAT')?' style="color:var(--navy);font-weight:700"':
     l.includes('UTIL VOLUME')?' style="color:var(--blue)"':''
@@ -7008,45 +7017,54 @@ function _renderJaboOverflowSection(){
 // v4.55.8: Read metadata dari data-* attributes pada checkbox langsung,
 //          gak rely pada source array .find(). Solve bug bulk select 2 DO → 1 DO
 //          karena find() bisa fail kalau ada multiple line items per doc_no atau flag inkonsistensi.
+// v4.55.11: AUTO-SELECT sibling line items dari same DO. Click 1 line item → semua line items DO ini di-check
+//           dan vol/wt di-aggregate. Solve bug modal show wrong total weight.
+//           Dispatcher logistik decide per-DO bukan per-line-item, jadi auto-select sibling intuitif.
 function bulkToggleSelect(docNo, section, checked, evt){
   if(!docNo || !section) return;
+  // v4.55.11: Find ALL sibling checkboxes (line items dari same DO + same section)
+  const siblings = Array.from(document.querySelectorAll(
+    `[data-bulk-section="${section}"][data-bulk-doc="${CSS.escape(String(docNo))}"]`
+  ));
+  // Sync visual state semua sibling
+  siblings.forEach(cb => { cb.checked = checked; });
+
   if(checked){
-    // v4.55.8: Try DOM dataset first (paling reliable — data udah embed saat render)
-    const cb = evt && evt.target;
-    let meta = null;
-    if(cb && cb.dataset && cb.dataset.bulkVol !== undefined){
-      meta = {
-        section: section,
-        doc_no: String(docNo),
-        customer: cb.dataset.bulkCust || '',
-        total_vol: parseFloat(cb.dataset.bulkVol)||0,
-        total_wt:  parseFloat(cb.dataset.bulkWt) ||0,
-        qty:       parseInt(cb.dataset.bulkQty)  ||0
-      };
-    }
-    // Fallback: lookup source array (legacy path, ada kemungkinan miss kalau filter inkonsistensi)
-    if(!meta){
+    // Aggregate vol/wt/qty dari SEMUA sibling line items
+    let totalVol = 0, totalWt = 0, totalQty = 0, customer = '';
+    siblings.forEach(cb => {
+      totalVol += parseFloat(cb.dataset.bulkVol)||0;
+      totalWt  += parseFloat(cb.dataset.bulkWt) ||0;
+      totalQty += parseInt(cb.dataset.bulkQty)  ||0;
+      if(!customer && cb.dataset.bulkCust) customer = cb.dataset.bulkCust;
+    });
+    // Fallback: kalau dataset kosong (mis. checkbox baru render belum punya attribute) — try source array
+    if(siblings.length === 0 || (totalVol === 0 && totalWt === 0)){
       let item = null;
-      if(section === 'carry_over')      item = (window.doCarryOverItems||[]).find(i => String(i.doc_no) === String(docNo));
-      else if(section === 'luar_kota')  item = (doLuarKota||[]).find(i => String(i.doc_no) === String(docNo));
+      if(section === 'carry_over')         item = (window.doCarryOverItems||[]).find(i => String(i.doc_no) === String(docNo));
+      else if(section === 'luar_kota')     item = (doLuarKota||[]).find(i => String(i.doc_no) === String(docNo));
       else if(section === 'jabo_overflow') item = (doVendor||[]).find(i => String(i.doc_no) === String(docNo) && !i.luar_kota && !i.vendor_fallback);
       else if(section === 'titipan_masuk') item = (window.doTitipanMasuk||[]).find(i => String(i.doc_no) === String(docNo));
-      else if(section === 'datado')     item = (window._dataDORows||[]).find(i => String(i.doc_no) === String(docNo));
+      else if(section === 'datado')        item = (window._dataDORows||[]).find(i => String(i.doc_no) === String(docNo));
       if(!item){
-        console.warn(`[v4.55.8] Item ${docNo} (${section}) tidak ditemukan di source array & dataset kosong — skip.`);
-        if(cb) cb.checked = false; // visual revert biar gak misleading
+        console.warn(`[v4.55.11] Item ${docNo} (${section}) tidak ditemukan — skip.`);
+        if(evt && evt.target) evt.target.checked = false;
         return;
       }
-      meta = {
-        section: section,
-        doc_no: String(docNo),
-        customer: String(item.customer||''),
-        total_vol: Number(item.total_vol)||0,
-        total_wt: Number(item.total_wt)||0,
-        qty: Number(item.qty)||0
-      };
+      totalVol = Number(item.total_vol)||0;
+      totalWt  = Number(item.total_wt) ||0;
+      totalQty = Number(item.qty)      ||0;
+      customer = String(item.customer||'');
     }
-    bulkSelection.set(String(docNo), meta);
+    bulkSelection.set(String(docNo), {
+      section: section,
+      doc_no: String(docNo),
+      customer: customer,
+      total_vol: totalVol,
+      total_wt:  totalWt,
+      qty:       totalQty,
+      line_items_count: siblings.length || 1
+    });
   } else {
     bulkSelection.delete(String(docNo));
   }
@@ -7098,6 +7116,87 @@ function bulkClearSelection(){
   _renderBulkBar();
 }
 
+// v4.55.11: Preview all selected DOs in modal (cross-section). Solve bug
+// "DO muncul di modal padahal bukan pilihan" — dispatcher gak sadar selection
+// persist across section scroll. Modal ini show breakdown per section + tombol uncheck per row.
+function bulkPreviewSelected(){
+  const sel = Array.from(bulkSelection.values());
+  if(sel.length === 0){ alert('Tidak ada DO yang di-select.'); return; }
+
+  // Group by section
+  const bySection = {};
+  sel.forEach(x => {
+    const sec = x.section || 'unknown';
+    if(!bySection[sec]) bySection[sec] = [];
+    bySection[sec].push(x);
+  });
+  const sectionLabel = {
+    carry_over: '🔄 Carry Over',
+    luar_kota:  '🌏 Luar Kota',
+    jabo_overflow: '📦 DO Overflow',
+    titipan_masuk: '↪ Titipan Masuk',
+    datado:        '📋 Data DO'
+  };
+
+  const totalVol = sel.reduce((a,x)=>a+(x.total_vol||0),0);
+  const totalWt  = sel.reduce((a,x)=>a+(x.total_wt||0), 0);
+  const totalLineItems = sel.reduce((a,x)=>a+(x.line_items_count||1), 0);
+
+  const modal = document.createElement('div');
+  modal.id = 'bulk-preview-modal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,sans-serif';
+
+  const sectionHtml = Object.entries(bySection).map(([sec, items]) => {
+    const label = sectionLabel[sec] || sec;
+    const rows = items.map(x =>
+      `<tr id="prev-row-${escapeHtml(x.doc_no)}">
+        <td style="padding:4px;font-family:var(--mono);font-size:10px">${escapeHtml(x.doc_no)}</td>
+        <td style="padding:4px;font-size:10px">${escapeHtml(String(x.customer||'').slice(0,30))}</td>
+        <td style="padding:4px;text-align:right;font-family:var(--mono);font-size:10px">${fmtVol(x.total_vol)}</td>
+        <td style="padding:4px;text-align:right;font-family:var(--mono);font-size:10px;font-weight:600">${fmtKg(x.total_wt)}</td>
+        <td style="padding:4px;text-align:center;font-size:9px;color:#64748b">${x.line_items_count||1}</td>
+        <td style="padding:4px;text-align:center"><button onclick="bulkSelection.delete('${escapeHtml(x.doc_no)}');document.querySelectorAll('[data-bulk-doc=\\'${escapeHtml(x.doc_no)}\\']').forEach(cb=>cb.checked=false);document.getElementById('prev-row-${escapeHtml(x.doc_no)}').remove();_renderBulkBar();" style="background:#fee2e2;color:#dc2626;border:0;border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer">✗</button></td>
+      </tr>`
+    ).join('');
+    return `
+      <div style="margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:4px">${label} — ${items.length} DO</div>
+        <table style="width:100%;border-collapse:collapse;font-size:10px;background:#fff;border:1px solid #e5e7eb;border-radius:4px">
+          <thead style="background:#f1f5f9"><tr>
+            <th style="padding:4px;text-align:left">DO No</th>
+            <th style="padding:4px;text-align:left">Customer</th>
+            <th style="padding:4px;text-align:right">Vol (m³)</th>
+            <th style="padding:4px;text-align:right">Berat (kg)</th>
+            <th style="padding:4px;text-align:center">Lines</th>
+            <th style="padding:4px;text-align:center">Hapus</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }).join('');
+
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:10px;padding:20px;max-width:760px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+      <div style="font-weight:700;color:#0f172a;font-size:16px;margin-bottom:6px">📋 Preview Selected — ${sel.length} DO${totalLineItems>sel.length?` (${totalLineItems} line items)`:''}</div>
+      <div style="background:#dbeafe;border-radius:5px;padding:6px 10px;margin-bottom:10px;font-size:10px;color:#1e40af;font-family:var(--mono)">
+        Total: ${fmtVol(totalVol)} m³ + ${fmtKg(totalWt)} kg
+      </div>
+      ${sectionHtml}
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+        <button id="prev-clear-all-btn" style="background:#fee2e2;color:#dc2626;padding:8px 14px;border:0;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">Clear Semua</button>
+        <button id="prev-close-btn" style="background:#22c55e;color:#fff;padding:8px 18px;border:0;border-radius:5px;font-weight:700;cursor:pointer;font-size:12px">Tutup</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+
+  document.getElementById('prev-close-btn').onclick = () => document.body.removeChild(modal);
+  document.getElementById('prev-clear-all-btn').onclick = () => {
+    bulkClearSelection();
+    document.body.removeChild(modal);
+  };
+}
+
 // Render sticky bulk bar (di top tab-luarkota content)
 // v4.55.5: render ke 2 container — bulk-action-bar (DO Gantung) + bulk-action-bar-datado (Data DO)
 // share state via bulkSelection Map. Section 'datado' hanya bisa di-bulk dengan section lain
@@ -7135,7 +7234,7 @@ function _renderBulkBar(){
   const vendorOpts = (typeof vendorList !== 'undefined' && Array.isArray(vendorList))
     ? vendorList.map(v => `<option value="VENDOR:${escapeHtml(v.kode)}">📦 ${escapeHtml(v.nama)} [${escapeHtml(v.tipe||'')}]</option>`).join('')
     : '';
-  const userGudang = String(window.SCAN_SAP_WH || window._userGudang || '').toUpperCase().replace(/^GUDANG\s*/i, '').trim();
+  const userGudang = String((typeof currentUser!=='undefined' && currentUser && currentUser.gudang) || window.SCAN_SAP_WH || window._userGudang || '').toUpperCase().replace(/^GUDANG\s*/i, '').replace(/_/g,' ').trim();
   const ALL_GUDANG = ['DOYONG', 'DAAN MOGOT', 'CIKUDA'];
   const titipanOpts = ALL_GUDANG.filter(g => g !== userGudang)
     .map(g => `<option value="TITIP:${escapeHtml(g)}">↪ Gudang ${escapeHtml(g)}</option>`).join('');
@@ -7157,6 +7256,7 @@ function _renderBulkBar(){
           <option value="CANCEL">✗ Cancel Semua</option>
         </select>
         <button onclick="bulkApply()" style="background:#22c55e;color:#fff;padding:5px 14px;border:0;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer">Apply</button>
+        <button onclick="bulkPreviewSelected()" style="background:rgba(255,255,255,.2);color:#fff;padding:5px 10px;border:1px solid #fff;border-radius:5px;font-size:11px;cursor:pointer" title="Lihat semua DO yang sudah selected (cross-section)">📋 Preview ${sel.length}</button>
         <button onclick="bulkClearSelection()" style="background:transparent;color:#fff;padding:5px 10px;border:1px solid #fff;border-radius:5px;font-size:11px;cursor:pointer">Clear Selection</button>
         <div style="margin-left:auto;background:rgba(255,255,255,.15);padding:5px 10px;border-radius:5px;font-size:10px;font-family:var(--mono)">
           Total: <b>${fmtVol(totalVol)} m³</b> + <b>${fmtKg(totalWt)} kg</b>
@@ -7240,7 +7340,7 @@ async function bulkApply(){
   modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,sans-serif';
   modal.innerHTML = `
     <div style="background:#fff;border-radius:10px;padding:20px;max-width:680px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">
-      <div style="font-weight:700;color:#0f172a;font-size:16px;margin-bottom:6px">⚠ Konfirmasi Bulk Assign — ${sel.length} DO</div>
+      <div style="font-weight:700;color:#0f172a;font-size:16px;margin-bottom:6px">⚠ Konfirmasi Bulk Assign — ${sel.length} DO${sel.reduce((a,x)=>a+(x.line_items_count||1),0)>sel.length ? ` (${sel.reduce((a,x)=>a+(x.line_items_count||1),0)} line items)` : ''}</div>
       <div style="font-size:12px;color:#475569;margin-bottom:10px">${actionDesc.replace(/\n/g,'<br>')}</div>
       <div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px;margin-bottom:10px;max-height:240px;overflow-y:auto">
         <table style="width:100%;border-collapse:collapse;font-size:10px">
@@ -7333,7 +7433,7 @@ async function _bulkApplySingle(docNo, section, value, actionType, actionTarget)
       _syncDoVendorAfterAssign(docNo, vendorKode);
     } catch(err) { _rollback(); throw err; }
   } else if(actionType === 'TITIP'){
-    const fromGudang = String(window.SCAN_SAP_WH || window._userGudang || '').toUpperCase().replace(/^GUDANG\s*/i, '').trim();
+    const fromGudang = String((typeof currentUser!=='undefined' && currentUser && currentUser.gudang) || window.SCAN_SAP_WH || window._userGudang || '').toUpperCase().replace(/^GUDANG\s*/i, '').replace(/_/g,' ').trim();
     if(!fromGudang) throw new Error('Gudang asal user tidak terdeteksi');
     if(fromGudang === actionTarget) throw new Error('Gudang asal dan target sama');
     // v4.55.6: optimistic SET local state, rollback kalau gagal
@@ -7377,7 +7477,7 @@ function _buildGantungActionDropdown(docNo, source){
 
   // v4.55.5: Build titipan options — 3 gudang (Doyong, Daan Mogot, Cikuda).
   // Exclude gudang asal user supaya tidak bisa "titip ke diri sendiri".
-  const userGudang = String(window.SCAN_SAP_WH || window._userGudang || '').toUpperCase().replace(/^GUDANG\s*/i, '').trim();
+  const userGudang = String((typeof currentUser!=='undefined' && currentUser && currentUser.gudang) || window.SCAN_SAP_WH || window._userGudang || '').toUpperCase().replace(/^GUDANG\s*/i, '').replace(/_/g,' ').trim();
   const ALL_GUDANG = ['DOYONG', 'DAAN MOGOT', 'CIKUDA'];
   const titipanOpts = ALL_GUDANG
     .filter(g => g !== userGudang)
@@ -7741,7 +7841,7 @@ function _syncDoVendorAfterAssign(docNo, vendorKode){
   try{ if(typeof buildVendorAssignmentMap === 'function') buildVendorAssignmentMap(); }
   catch(e){ console.warn('[v4.55.8] buildVendorAssignmentMap failed:', e); }
   // Update KPI counter Vendor tab (kalau ada)
-  try{ const cnt = document.getElementById('cnt-vendor'); if(cnt) cnt.textContent = new Set((doVendor||[]).map(r=>r.doc_no)).size; }catch(e){}
+  try{ const cnt = document.getElementById('cnt-vendor'); if(cnt) cnt.textContent = new Set((doVendor||[]).filter(r=>r.manual_vendor_kode).map(r=>r.doc_no)).size; }catch(e){}
   return item;
 }
 
@@ -7900,7 +8000,7 @@ async function gantungAction(docNo, source, value, selectEl){
       alert('Gudang target kosong, refresh dan coba lagi.');
       selectEl.value=''; return;
     }
-    const fromGudang = String(window.SCAN_SAP_WH || window._userGudang || '').toUpperCase().replace(/^GUDANG\s*/i, '').trim();
+    const fromGudang = String((typeof currentUser!=='undefined' && currentUser && currentUser.gudang) || window.SCAN_SAP_WH || window._userGudang || '').toUpperCase().replace(/^GUDANG\s*/i, '').replace(/_/g,' ').trim();
     if(!fromGudang){
       alert('Gudang asal user tidak terdeteksi. Pastikan filter gudang di-set.');
       selectEl.value=''; return;
@@ -8126,7 +8226,7 @@ function renderVendor(){
   if(!vendorState.length) initVendorState();
 
   // v4.50.4: tab counter pakai unique DO (consistent dengan label "DO" di KPI JABO OVERFLOW + LUAR KOTA)
-  document.getElementById('cnt-vendor').textContent = new Set(doVendor.map(r=>r.doc_no)).size;
+  document.getElementById('cnt-vendor').textContent = new Set(doVendor.filter(r=>r.manual_vendor_kode).map(r=>r.doc_no)).size;
 
   // Build assignment map (single source of truth untuk renderVendor + sendVendorOrder)
   const { assignMap } = buildVendorAssignmentMap();
@@ -8466,7 +8566,7 @@ async function vendorRowAction(docNo, currentVendorKode, value, selectEl){
       try{ buildVendorAssignmentMap(); }catch(e){}
       renderVendor();
       // Update tab counter Vendor
-      try{ document.getElementById('cnt-vendor').textContent = new Set((doVendor||[]).map(r=>r.doc_no)).size; }catch(e){}
+      try{ document.getElementById('cnt-vendor').textContent = new Set((doVendor||[]).filter(r=>r.manual_vendor_kode).map(r=>r.doc_no)).size; }catch(e){}
       alert(`✅ DO ${docNo} dipindah ke internal.\n\n⚠ Reminder: Tambah DO ke loading list kendaraan secara manual.`);
     } catch(err){
       alert('Gagal pindah ke internal: '+err.message);
@@ -8508,7 +8608,7 @@ async function vendorRowAction(docNo, currentVendorKode, value, selectEl){
       await _markDoGantungReleased(docNo, 'PENDING', '');
       try{ buildVendorAssignmentMap(); }catch(e){}
       renderVendor();
-      try{ document.getElementById('cnt-vendor').textContent = new Set((doVendor||[]).map(r=>r.doc_no)).size; }catch(e){}
+      try{ document.getElementById('cnt-vendor').textContent = new Set((doVendor||[]).filter(r=>r.manual_vendor_kode).map(r=>r.doc_no)).size; }catch(e){}
       // Re-render DO Gantung biar DO muncul kembali
       try{ if(typeof renderLuarKotaPending === 'function') renderLuarKotaPending(); }catch(e){}
       alert(`✅ Assignment DO ${docNo} dibatalkan.\n\nDO sekarang kembali ke tab DO Gantung — bisa di-action ulang.`);
@@ -11464,7 +11564,7 @@ function changeUnits(vi,delta){
 
 function renderVendorDOList(){
   // v4.50.4: count unique DO consistent dengan KPI label
-  document.getElementById('cnt-vendor').textContent=new Set(doVendor.map(r=>r.doc_no)).size;
+  document.getElementById('cnt-vendor').textContent=new Set(doVendor.filter(r=>r.manual_vendor_kode).map(r=>r.doc_no)).size;
   // v4.43: Delegate ke renderVendor() yang sudah handle grouping per Gudang × Vendor
   renderVendor();
 }
