@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.55.5</title>
+<title>Routing Optimizer v4.55.6</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.5</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.6</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -532,7 +532,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.5</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.6</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -801,7 +801,7 @@ body.dispatch-active .dispatch-bar{display:flex}
             <thead><tr>
               <th style="width:30px;text-align:center"><input type="checkbox" data-bulk-select-all="carry_over" onchange="bulkSelectAllSection('carry_over',this.checked)" title="Select all in this section"></th>
               <th>DO No</th><th>Tgl Asal</th><th>Hari Pending</th><th>Customer</th>
-              <th>Tujuan</th><th>Size</th><th>QTY</th><th>Vol (m³)</th><th>Berat (kg)</th><th>Sumber</th>
+              <th>Tujuan</th><th>Size</th><th>QTY</th><th style="font-weight:700;color:var(--text)">Berat (kg)</th><th style="color:var(--muted);font-weight:400">Vol (m³)</th><th>Sumber</th>
               <th>Aksi</th>
             </tr></thead>
             <tbody id="tbody-carryover"></tbody>
@@ -837,7 +837,7 @@ body.dispatch-active .dispatch-bar{display:flex}
             <thead><tr>
               <th style="width:30px;text-align:center"><input type="checkbox" data-bulk-select-all="luar_kota" onchange="bulkSelectAllSection('luar_kota',this.checked)" title="Select all in this section"></th>
               <th>DO No</th><th>Gudang</th><th>Customer</th><th>Kota / Area</th>
-              <th>Tujuan</th><th>QTY</th><th>Vol (m³)</th><th>Berat (kg)</th>
+              <th>Tujuan</th><th>QTY</th><th style="font-weight:700;color:var(--text)">Berat (kg)</th><th style="color:var(--muted);font-weight:400">Vol (m³)</th>
               <th>Status Volume</th><th>Jenis</th><th>Hari</th><th>Keterangan</th><th>Aksi</th>
             </tr></thead>
             <tbody id="tbody-luarkota"></tbody>
@@ -857,7 +857,7 @@ body.dispatch-active .dispatch-bar{display:flex}
             <thead><tr>
               <th style="width:30px;text-align:center"><input type="checkbox" data-bulk-select-all="jabo_overflow" onchange="bulkSelectAllSection('jabo_overflow',this.checked)" title="Select all in this section"></th>
               <th>DO No</th><th>Tgl DO</th><th>Customer</th><th>Tujuan</th>
-              <th>Size</th><th>QTY</th><th>Vol (m³)</th><th>Berat (kg)</th><th>Aksi</th>
+              <th>Size</th><th>QTY</th><th style="font-weight:700;color:var(--text)">Berat (kg)</th><th style="color:var(--muted);font-weight:400">Vol (m³)</th><th>Aksi</th>
             </tr></thead>
             <tbody id="tbody-jabo-overflow"></tbody>
           </table>
@@ -1105,6 +1105,27 @@ function fmtKg(w){
 }
 function fmtVolKg(v, w){
   return `${fmtVol(v)} m³ / ${fmtKg(w)} kg`;
+}
+
+// v4.55.6: Helper untuk filter DO yang sudah ber-action (dropdown 5-aksi atau bulk).
+// TUNDA pengecualian — DO tetap visible biar bisa di-undo via dropdown lagi.
+// Source: window._gantungState[docNo] (set di gantungAction & _bulkApplySingle).
+function _isActioned(docNo){
+  const s = (window._gantungState||{})[String(docNo)];
+  if(!s || !s.action) return false;
+  if(s.action === 'TUNDA') return false;  // EC1: TUNDA tetap visible
+  return true;
+}
+
+// v4.55.6: Helper untuk hitung total DO actioned di sesi ini.
+// Buat counter "X / Y" di tab DO Gantung.
+function _countActioned(){
+  const s = window._gantungState || {};
+  let n = 0;
+  for(const k in s){
+    if(s[k] && s[k].action && s[k].action !== 'TUNDA') n++;
+  }
+  return n;
 }
 let filterWH='all',fR1=true,fR2=true,fKnek=false,fPrio=false,fWarn=false;
 let editRouteId=null, doDate='', skipGeoFlag=false;
@@ -6504,8 +6525,11 @@ function _updatePendingTabCount() {
   const cntTitipanMasuk = (window.doTitipanMasuk||[]).length;
   const cntTitipanBelumKonfirm = (window.doTitipanBelumKonfirmasi||[]).length;
   const total = cntDef + cntLuar + cntLowUtil + cntCarry + cntJaboOverflow + cntVendorBelumKonfirm + cntTitipanMasuk + cntTitipanBelumKonfirm;
+  // v4.55.6 EC5: format "X / Y" — pending (belum action) / total. Kalau 0 actioned, tampil cuma total.
+  const actioned = _countActioned();
+  const pending = Math.max(0, total - actioned);
   const el = document.getElementById('cnt-pending-tab');
-  if (el) el.textContent = total;
+  if (el) el.textContent = actioned > 0 ? `${pending}/${total}` : `${total}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -6845,7 +6869,9 @@ function _renderCarryOverSection(){
   const cntEl = document.getElementById('cnt-carryover');
   if(!sect || !tbody) return;
 
-  const items = (window.doCarryOverItems||[]).slice();
+  // v4.55.6: filter DO yang sudah ber-action (kecuali TUNDA — tetap visible untuk undo).
+  const allItems = (window.doCarryOverItems||[]).slice();
+  const items = allItems.filter(r => !_isActioned(r.doc_no));
   if(cntEl) cntEl.textContent = items.length;
   if(items.length === 0){
     sect.style.display = 'none';
@@ -6897,17 +6923,24 @@ function _renderCarryOverSection(){
       : '';
     const isSel = bulkSelection.has(String(docNo));
     const escDoc = escapeHtml(String(docNo));
-    return `<tr style="background:${isSel?'#bfdbfe':'#fff7ed'}">
+    // v4.55.6 EC1: TUNDA badge — DO tetap visible biar bisa undo
+    const tundaState = (window._gantungState||{})[String(docNo)];
+    const isTunda = tundaState && tundaState.action === 'TUNDA';
+    const rowBg = isSel ? '#bfdbfe' : (isTunda ? '#fef9c3' : '#fff7ed');
+    const tundaBadge = isTunda
+      ? `<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:#fde047;color:#78350f;margin-right:3px" title="DO ditunda. Klik dropdown untuk undo.">📅 TUNDA</span>`
+      : '';
+    return `<tr style="background:${rowBg}">
       <td style="text-align:center"><input type="checkbox" data-bulk-section="carry_over" data-bulk-doc="${escDoc}" ${isSel?'checked':''} onchange="bulkToggleSelect('${escDoc}','carry_over',this.checked,event)"></td>
-      <td style="font-family:var(--mono);font-size:10px;font-weight:700">${slaBadge}${docNo}</td>
+      <td style="font-family:var(--mono);font-size:10px;font-weight:700">${tundaBadge}${slaBadge}${docNo}</td>
       <td style="font-family:var(--mono);font-size:10px">${tglDisplay}</td>
       <td style="font-family:var(--mono);font-size:10px;text-align:center;color:${slaDays>=2?'#dc2626':'#475569'};font-weight:700">${hariPending}</td>
       <td style="font-size:10px;font-weight:600">${escapeHtml(customer)}</td>
       <td style="color:var(--muted);max-width:200px;font-size:10px">${escapeHtml(tujuan)}</td>
       <td style="font-family:var(--mono);font-size:10px">${escapeHtml(size)}</td>
       <td style="font-family:var(--mono);font-weight:600">${qty}</td>
-      <td style="font-family:var(--mono);font-size:10px;text-align:right">${fmtVol(vol)}</td>
-      <td style="font-family:var(--mono);font-size:10px;text-align:right">${fmtKg(wt)}</td>
+      <td style="font-family:var(--mono);font-size:10px;font-weight:700;text-align:right">${fmtKg(wt)}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--muted);text-align:right">${fmtVol(vol)}</td>
       <td style="font-size:10px">${sumber}</td>
       <td>${_buildGantungActionDropdown(docNo, 'carry_over')}</td>
     </tr>`;
@@ -6921,7 +6954,11 @@ function _renderJaboOverflowSection(){
   if(!sect || !tbody) return;
 
   // Filter: DO Overflow = doVendor yang bukan luar kota & bukan vendor_fallback
-  const items = (doVendor||[]).filter(r => !r.luar_kota && !r.vendor_fallback).slice();
+  // v4.55.6: + filter DO yang sudah ber-action (kecuali TUNDA).
+  const items = (doVendor||[])
+    .filter(r => !r.luar_kota && !r.vendor_fallback)
+    .filter(r => !_isActioned(r.doc_no))
+    .slice();
   if(cntEl) cntEl.textContent = items.length;
   if(items.length === 0){
     sect.style.display = 'none';
@@ -6950,16 +6987,23 @@ function _renderJaboOverflowSection(){
     const wt = parseFloat(r.total_wt)||0;
     const isSel = bulkSelection.has(docNo);
     const escDoc = escapeHtml(docNo);
-    return `<tr style="background:${isSel?'#bfdbfe':'#faf5ff'}">
+    // v4.55.6 EC1: TUNDA badge
+    const tundaState = (window._gantungState||{})[String(docNo)];
+    const isTunda = tundaState && tundaState.action === 'TUNDA';
+    const rowBg = isSel ? '#bfdbfe' : (isTunda ? '#fef9c3' : '#faf5ff');
+    const tundaBadge = isTunda
+      ? `<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:#fde047;color:#78350f;margin-right:3px" title="DO ditunda. Klik dropdown untuk undo.">📅 TUNDA</span>`
+      : '';
+    return `<tr style="background:${rowBg}">
       <td style="text-align:center"><input type="checkbox" data-bulk-section="jabo_overflow" data-bulk-doc="${escDoc}" ${isSel?'checked':''} onchange="bulkToggleSelect('${escDoc}','jabo_overflow',this.checked,event)"></td>
-      <td style="font-family:var(--mono);font-size:10px;font-weight:700">${docNo}</td>
+      <td style="font-family:var(--mono);font-size:10px;font-weight:700">${tundaBadge}${docNo}</td>
       <td style="font-family:var(--mono);font-size:10px">${tglDO}</td>
       <td style="font-size:10px;font-weight:600">${escapeHtml(customer)}</td>
       <td style="color:var(--muted);max-width:200px;font-size:10px">${escapeHtml(tujuan)}</td>
       <td style="font-family:var(--mono);font-size:10px">${escapeHtml(size)}</td>
       <td style="font-family:var(--mono);font-weight:600">${qty}</td>
-      <td style="font-family:var(--mono);font-size:10px;text-align:right">${fmtVol(vol)}</td>
-      <td style="font-family:var(--mono);font-size:10px;text-align:right">${fmtKg(wt)}</td>
+      <td style="font-family:var(--mono);font-size:10px;font-weight:700;text-align:right">${fmtKg(wt)}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--muted);text-align:right">${fmtVol(vol)}</td>
       <td>${_buildGantungActionDropdown(docNo, 'jabo_overflow')}</td>
     </tr>`;
   }).join('');
@@ -7073,7 +7117,7 @@ function _renderBulkBar(){
     ? routes.filter(r => r.vehicle && !r.is_large_do).map(r => {
         const sisaVol = (r.vehicle.vol_m3 * (CFG.safety_vol||0.85) - r.total_vol).toFixed(3);
         const sisaKg = Math.max(0, r.vehicle.max_kg * (CFG.safety_wt||0.90) - r.total_wt).toFixed(0);
-        return `<option value="INTERNAL:${escapeHtml(r.id)}">🚛 ${escapeHtml(r.vehicle.plat)} / ${escapeHtml(r.vehicle.driver||'')} (sisa ${sisaVol}m³ / ${Number(sisaKg).toLocaleString('id-ID')}kg)</option>`;
+        return `<option value="INTERNAL:${escapeHtml(r.id)}">🚛 ${escapeHtml(r.vehicle.plat)} / ${escapeHtml(r.vehicle.driver||'')} (sisa ${Number(sisaKg).toLocaleString("id-ID")}kg / ${sisaVol}m³)</option>`;
       }).join('')
     : '';
   const vendorOpts = (typeof vendorList !== 'undefined' && Array.isArray(vendorList))
@@ -7254,34 +7298,46 @@ async function _bulkApplySingle(docNo, section, value, actionType, actionTarget)
     throw new Error('GAS belum terhubung');
   }
 
+  // v4.55.6 EC3: helper rollback state per-DO kalau gagal sync
+  window._gantungState = window._gantungState || {};
+  const _rollback = () => {
+    if(window._gantungState[docNo]) delete window._gantungState[docNo];
+  };
+
   if(actionType === 'INTERNAL'){
     const routeId = value.replace('INTERNAL:','');
-    window._gantungState = window._gantungState || {};
     window._gantungState[docNo] = { action: 'INTERNAL', target: routeId, timestamp: Date.now() };
-    await _markDoGantungReleased(docNo, 'RELEASED', 'internal');
+    try {
+      await _markDoGantungReleased(docNo, 'RELEASED', 'internal');
+    } catch(err) { _rollback(); throw err; }
   } else if(actionType === 'VENDOR'){
     const vendorKode = value.replace('VENDOR:','');
-    window._gantungState = window._gantungState || {};
     window._gantungState[docNo] = { action: 'VENDOR', target: vendorKode, timestamp: Date.now() };
-    await _markDoGantungReleased(docNo, 'RELEASED', 'vendor');
+    try {
+      await _markDoGantungReleased(docNo, 'RELEASED', 'vendor');
+    } catch(err) { _rollback(); throw err; }
   } else if(actionType === 'TITIP'){
     const fromGudang = String(window.SCAN_SAP_WH || window._userGudang || '').toUpperCase().replace(/^GUDANG\s*/i, '').trim();
     if(!fromGudang) throw new Error('Gudang asal user tidak terdeteksi');
     if(fromGudang === actionTarget) throw new Error('Gudang asal dan target sama');
-    const resp = await fetch(gsUrl, {
-      method: 'POST', headers:{'Content-Type':'text/plain'}, redirect:'follow',
-      body: JSON.stringify({ action:'createTitipan', doc_no:docNo, from_gudang:fromGudang, to_gudang:actionTarget })
-    });
-    const data = await resp.json();
-    if(data.error) throw new Error(data.error);
+    // v4.55.6: optimistic SET local state, rollback kalau gagal
+    window._gantungState[docNo] = { action: 'TITIP', target: actionTarget, from_gudang: fromGudang, timestamp: Date.now() };
+    try {
+      const resp = await fetch(gsUrl, {
+        method: 'POST', headers:{'Content-Type':'text/plain'}, redirect:'follow',
+        body: JSON.stringify({ action:'createTitipan', doc_no:docNo, from_gudang:fromGudang, to_gudang:actionTarget })
+      });
+      const data = await resp.json();
+      if(data.error) throw new Error(data.error);
+    } catch(err) { _rollback(); throw err; }
   } else if(actionType === 'TUNDA'){
-    window._gantungState = window._gantungState || {};
     window._gantungState[docNo] = { action: 'TUNDA', timestamp: Date.now() };
     // No GAS call — TUNDA artinya tetap PENDING di sheet
   } else if(actionType === 'CANCEL'){
-    window._gantungState = window._gantungState || {};
     window._gantungState[docNo] = { action: 'CANCEL', timestamp: Date.now() };
-    await _markDoGantungReleased(docNo, 'CANCELED', '');
+    try {
+      await _markDoGantungReleased(docNo, 'CANCELED', '');
+    } catch(err) { _rollback(); throw err; }
   }
 }
 
@@ -7294,7 +7350,7 @@ function _buildGantungActionDropdown(docNo, source){
     ? routes.filter(r => r.vehicle && !r.is_large_do).map(r => {
         const sisaVol = (r.vehicle.vol_m3 * (CFG.safety_vol||0.85) - r.total_vol).toFixed(3);
         const sisaKg = Math.max(0, r.vehicle.max_kg * (CFG.safety_wt||0.90) - r.total_wt).toFixed(0);
-        return `<option value="INTERNAL:${escapeHtml(r.id)}">🚛 ${escapeHtml(r.vehicle.plat)} / ${escapeHtml(r.vehicle.driver||'')} (sisa ${sisaVol}m³ / ${Number(sisaKg).toLocaleString('id-ID')}kg)</option>`;
+        return `<option value="INTERNAL:${escapeHtml(r.id)}">🚛 ${escapeHtml(r.vehicle.plat)} / ${escapeHtml(r.vehicle.driver||'')} (sisa ${Number(sisaKg).toLocaleString("id-ID")}kg / ${sisaVol}m³)</option>`;
       }).join('')
     : '';
 
@@ -7608,6 +7664,7 @@ async function _markDoGantungReleased(docNo, status, releasedVia){
     console.log(`%c[v4.55.5] Marked DO ${docNo} as ${status}${viaSuffix} (updated=${data.updated||0})`, 'color:#7c3aed');
   } catch(err) {
     console.error(`[v4.55.5] Gagal mark DO ${docNo} as ${status}:`, err.message);
+    throw err; // v4.55.6: re-throw supaya caller (gantungAction/_bulkApplySingle) bisa rollback state
   }
 }
 
@@ -7621,9 +7678,9 @@ window.addEventListener('beforeunload', function(e){
   }
 });
 
-function gantungAction(docNo, source, value, selectEl){
+async function gantungAction(docNo, source, value, selectEl){
   if(!value){ return; }
-  console.log(`%c[v4.55.5] gantungAction: doc=${docNo}, source=${source}, action=${value}`, 'color:#0891b2');
+  console.log(`%c[v4.55.6] gantungAction: doc=${docNo}, source=${source}, action=${value}`, 'color:#0891b2');
 
   // EC4: Detect TUNDA double-click — kalau DO ini sudah ditunda sebelumnya
   const prevAction = (window._gantungState||{})[docNo];
@@ -7635,12 +7692,21 @@ function gantungAction(docNo, source, value, selectEl){
       alert(`✓ Tunda DO ${docNo} dibatalkan. DO kembali ke Gantung untuk review ulang.`);
       selectEl.value = '';
       syncDoGantungToSheet(false);
+      if(typeof renderLuarKotaPending === 'function') renderLuarKotaPending(); // v4.55.6
       return;
     } else {
       selectEl.value = '';
       return;
     }
   }
+
+  // v4.55.6: Helper untuk rollback state on failure (EC2)
+  const _rollback = () => {
+    if(window._gantungState && window._gantungState[docNo]){
+      delete window._gantungState[docNo];
+    }
+    if(selectEl){ selectEl.disabled = false; selectEl.value = ''; }
+  };
 
   if(value.startsWith('INTERNAL:')){
     const routeId = value.replace('INTERNAL:','');
@@ -7652,15 +7718,21 @@ function gantungAction(docNo, source, value, selectEl){
     if(!confirm(`Pindah DO ${docNo} ke kendaraan ${route.vehicle.plat} / ${route.vehicle.driver}?\n\nDO akan ditandai RELEASED di spreadsheet.`)){
       selectEl.value=''; return;
     }
-    // Track local state
+    // Track local state (optimistic — rollback kalau gagal)
     window._gantungState[docNo] = {
       action: 'INTERNAL', target: routeId, timestamp: Date.now(),
       plat: route.vehicle.plat, driver: route.vehicle.driver
     };
-    // Mark as RELEASED di sheet (soft delete)
-    _markDoGantungReleased(docNo, 'RELEASED', 'internal');
-    alert(`✅ DO ${docNo} → ${route.vehicle.plat} (${route.vehicle.driver})\n\nDispatcher harus tambah DO ke loading list secara manual.`);
-    syncDoGantungToSheet(false); // refresh sync state
+    try {
+      await _markDoGantungReleased(docNo, 'RELEASED', 'internal');
+      alert(`✅ DO ${docNo} → ${route.vehicle.plat} (${route.vehicle.driver})\n\nDispatcher harus tambah DO ke loading list secara manual.`);
+      syncDoGantungToSheet(false);
+      if(typeof renderLuarKotaPending === 'function') renderLuarKotaPending(); // v4.55.6: hilangkan dari list
+    } catch(err) {
+      _rollback(); // v4.55.6 EC2
+      alert(`⚠ Gagal pindah DO ${docNo} ke ${route.vehicle.plat}.\n\n${err.message}\n\nDO kembali ke list. Coba lagi atau cek koneksi GAS.`);
+      if(typeof renderLuarKotaPending === 'function') renderLuarKotaPending();
+    }
   } else if(value.startsWith('VENDOR:')){
     const vendorKode = value.replace('VENDOR:','');
     const vendor = (vendorList||[]).find(v => v.kode === vendorKode);
@@ -7675,11 +7747,18 @@ function gantungAction(docNo, source, value, selectEl){
       action: 'VENDOR', target: vendorKode, vendor_nama: vendor.nama,
       timestamp: Date.now()
     };
-    // v4.55.5: Mark RELEASED dengan released_via='vendor' supaya muncul
-    // di section "Vendor Belum Konfirmasi" besok kalau belum delivered.
-    _markDoGantungReleased(docNo, 'RELEASED', 'vendor');
-    alert(`✅ DO ${docNo} → vendor ${vendor.nama}\n\nDispatcher kontak ${vendor.pic||'PIC'} untuk delivery confirmation.\n\nDO ditandai RELEASED. Jika besok belum delivered, akan muncul di section "Vendor Belum Konfirmasi" untuk re-pending.`);
-    syncDoGantungToSheet(false);
+    try {
+      // v4.55.5: Mark RELEASED dengan released_via='vendor' supaya muncul
+      // di section "Vendor Belum Konfirmasi" besok kalau belum delivered.
+      await _markDoGantungReleased(docNo, 'RELEASED', 'vendor');
+      alert(`✅ DO ${docNo} → vendor ${vendor.nama}\n\nDispatcher kontak ${vendor.pic||'PIC'} untuk delivery confirmation.\n\nDO ditandai RELEASED. Jika besok belum delivered, akan muncul di section "Vendor Belum Konfirmasi" untuk re-pending.`);
+      syncDoGantungToSheet(false);
+      if(typeof renderLuarKotaPending === 'function') renderLuarKotaPending(); // v4.55.6
+    } catch(err) {
+      _rollback(); // v4.55.6 EC2
+      alert(`⚠ Gagal assign DO ${docNo} ke ${vendor.nama}.\n\n${err.message}\n\nDO kembali ke list.`);
+      if(typeof renderLuarKotaPending === 'function') renderLuarKotaPending();
+    }
   } else if(value.startsWith('TITIP:')){
     // v4.55.5: Titipan antar gudang.
     // Original RELEASED via=titip + clone PENDING di gudang target.
@@ -7701,7 +7780,7 @@ function gantungAction(docNo, source, value, selectEl){
       selectEl.value=''; return;
     }
 
-    // Track local state
+    // Track local state (optimistic — rollback kalau gagal)
     window._gantungState[docNo] = {
       action: 'TITIP', target: toGudang, from_gudang: fromGudang,
       timestamp: Date.now()
@@ -7710,50 +7789,58 @@ function gantungAction(docNo, source, value, selectEl){
     // Call createTitipan endpoint (atomic 2-row update di GAS)
     const gsUrl = document.getElementById('gs-id')?.value?.trim() || '';
     if(!gsUrl || !gsUrl.startsWith('https://script.google.com/') || !gsConnected){
+      _rollback(); // v4.55.6 EC2
       alert('GAS belum terhubung. Tidak bisa titip antar gudang.');
-      selectEl.value=''; return;
+      return;
     }
     selectEl.disabled = true;
-    fetch(gsUrl, {
-      method: 'POST',
-      headers: {'Content-Type': 'text/plain'},
-      redirect: 'follow',
-      body: JSON.stringify({
-        action: 'createTitipan',
-        doc_no: docNo,
-        from_gudang: fromGudang,
-        to_gudang: toGudang
-      })
-    })
-    .then(r => r.json())
-    .then(data => {
+    try {
+      const resp = await fetch(gsUrl, {
+        method: 'POST',
+        headers: {'Content-Type': 'text/plain'},
+        redirect: 'follow',
+        body: JSON.stringify({
+          action: 'createTitipan',
+          doc_no: docNo,
+          from_gudang: fromGudang,
+          to_gudang: toGudang
+        })
+      });
+      const data = await resp.json();
       if(data.error) throw new Error(data.error);
-      console.log(`%c[v4.55.5] Titipan DO ${docNo} ${fromGudang}→${toGudang}: ${data.lines_processed||0} line(s) processed`, 'color:#d97706;font-weight:bold');
+      console.log(`%c[v4.55.6] Titipan DO ${docNo} ${fromGudang}→${toGudang}: ${data.lines_processed||0} line(s) processed`, 'color:#d97706;font-weight:bold');
       alert(`↪ DO ${docNo} berhasil dititip ke Gudang ${toGudang}.\n\nDispatcher ${toGudang} akan lihat DO ini di section "DO Titipan Masuk" besok pagi.`);
-      // Optional: refresh local state
       syncDoGantungToSheet(false);
-    })
-    .catch(err => {
-      console.error(`[v4.55.5] Gagal titip DO ${docNo}:`, err.message);
-      alert(`Gagal titip DO ${docNo}:\n${err.message}\n\nCoba lagi atau cek koneksi GAS.`);
-      selectEl.disabled = false;
-      selectEl.value = '';
-    });
+      if(typeof renderLuarKotaPending === 'function') renderLuarKotaPending(); // v4.55.6
+    } catch(err) {
+      console.error(`[v4.55.6] Gagal titip DO ${docNo}:`, err.message);
+      _rollback(); // v4.55.6 EC2
+      alert(`⚠ Gagal titip DO ${docNo} ke Gudang ${toGudang}.\n\n${err.message}\n\nDO kembali ke list. Coba lagi atau cek koneksi GAS.`);
+      if(typeof renderLuarKotaPending === 'function') renderLuarKotaPending();
+    }
   } else if(value === 'TUNDA'){
     if(!confirm(`Tunda DO ${docNo} ke besok?\n\nDO akan tetap PENDING di spreadsheet untuk besok.`)){
       selectEl.value=''; return;
     }
     window._gantungState[docNo] = { action: 'TUNDA', timestamp: Date.now() };
-    alert(`📅 DO ${docNo} ditunda ke besok\n\nAkan muncul lagi di tab DO Gantung sesi besok.`);
+    alert(`📅 DO ${docNo} ditunda ke besok\n\nDO tetap visible di list dengan badge \"📅 Tunda\". Klik dropdown lagi untuk batalkan tunda.`);
     syncDoGantungToSheet(false);
+    if(typeof renderLuarKotaPending === 'function') renderLuarKotaPending(); // v4.55.6: refresh badge
   } else if(value === 'CANCEL'){
     if(!confirm(`Cancel DO ${docNo}?\n\nDO akan ditandai CANCELED di spreadsheet (tidak akan muncul lagi).\n\nAksi ini permanent.`)){
       selectEl.value=''; return;
     }
     window._gantungState[docNo] = { action: 'CANCEL', timestamp: Date.now() };
-    _markDoGantungReleased(docNo, 'CANCELED', '');
-    alert(`✗ DO ${docNo} dibatalkan\n\nDO ditandai CANCELED di spreadsheet.`);
-    syncDoGantungToSheet(false);
+    try {
+      await _markDoGantungReleased(docNo, 'CANCELED', '');
+      alert(`✗ DO ${docNo} dibatalkan\n\nDO ditandai CANCELED di spreadsheet.`);
+      syncDoGantungToSheet(false);
+      if(typeof renderLuarKotaPending === 'function') renderLuarKotaPending(); // v4.55.6
+    } catch(err) {
+      _rollback(); // v4.55.6 EC2
+      alert(`⚠ Gagal cancel DO ${docNo}.\n\n${err.message}\n\nDO kembali ke list.`);
+      if(typeof renderLuarKotaPending === 'function') renderLuarKotaPending();
+    }
   }
   // Reset dropdown
   selectEl.value = '';
@@ -10847,10 +10934,10 @@ function renderLuarKotaPending(){
   // Source: doVendor filter (!luar_kota && !vendor_fallback).
   _renderJaboOverflowSection();
 
-  const pendingAuto   = doLuarKota.filter(r => r.defer_type === 'auto');
-  const pendingManual = doLuarKota.filter(r => r.defer_type !== 'auto');
-  const cnt = doLuarKota.length;
-  const cntLowUtil = (doLowUtil||[]).length;
+  const pendingAuto   = doLuarKota.filter(r => r.defer_type === 'auto' && !_isActioned(r.doc_no));
+  const pendingManual = doLuarKota.filter(r => r.defer_type !== 'auto' && !_isActioned(r.doc_no));
+  const cnt = doLuarKota.filter(r => !_isActioned(r.doc_no)).length;
+  const cntLowUtil = (doLowUtil||[]).filter(r => !_isActioned(r.doc_no)).length;
   document.getElementById('cnt-luarkota').textContent=cnt;
   const cntLU = document.getElementById('cnt-lowutil');
   if(cntLU) cntLU.textContent = cntLowUtil;
@@ -10859,22 +10946,33 @@ function renderLuarKotaPending(){
   _updatePendingTabCount();
 
   // ── SECTION 1: Summary cards auto-defer per area (progress bar)
+  // v4.55.6: berat (kg) sebagai primary display — pakai max(vol%, wt%) untuk progress.
   const byArea={};
   pendingAuto.forEach(r=>{
     const key=r.wh_cons+'|'+(r.luar_kota_area||r.kota_tujuan||'');
-    if(!byArea[key]) byArea[key]={area:r.luar_kota_area||r.kota_tujuan,wh:r.wh_cons,items:[],vol:0,threshold:r.pending_threshold_m3||8};
+    if(!byArea[key]) byArea[key]={
+      area:r.luar_kota_area||r.kota_tujuan,
+      wh:r.wh_cons, items:[], vol:0, wt:0,
+      threshold:r.pending_threshold_m3||8,
+      threshold_kg:r.pending_threshold_kg||7000  // v4.55.6: default CDD ~7t
+    };
     byArea[key].items.push(r);
     byArea[key].vol+=r.total_vol||0;
+    byArea[key].wt +=r.total_wt||0;
   });
   const summDiv=document.getElementById('luar-kota-summary');
   summDiv.innerHTML=Object.values(byArea).map(g=>{
-    const pct=Math.min(Math.round(g.vol/parseFloat(g.threshold)*100),100);
+    // v4.55.6: weight-primary — progress bar pakai max(vol%, wt%).
+    const pctVol=Math.min(Math.round(g.vol/parseFloat(g.threshold)*100),100);
+    const pctWt =Math.min(Math.round(g.wt /parseFloat(g.threshold_kg)*100),100);
+    const pct   =Math.max(pctVol,pctWt);
     const color=pct>=75?'var(--amber-l)':'var(--red-l)';
     const fc=pct>=75?'var(--amber)':'var(--red)';
     return `<div style="background:${color};border-radius:8px;padding:8px 14px;border:1px solid ${fc}">
       <div style="font-weight:700;font-size:12px;color:${fc}">🔄 ${g.area}</div>
       <div style="font-size:11px;color:var(--muted)">${g.wh.replace('GUDANG ','')}</div>
-      <div style="font-family:var(--mono);font-size:13px;font-weight:700;margin-top:2px">${g.vol.toFixed(2)}/${g.threshold}m³</div>
+      <div style="font-family:var(--mono);font-size:13px;font-weight:700;margin-top:2px">${fmtKg(g.wt)}/${fmtKg(g.threshold_kg)} kg</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted)">${g.vol.toFixed(2)}/${g.threshold} m³</div>
       <div style="background:#e2e8f0;border-radius:3px;height:5px;margin:4px 0;overflow:hidden">
         <div style="height:100%;background:${fc};width:${pct}%"></div>
       </div>
@@ -10883,12 +10981,14 @@ function renderLuarKotaPending(){
   }).join('');
 
   // ── SECTION 2: Manual defer summary cards (no progress bar)
+  // v4.55.6: berat (kg) sebagai primary, vol secondary.
   const byKotaManual={};
   pendingManual.forEach(r=>{
     const kota = r.kota_tujuan || r.kota || r.zona || '—';
-    if(!byKotaManual[kota]) byKotaManual[kota]={kota,items:[],vol:0};
+    if(!byKotaManual[kota]) byKotaManual[kota]={kota,items:[],vol:0,wt:0};
     byKotaManual[kota].items.push(r);
     byKotaManual[kota].vol+=r.total_vol||0;
+    byKotaManual[kota].wt +=r.total_wt||0;
   });
   const summManualDiv = document.getElementById('luar-kota-summary-manual');
   if(summManualDiv){
@@ -10896,7 +10996,8 @@ function renderLuarKotaPending(){
       Object.values(byKotaManual).map(g=>`
         <div style="background:#eff6ff;border-radius:8px;padding:8px 14px;border:1px solid #93c5fd">
           <div style="font-weight:700;font-size:12px;color:#1d4ed8">📌 ${g.kota}</div>
-          <div style="font-family:var(--mono);font-size:13px;font-weight:700;margin-top:2px">${g.vol.toFixed(2)}m³</div>
+          <div style="font-family:var(--mono);font-size:13px;font-weight:700;margin-top:2px">${fmtKg(g.wt)} kg</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted)">${g.vol.toFixed(2)} m³</div>
           <div style="font-size:10px;color:#3b82f6">Manual — ${g.items.length} item — masuk routing besok</div>
         </div>`).join('');
   }
@@ -10908,21 +11009,27 @@ function renderLuarKotaPending(){
   document.getElementById('tbody-luarkota').innerHTML=allPending.map(r=>{
     const pct=r.pending_pct||0;
     const volStatus = r.volume_status || (pct >= 100 ? 'cukup' : 'kurang');
-    // Row bg: cukup hijau muda, kurang amber muda — kalau selected, biru
+    // Row bg: cukup hijau muda, kurang amber muda — kalau selected, biru, kalau TUNDA, kuning
     const isSel = bulkSelection.has(String(r.doc_no));
-    const rowBg = isSel ? '#bfdbfe' : (volStatus === 'cukup' ? '#ecfdf5' : '#fff5f5');
+    // v4.55.6 EC1: TUNDA badge — DO tetap visible biar bisa undo
+    const tundaState = (window._gantungState||{})[String(r.doc_no)];
+    const isTunda = tundaState && tundaState.action === 'TUNDA';
+    const rowBg = isSel ? '#bfdbfe' : (isTunda ? '#fef9c3' : (volStatus === 'cukup' ? '#ecfdf5' : '#fff5f5'));
+    const tundaBadge = isTunda
+      ? `<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:#fde047;color:#78350f;margin-right:3px" title="DO ditunda. Klik dropdown untuk undo.">📅 TUNDA</span>`
+      : '';
     const escDoc = escapeHtml(String(r.doc_no));
     const wt = parseFloat(r.total_wt)||0;
     return `<tr style="background:${rowBg}">
       <td style="text-align:center"><input type="checkbox" data-bulk-section="luar_kota" data-bulk-doc="${escDoc}" ${isSel?'checked':''} onchange="bulkToggleSelect('${escDoc}','luar_kota',this.checked,event)"></td>
-      <td style="font-family:var(--mono);font-size:10px">${r.doc_no}</td>
+      <td style="font-family:var(--mono);font-size:10px">${tundaBadge}${r.doc_no}</td>
       <td>${r.wh_cons}</td>
       <td>${r.customer.slice(0,28)}</td>
       <td style="font-weight:600;color:${r.defer_type==='auto'?'var(--orange)':'#1d4ed8'}">${r.kota_tujuan||r.luar_kota_area||'—'}</td>
       <td style="color:var(--muted);max-width:180px;font-size:10px">${String(r.kirim||"").slice(0,55)}</td>
       <td style="font-family:var(--mono);font-weight:600">${r.qty}</td>
-      <td style="font-family:var(--mono);font-size:10px;text-align:right">${fmtVol(r.total_vol||0)}</td>
-      <td style="font-family:var(--mono);font-size:10px;text-align:right">${fmtKg(wt)}</td>
+      <td style="font-family:var(--mono);font-size:10px;font-weight:700;text-align:right">${fmtKg(wt)}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--muted);text-align:right">${fmtVol(r.total_vol||0)}</td>
       <td>
         ${r.defer_type === 'auto' ? `
           <div style="margin-bottom:2px">
