@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.55.11</title>
+<title>Routing Optimizer v4.55.12</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.11</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.12</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -532,7 +532,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.11</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.12</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -6094,12 +6094,14 @@ function renderKPI(){
   const pendingBesokTotal = (doLuarKota||[]).length + (doLowUtil||[]).length;
   const carryOverFromSheet = (window.doCarryOverItems||[]).length; // v4.55.5: source baru (formerly doCarryOverManual)
   // v4.55.11: KPI baru — DO Routing (yang sudah ke-plot kendaraan internal) + DO Gantung total (carry over + jabo + luar kota + low util)
-  const totalDORouting = totalDOAktif; // sama dengan DO AKTIF, alias semantik untuk dispatcher
+  const totalDORouting = totalDOAktif; // alias DO AKTIF lama, yang sudah ke-plot
   const doGantungTotal = pendingBesokTotal + jaboLineCount + carryOverFromSheet + luarKotaVendorLineCount;
+  // v4.55.11 followup: DO AKTIF = total semua DO (routing + gantung) — semantik "DO yang aktif diproses hari ini"
+  const totalDOAll = totalDORouting + doGantungTotal;
 
   document.getElementById('kpi-bar').innerHTML=[
-    ['DO AKTIF',totalDOAktif,'DO'],
-    ['🚛 DO ROUTING',totalDORouting,'sudah ke-plot'],          // v4.55.11: alias DO Aktif untuk visibility dispatcher
+    ['DO AKTIF',totalDOAll,'total semua DO'],
+    ['🚛 DO ROUTING',totalDORouting,'sudah ke-plot'],          // v4.55.11: alias DO Aktif lama, yang sudah ke-plot
     ['📦 DO GANTUNG',doGantungTotal,'menunggu decision'],       // v4.55.11: total semua DO yang belum ke-plot internal
     ['TOTAL DUS',totalQty.toLocaleString('id'),'keseluruhan'],
     ['RUTE 1',r1,'kendaraan'],
@@ -7224,11 +7226,22 @@ function _renderBulkBar(){
   const hasDatado = sections.has('datado');
 
   // Build dropdown options
+  // v4.55.12: Kalau ada titipan_masuk dalam selection, show kendaraan SEMUA gudang.
+  //           Kalau cuma DO sendiri (carry_over/luar_kota/jabo_overflow/datado), filter gudang user only.
+  const _userGudangBulk = String((typeof currentUser!=='undefined' && currentUser && currentUser.gudang) || window.SCAN_SAP_WH || window._userGudang || '').toUpperCase().replace(/^GUDANG\s*/i, '').replace(/_/g,' ').trim();
+  const _allGudangModeBulk = hasTitipanMasuk;
   const internalOpts = (typeof routes !== 'undefined' && Array.isArray(routes))
-    ? routes.filter(r => r.vehicle && !r.is_large_do).map(r => {
+    ? routes.filter(r => {
+        if(!r.vehicle || r.is_large_do) return false;
+        if(_allGudangModeBulk) return true;
+        const rWh = String(r.wh||'').toUpperCase().replace(/^GUDANG\s*/i,'').trim();
+        return !_userGudangBulk || rWh === _userGudangBulk || rWh.includes(_userGudangBulk);
+      }).map(r => {
         const sisaVol = (r.vehicle.vol_m3 * (CFG.safety_vol||0.85) - r.total_vol).toFixed(3);
         const sisaKg = Math.max(0, r.vehicle.max_kg * (CFG.safety_wt||0.90) - r.total_wt).toFixed(0);
-        return `<option value="INTERNAL:${escapeHtml(r.id)}">🚛 ${escapeHtml(r.vehicle.plat)} / ${escapeHtml(r.vehicle.driver||'')} (sisa ${Number(sisaKg).toLocaleString("id-ID")}kg / ${sisaVol}m³)</option>`;
+        const whClean = String(r.wh||'').replace(/^GUDANG\s*/i,'').trim();
+        const whSuffix = _allGudangModeBulk ? ' ['+escapeHtml(whClean)+']' : '';
+        return `<option value="INTERNAL:${escapeHtml(r.id)}">🚛 ${escapeHtml(r.vehicle.plat)} / ${escapeHtml(r.vehicle.driver||'')} (sisa ${Number(sisaKg).toLocaleString("id-ID")}kg / ${sisaVol}m³)${whSuffix}</option>`;
       }).join('')
     : '';
   const vendorOpts = (typeof vendorList !== 'undefined' && Array.isArray(vendorList))
@@ -7249,7 +7262,7 @@ function _renderBulkBar(){
         <div style="background:#fff;color:#1e3a8a;padding:4px 10px;border-radius:5px;font-weight:700;font-size:11px">☑ ${sel.length} DO selected</div>
         <select id="bulk-action-select" style="font-size:11px;border:0;border-radius:4px;padding:5px 8px;background:#fff;color:#1e3a8a;font-weight:600;min-width:220px">
           <option value="">— Bulk Action —</option>
-          ${internalOpts ? `<optgroup label="🚛 Kirim Internal">${internalOpts}</optgroup>` : ''}
+          ${internalOpts ? `<optgroup label="🚛 Kirim Internal${_allGudangModeBulk ? ' (Semua Gudang)' : ''}">${internalOpts}</optgroup>` : ''}
           ${vendorOpts ? `<optgroup label="📦 Vendor">${vendorOpts}</optgroup>` : ''}
           ${titipanOpts ? `<optgroup label="↪ Titip Antar Gudang">${titipanOpts}</optgroup>` : ''}
           ${!hasTitipanMasuk ? `<option value="TUNDA">📅 Tunda Semua ke Besok</option>` : ''}
@@ -7461,12 +7474,31 @@ async function _bulkApplySingle(docNo, section, value, actionType, actionTarget)
 // Aksi: Internal / Vendor / Titip Antar Gudang / Tunda / Cancel.
 // onChange handler: gantungAction(docNo, source, value).
 function _buildGantungActionDropdown(docNo, source){
+  // v4.55.12: Context-aware kendaraan filter:
+  //   - source='titipan_masuk' → show kendaraan dari SEMUA gudang (DM/DY/CK)
+  //     karena dispatcher penerima titipan bisa pilih kendaraan gudang asal/lain
+  //     kalau lebih efisien (rekomendasi HG).
+  //   - source lain (carry_over/jabo_overflow/luar_kota) → filter gudang user
+  //     supaya dispatcher gak accidentally assign DO sendiri ke kendaraan gudang lain.
+  const _userGudang = String((typeof currentUser!=='undefined' && currentUser && currentUser.gudang) || window.SCAN_SAP_WH || window._userGudang || '').toUpperCase().replace(/^GUDANG\s*/i, '').replace(/_/g,' ').trim();
+  const _allGudangMode = (source === 'titipan_masuk');
+
   // Build internal vehicle options (kendaraan dengan sisa kapasitas) — DUAL UOM v4.55.5
   const internalOpts = (typeof routes !== 'undefined' && Array.isArray(routes))
-    ? routes.filter(r => r.vehicle && !r.is_large_do).map(r => {
+    ? routes.filter(r => {
+        if(!r.vehicle || r.is_large_do) return false;
+        if(_allGudangMode) return true;
+        // Filter ke gudang user
+        const rWh = String(r.wh||'').toUpperCase().replace(/^GUDANG\s*/i,'').trim();
+        return !_userGudang || rWh === _userGudang || rWh.includes(_userGudang);
+      }).map(r => {
         const sisaVol = (r.vehicle.vol_m3 * (CFG.safety_vol||0.85) - r.total_vol).toFixed(3);
         const sisaKg = Math.max(0, r.vehicle.max_kg * (CFG.safety_wt||0.90) - r.total_wt).toFixed(0);
-        return `<option value="INTERNAL:${escapeHtml(r.id)}">🚛 ${escapeHtml(r.vehicle.plat)} / ${escapeHtml(r.vehicle.driver||'')} (sisa ${Number(sisaKg).toLocaleString("id-ID")}kg / ${sisaVol}m³)</option>`;
+        // v4.55.12: Tambah label gudang asal di option supaya dispatcher tahu kendaraan ini base di mana
+        const whLabel = _allGudangMode
+          ? ` <span style="color:#64748b">[${String(r.wh||'').replace(/^GUDANG\s*/i,'').trim()}]</span>`
+          : '';
+        return `<option value="INTERNAL:${escapeHtml(r.id)}">🚛 ${escapeHtml(r.vehicle.plat)} / ${escapeHtml(r.vehicle.driver||'')} (sisa ${Number(sisaKg).toLocaleString("id-ID")}kg / ${sisaVol}m³)${_allGudangMode ? ' ['+(String(r.wh||'').replace(/^GUDANG\s*/i,'').trim())+']' : ''}</option>`;
       }).join('')
     : '';
 
@@ -7477,16 +7509,20 @@ function _buildGantungActionDropdown(docNo, source){
 
   // v4.55.5: Build titipan options — 3 gudang (Doyong, Daan Mogot, Cikuda).
   // Exclude gudang asal user supaya tidak bisa "titip ke diri sendiri".
-  const userGudang = String((typeof currentUser!=='undefined' && currentUser && currentUser.gudang) || window.SCAN_SAP_WH || window._userGudang || '').toUpperCase().replace(/^GUDANG\s*/i, '').replace(/_/g,' ').trim();
   const ALL_GUDANG = ['DOYONG', 'DAAN MOGOT', 'CIKUDA'];
   const titipanOpts = ALL_GUDANG
-    .filter(g => g !== userGudang)
+    .filter(g => g !== _userGudang)
     .map(g => `<option value="TITIP:${escapeHtml(g)}">↪ Gudang ${escapeHtml(g)}</option>`)
     .join('');
 
+  // v4.55.12: optgroup label include hint scope kalau all-gudang mode
+  const internalGroupLabel = _allGudangMode
+    ? '🚛 Kirim Hari Ini (Internal — Semua Gudang)'
+    : '🚛 Kirim Hari Ini (Internal)';
+
   return `<select class="gantung-action-sel" onchange="gantungAction('${escapeHtml(docNo)}','${source}',this.value,this)" style="font-size:9px;max-width:180px;border:0.5px solid var(--border2);border-radius:4px;padding:2px 4px;background:var(--card);color:var(--text)">
     <option value="">— Pilih Aksi —</option>
-    ${internalOpts ? `<optgroup label="🚛 Kirim Hari Ini (Internal)">${internalOpts}</optgroup>` : ''}
+    ${internalOpts ? `<optgroup label="${internalGroupLabel}">${internalOpts}</optgroup>` : ''}
     ${vendorOpts ? `<optgroup label="📦 Kirim via Vendor">${vendorOpts}</optgroup>` : ''}
     ${titipanOpts ? `<optgroup label="↪ Titip Antar Gudang">${titipanOpts}</optgroup>` : ''}
     <optgroup label="──────────────">
@@ -8042,7 +8078,7 @@ async function gantungAction(docNo, source, value, selectEl){
       const data = await resp.json();
       if(data.error) throw new Error(data.error);
       console.log(`%c[v4.55.6] Titipan DO ${docNo} ${fromGudang}→${toGudang}: ${data.lines_processed||0} line(s) processed`, 'color:#d97706;font-weight:bold');
-      alert(`↪ DO ${docNo} berhasil dititip ke Gudang ${toGudang}.\n\nDispatcher ${toGudang} akan lihat DO ini di section "DO Titipan Masuk" besok pagi.`);
+      alert(`↪ DO ${docNo} berhasil dititip ke Gudang ${toGudang}.\n\nDispatcher ${toGudang} akan lihat DO ini di section "DO Titipan Masuk" besok pagi.\n\n📞 REMINDER: Koordinasi physical transport barang dari ${fromGudang} ke ${toGudang} dilakukan manual — kontak supir antar-gudang Bapak.`);
       syncDoGantungToSheet(false);
       if(typeof renderLuarKotaPending === 'function') renderLuarKotaPending(); // v4.55.6
     } catch(err) {
@@ -8292,33 +8328,43 @@ function renderVendorGroup(group, wh){
     .map(v => `<option value="VENDOR:${escapeHtml(v.kode)}">📦 ${escapeHtml(v.nama)} [${escapeHtml(v.tipe||'')}]</option>`).join('');
 
   // Build internal kendaraan options (untuk action "Pindah ke Internal")
+  // v4.55.12: Show kendaraan dari SEMUA gudang (DM/DY/CK), bukan cuma gudang sama.
+  // Dispatcher bisa pilih kendaraan gudang lain kalau lebih efisien.
+  // Sort: gudang sama dulu (priority), gudang lain di bawah.
   const svol = CFG.safety_vol||0.85, swt = CFG.safety_wt||0.90;
   const internalOptsList = [];
-  // (1) Kendaraan idle dari gudang yang sama
   const allVehiclesG = getAllVehicles();
   const assignedPlats = new Set(routes.map(r=>r.vehicle.plat));
   const whUpper = String(wh||'').toUpperCase();
+  // (1) Kendaraan idle dari semua gudang
   allVehiclesG.forEach(v => {
     if(assignedPlats.has(v.plat)) return;
-    if(!String(v.wh||'').toUpperCase().includes(whUpper)) return;
+    const vWh = String(v.wh||'').toUpperCase();
+    const isSameWh = vWh.includes(whUpper);
+    const whClean = String(v.wh||'').replace(/^GUDANG\s*/i,'').trim();
     const sisaVol = (v.vol_m3 * svol).toFixed(2);
     internalOptsList.push({
-      isIdle: true, sisaVol: parseFloat(sisaVol),
-      html: `<option value="IDLE:${escapeHtml(v.plat)}|${escapeHtml(v.wh)}|${v.vol_m3}">🟢 ${escapeHtml(v.plat)} / ${escapeHtml(v.driver||'')} [${escapeHtml(v.tipe||'')}] (idle, ${sisaVol}m³)</option>`
+      isIdle: true, isSameWh, sisaVol: parseFloat(sisaVol),
+      html: `<option value="IDLE:${escapeHtml(v.plat)}|${escapeHtml(v.wh)}|${v.vol_m3}">🟢 ${escapeHtml(v.plat)} / ${escapeHtml(v.driver||'')} [${escapeHtml(v.tipe||'')}] (idle, ${sisaVol}m³)${isSameWh ? '' : ' ['+escapeHtml(whClean)+']'}</option>`
     });
   });
-  // (2) Routes yang masih ada sisa kapasitas
+  // (2) Routes yang masih ada sisa kapasitas — semua gudang
   routes
-    .filter(r => r.wh.toUpperCase().includes(whUpper) && r.total_vol < r.vehicle.vol_m3*svol*0.98 && r.total_wt < r.vehicle.max_kg*swt*0.98)
+    .filter(r => r.total_vol < r.vehicle.vol_m3*svol*0.98 && r.total_wt < r.vehicle.max_kg*swt*0.98)
     .forEach(r => {
+      const rWh = String(r.wh||'').toUpperCase();
+      const isSameWh = rWh.includes(whUpper);
+      const whClean = String(r.wh||'').replace(/^GUDANG\s*/i,'').trim();
       const sv = (r.vehicle.vol_m3*svol - r.total_vol).toFixed(2);
       const skg = Math.max(0, r.vehicle.max_kg*swt - r.total_wt).toFixed(0);
       internalOptsList.push({
-        isIdle: false, sisaVol: parseFloat(sv),
-        html: `<option value="KEND:${r.id}">🚛 ${escapeHtml(r.vehicle.plat)} / ${escapeHtml(r.vehicle.driver||'')} (sisa ${Number(skg).toLocaleString('id-ID')}kg / ${sv}m³)</option>`
+        isIdle: false, isSameWh, sisaVol: parseFloat(sv),
+        html: `<option value="KEND:${r.id}">🚛 ${escapeHtml(r.vehicle.plat)} / ${escapeHtml(r.vehicle.driver||'')} (sisa ${Number(skg).toLocaleString('id-ID')}kg / ${sv}m³)${isSameWh ? '' : ' ['+escapeHtml(whClean)+']'}</option>`
       });
     });
+  // v4.55.12: Sort priority — same wh first (priority), then idle vs route, then by sisa terbesar
   internalOptsList.sort((a,b) => {
+    if(a.isSameWh !== b.isSameWh) return a.isSameWh ? -1 : 1;
     if(a.isIdle !== b.isIdle) return a.isIdle ? -1 : 1;
     return b.sisaVol - a.sisaVol;
   });
@@ -8352,7 +8398,7 @@ function renderVendorGroup(group, wh){
     const actionDropdown = `<select onchange="vendorRowAction('${escDoc}','${escapeHtml(vendor.kode)}',this.value,this)" style="font-size:10px;max-width:200px;border:1px solid var(--border2);border-radius:4px;padding:3px 6px;background:var(--card);color:var(--text)">
       <option value="">— Pilih Aksi —</option>
       ${vendorOptsOther ? `<optgroup label="🔄 Pindah ke Vendor Lain">${vendorOptsOther}</optgroup>` : ''}
-      ${internalOpts ? `<optgroup label="🚛 Pindah ke Kendaraan Internal">${internalOpts}</optgroup>` : ''}
+      ${internalOpts ? `<optgroup label="🚛 Pindah ke Kendaraan Internal (Semua Gudang)">${internalOpts}</optgroup>` : ''}
       <optgroup label="── Aksi Lain ──">
         <option value="MARK_WA">${waSentAt ? '↩ Unmark WA Sent' : '✅ Mark Sudah Kirim WA'}</option>
         <option value="BATAL">↩ Batalkan Assignment (kembali ke DO Gantung)</option>
