@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.55.7</title>
+<title>Routing Optimizer v4.55.8</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.7</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.8</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -532,7 +532,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.7</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.8</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -6697,7 +6697,7 @@ function _renderTitipanMasuk(){
     const escDoc = escapeHtml(docNo);
     const isSel = bulkSelection.has(docNo);
     return `<tr style="background:${isSel?'#bfdbfe':'#dbeafe'}">
-      <td style="text-align:center"><input type="checkbox" data-bulk-section="titipan_masuk" data-bulk-doc="${escDoc}" ${isSel?'checked':''} onchange="bulkToggleSelect('${escDoc}','titipan_masuk',this.checked,event)"></td>
+      <td style="text-align:center"><input type="checkbox" data-bulk-section="titipan_masuk" data-bulk-doc="${escDoc}" data-bulk-vol="${vol}" data-bulk-wt="${wt}" data-bulk-qty="${qty}" data-bulk-cust="${escapeHtml(customer)}" ${isSel?'checked':''} onchange="bulkToggleSelect('${escDoc}','titipan_masuk',this.checked,event)"></td>
       <td style="font-family:var(--mono);font-size:10px;font-weight:700">${escDoc}</td>
       <td><span style="background:#fde68a;border-radius:3px;padding:1px 6px;font-size:9px;font-weight:700;color:#78350f">↪ ${escapeHtml(titipanDari)}</span></td>
       <td style="font-size:10px;font-weight:600">${escapeHtml(customer)}</td>
@@ -6936,7 +6936,7 @@ function _renderCarryOverSection(){
       ? `<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:#fde047;color:#78350f;margin-right:3px" title="DO ditunda. Klik dropdown untuk undo.">📅 TUNDA</span>`
       : '';
     return `<tr style="background:${rowBg}">
-      <td style="text-align:center"><input type="checkbox" data-bulk-section="carry_over" data-bulk-doc="${escDoc}" ${isSel?'checked':''} onchange="bulkToggleSelect('${escDoc}','carry_over',this.checked,event)"></td>
+      <td style="text-align:center"><input type="checkbox" data-bulk-section="carry_over" data-bulk-doc="${escDoc}" data-bulk-vol="${vol}" data-bulk-wt="${wt}" data-bulk-qty="${qty}" data-bulk-cust="${escapeHtml(customer)}" ${isSel?'checked':''} onchange="bulkToggleSelect('${escDoc}','carry_over',this.checked,event)"></td>
       <td style="font-family:var(--mono);font-size:10px;font-weight:700">${tundaBadge}${slaBadge}${docNo}</td>
       <td style="font-family:var(--mono);font-size:10px">${tglDisplay}</td>
       <td style="font-family:var(--mono);font-size:10px;text-align:center;color:${slaDays>=2?'#dc2626':'#475569'};font-weight:700">${hariPending}</td>
@@ -7000,7 +7000,7 @@ function _renderJaboOverflowSection(){
       ? `<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:#fde047;color:#78350f;margin-right:3px" title="DO ditunda. Klik dropdown untuk undo.">📅 TUNDA</span>`
       : '';
     return `<tr style="background:${rowBg}">
-      <td style="text-align:center"><input type="checkbox" data-bulk-section="jabo_overflow" data-bulk-doc="${escDoc}" ${isSel?'checked':''} onchange="bulkToggleSelect('${escDoc}','jabo_overflow',this.checked,event)"></td>
+      <td style="text-align:center"><input type="checkbox" data-bulk-section="jabo_overflow" data-bulk-doc="${escDoc}" data-bulk-vol="${vol}" data-bulk-wt="${wt}" data-bulk-qty="${qty}" data-bulk-cust="${escapeHtml(customer)}" ${isSel?'checked':''} onchange="bulkToggleSelect('${escDoc}','jabo_overflow',this.checked,event)"></td>
       <td style="font-family:var(--mono);font-size:10px;font-weight:700">${tundaBadge}${docNo}</td>
       <td style="font-family:var(--mono);font-size:10px">${tglDO}</td>
       <td style="font-size:10px;font-weight:600">${escapeHtml(customer)}</td>
@@ -7021,25 +7021,48 @@ function _renderJaboOverflowSection(){
 // ═══════════════════════════════════════════════════════════════════
 
 // Toggle individual checkbox — update bulkSelection Map + re-render bar
+// v4.55.8: Read metadata dari data-* attributes pada checkbox langsung,
+//          gak rely pada source array .find(). Solve bug bulk select 2 DO → 1 DO
+//          karena find() bisa fail kalau ada multiple line items per doc_no atau flag inkonsistensi.
 function bulkToggleSelect(docNo, section, checked, evt){
   if(!docNo || !section) return;
   if(checked){
-    // Lookup metadata dari source array
-    let item = null;
-    if(section === 'carry_over')      item = (window.doCarryOverItems||[]).find(i => String(i.doc_no) === String(docNo));
-    else if(section === 'luar_kota')  item = (doLuarKota||[]).find(i => String(i.doc_no) === String(docNo));
-    else if(section === 'jabo_overflow') item = (doVendor||[]).find(i => String(i.doc_no) === String(docNo) && !i.luar_kota && !i.vendor_fallback);
-    else if(section === 'titipan_masuk') item = (window.doTitipanMasuk||[]).find(i => String(i.doc_no) === String(docNo));
-    else if(section === 'datado')     item = (window._dataDORows||[]).find(i => String(i.doc_no) === String(docNo));
-    if(!item){ console.warn(`[v4.55.5] Item ${docNo} tidak ditemukan di section ${section}`); return; }
-    bulkSelection.set(String(docNo), {
-      section: section,
-      doc_no: String(docNo),
-      customer: String(item.customer||''),
-      total_vol: Number(item.total_vol)||0,
-      total_wt: Number(item.total_wt)||0,
-      qty: Number(item.qty)||0
-    });
+    // v4.55.8: Try DOM dataset first (paling reliable — data udah embed saat render)
+    const cb = evt && evt.target;
+    let meta = null;
+    if(cb && cb.dataset && cb.dataset.bulkVol !== undefined){
+      meta = {
+        section: section,
+        doc_no: String(docNo),
+        customer: cb.dataset.bulkCust || '',
+        total_vol: parseFloat(cb.dataset.bulkVol)||0,
+        total_wt:  parseFloat(cb.dataset.bulkWt) ||0,
+        qty:       parseInt(cb.dataset.bulkQty)  ||0
+      };
+    }
+    // Fallback: lookup source array (legacy path, ada kemungkinan miss kalau filter inkonsistensi)
+    if(!meta){
+      let item = null;
+      if(section === 'carry_over')      item = (window.doCarryOverItems||[]).find(i => String(i.doc_no) === String(docNo));
+      else if(section === 'luar_kota')  item = (doLuarKota||[]).find(i => String(i.doc_no) === String(docNo));
+      else if(section === 'jabo_overflow') item = (doVendor||[]).find(i => String(i.doc_no) === String(docNo) && !i.luar_kota && !i.vendor_fallback);
+      else if(section === 'titipan_masuk') item = (window.doTitipanMasuk||[]).find(i => String(i.doc_no) === String(docNo));
+      else if(section === 'datado')     item = (window._dataDORows||[]).find(i => String(i.doc_no) === String(docNo));
+      if(!item){
+        console.warn(`[v4.55.8] Item ${docNo} (${section}) tidak ditemukan di source array & dataset kosong — skip.`);
+        if(cb) cb.checked = false; // visual revert biar gak misleading
+        return;
+      }
+      meta = {
+        section: section,
+        doc_no: String(docNo),
+        customer: String(item.customer||''),
+        total_vol: Number(item.total_vol)||0,
+        total_wt: Number(item.total_wt)||0,
+        qty: Number(item.qty)||0
+      };
+    }
+    bulkSelection.set(String(docNo), meta);
   } else {
     bulkSelection.delete(String(docNo));
   }
@@ -7321,6 +7344,9 @@ async function _bulkApplySingle(docNo, section, value, actionType, actionTarget)
     window._gantungState[docNo] = { action: 'VENDOR', target: vendorKode, timestamp: Date.now() };
     try {
       await _markDoGantungReleased(docNo, 'RELEASED', 'vendor');
+      // v4.55.8 Fase 2: Sync doVendor — tab Vendor pickup DO ini.
+      // Bulk path TIDAK auto-open WA per DO (akan spam tab); dispatcher kirim batch via tab Vendor.
+      _syncDoVendorAfterAssign(docNo, vendorKode);
     } catch(err) { _rollback(); throw err; }
   } else if(actionType === 'TITIP'){
     const fromGudang = String(window.SCAN_SAP_WH || window._userGudang || '').toUpperCase().replace(/^GUDANG\s*/i, '').trim();
@@ -7684,6 +7710,106 @@ window.addEventListener('beforeunload', function(e){
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════
+// v4.55.8 — VENDOR ASSIGN HELPERS
+// Solve workflow gap: setelah dispatcher assign DO ke vendor via dropdown
+// di tab DO Gantung, DO TIDAK auto-masuk ke tab Vendor (karena doVendor
+// di-build saat Optimize, bukan dari sheet). Helper ini sync DO ke doVendor
+// + bangun pesan WA single-DO biar dispatcher bisa langsung kirim.
+// ═══════════════════════════════════════════════════════════════════════
+
+// Cari item original di salah satu source array DO Gantung berdasarkan doc_no.
+// Return null kalau gak ditemukan di mana-mana.
+function _findGantungItem(docNo){
+  const dn = String(docNo);
+  // Cek 4 source arrays — return item PERTAMA yang ditemukan
+  const sources = [
+    window.doCarryOverItems || [],
+    doLuarKota || [],
+    doVendor || [],
+    window.doTitipanMasuk || []
+  ];
+  for(const src of sources){
+    const item = src.find(i => String(i.doc_no) === dn);
+    if(item) return item;
+  }
+  return null;
+}
+
+// Sync item ke doVendor + tandai manual_vendor_kode supaya tab Vendor pickup.
+// Idempotent: kalau item sudah ada di doVendor, cuma update vendor_kode-nya.
+function _syncDoVendorAfterAssign(docNo, vendorKode){
+  const item = _findGantungItem(docNo);
+  if(!item){
+    console.warn(`[v4.55.8] _syncDoVendorAfterAssign: item ${docNo} tidak ditemukan di source arrays`);
+    return null;
+  }
+  // Set manual_vendor_kode di item (mutate in place — semua reference dapat update)
+  item.manual_vendor_kode = vendorKode;
+  // Cek apakah item sudah ada di doVendor by reference
+  if(typeof doVendor !== 'undefined' && Array.isArray(doVendor)){
+    const exists = doVendor.some(v => v === item || (String(v.doc_no) === String(docNo) && v.manual_vendor_kode === vendorKode));
+    if(!exists){
+      doVendor.push(item);
+    }
+  }
+  // Re-build assignment map supaya tab Vendor pickup
+  try{ if(typeof buildVendorAssignmentMap === 'function') buildVendorAssignmentMap(); }
+  catch(e){ console.warn('[v4.55.8] buildVendorAssignmentMap failed:', e); }
+  // Update KPI counter Vendor tab (kalau ada)
+  try{ const cnt = document.getElementById('cnt-vendor'); if(cnt) cnt.textContent = new Set((doVendor||[]).map(r=>r.doc_no)).size; }catch(e){}
+  return item;
+}
+
+// Build pesan WA single-DO untuk vendor — mirror format sendVendorOrder tapi 1 DO saja.
+function _buildVendorWaMessageSingle(item, vendor){
+  const tgl = (typeof doDate !== 'undefined' && doDate) ? doDate : new Date().toLocaleDateString('id-ID');
+  const wh  = String(item.wh_cons || item.wh || '').replace(/^GUDANG\s*/i,'').toUpperCase() || '-';
+  const cust = String(item.customer || '-');
+  const alamat = String(item.kirim || '-');
+  const qty = parseFloat(item.qty)||0;
+  const vol = parseFloat(item.total_vol)||0;
+  let msg = `Order pickup ${tgl}\n\nGudang: ${wh}\n\n`;
+  msg += `DO ${item.doc_no}\n`;
+  msg += `${cust}\n`;
+  msg += `${alamat}\n`;
+  msg += `${qty} DUS (${vol.toFixed(2)} m³)\n\n`;
+  msg += `Total: 1 DO, ${qty} DUS, ${vol.toFixed(2)} m³`;
+  return msg;
+}
+
+// Normalize phone: 08xxx → 628xxx
+function _normalizeVendorPhone(raw){
+  if(!raw) return null;
+  if(/\[ISI|\[Telp/i.test(String(raw))) return null;
+  let phone = String(raw).replace(/[^0-9+]/g,'');
+  if(phone.startsWith('+')) phone = phone.slice(1);
+  if(phone.startsWith('0')) phone = '62' + phone.slice(1);
+  if(!phone.startsWith('62')) phone = '62' + phone;
+  return phone;
+}
+
+// Open wa.me langsung untuk single DO ke vendor.
+function _openWaSingle(docNo, vendorKode){
+  const vendor = (vendorList||[]).find(v => v.kode === vendorKode);
+  if(!vendor){ alert('Vendor tidak ditemukan: '+vendorKode); return false; }
+  const phone = _normalizeVendorPhone(vendor.telp);
+  if(!phone){
+    alert(`Nomor WA vendor ${vendor.nama} belum diisi.\nUpdate di sheet Vendor master dulu.`);
+    return false;
+  }
+  const item = _findGantungItem(docNo);
+  if(!item){ alert('Item DO tidak ditemukan: '+docNo); return false; }
+  const msg = _buildVendorWaMessageSingle(item, vendor);
+  const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+  const win = window.open(waUrl, '_blank');
+  if(!win){
+    alert('Browser memblokir pop-up.\nAllow pop-up untuk situs ini lalu coba lagi.');
+    return false;
+  }
+  return true;
+}
+
 async function gantungAction(docNo, source, value, selectEl){
   if(!value){ return; }
   console.log(`%c[v4.55.6] gantungAction: doc=${docNo}, source=${source}, action=${value}`, 'color:#0891b2');
@@ -7758,7 +7884,23 @@ async function gantungAction(docNo, source, value, selectEl){
       // v4.55.5: Mark RELEASED dengan released_via='vendor' supaya muncul
       // di section "Vendor Belum Konfirmasi" besok kalau belum delivered.
       await _markDoGantungReleased(docNo, 'RELEASED', 'vendor');
-      alert(`✅ DO ${docNo} → vendor ${vendor.nama}\n\n📍 Data tersimpan di sheet "Pending Besok":\n   • status = RELEASED\n   • released_via = vendor\n\n📞 Aksi Bapak selanjutnya:\n   1. Kontak ${vendor.pic||'PIC vendor'} untuk pickup & delivery\n   2. Kalau besok belum delivered, DO akan muncul di section\n      "Vendor Belum Konfirmasi" untuk re-pending atau follow-up`);
+      // v4.55.8 Fase 2: Sync doVendor + manual_vendor_kode supaya tab Vendor auto-pickup
+      _syncDoVendorAfterAssign(docNo, vendorKode);
+      // v4.55.8 Fase 3: Auto-open WA langsung (tombol "Kirim WA Sekarang")
+      const waOpened = _openWaSingle(docNo, vendor.kode);
+      if(waOpened){
+        // Toast minimal — wa.me udah kebuka, gak perlu modal panjang
+        try {
+          const _t = document.createElement('div');
+          _t.style.cssText='position:fixed;bottom:20px;right:20px;background:#16a34a;color:#fff;padding:12px 20px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.2);z-index:10000;font-size:13px;font-weight:600;max-width:360px';
+          _t.innerHTML = `✅ DO ${docNo} → ${vendor.nama}<br><span style="font-size:11px;font-weight:400;opacity:.9">WA terbuka di tab baru — tinggal klik Send</span>`;
+          document.body.appendChild(_t);
+          setTimeout(() => _t.remove(), 4000);
+        } catch(e){}
+      } else {
+        // Fallback alert detail kalau wa.me gagal buka (vendor tanpa nomor / popup blocked)
+        alert(`✅ DO ${docNo} → vendor ${vendor.nama}\n\n📍 Data tersimpan di sheet "Pending Besok":\n   • status = RELEASED\n   • released_via = vendor\n\n⚠ WA gagal terbuka — kirim manual via tab Vendor atau update nomor WA vendor.`);
+      }
       syncDoGantungToSheet(false);
       if(typeof renderLuarKotaPending === 'function') renderLuarKotaPending(); // v4.55.6
     } catch(err) {
@@ -11047,7 +11189,7 @@ function renderLuarKotaPending(){
     const escDoc = escapeHtml(String(r.doc_no));
     const wt = parseFloat(r.total_wt)||0;
     return `<tr style="background:${rowBg}">
-      <td style="text-align:center"><input type="checkbox" data-bulk-section="luar_kota" data-bulk-doc="${escDoc}" ${isSel?'checked':''} onchange="bulkToggleSelect('${escDoc}','luar_kota',this.checked,event)"></td>
+      <td style="text-align:center"><input type="checkbox" data-bulk-section="luar_kota" data-bulk-doc="${escDoc}" data-bulk-vol="${parseFloat(r.total_vol)||0}" data-bulk-wt="${wt}" data-bulk-qty="${parseInt(r.qty)||0}" data-bulk-cust="${escapeHtml(String(r.customer||''))}" ${isSel?'checked':''} onchange="bulkToggleSelect('${escDoc}','luar_kota',this.checked,event)"></td>
       <td style="font-family:var(--mono);font-size:10px">${tundaBadge}${r.doc_no}</td>
       <td>${r.wh_cons}</td>
       <td>${r.customer.slice(0,28)}</td>
