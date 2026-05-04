@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.55.6</title>
+<title>Routing Optimizer v4.55.7</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.6</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.7</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -532,7 +532,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.6</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.7</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -821,9 +821,14 @@ body.dispatch-active .dispatch-bar{display:flex}
 
       <!-- Summary cards (auto + manual defer dari capacity) -->
       <div style="font-size:12px;color:#64748b;margin-bottom:6px">DO Gantung Baru: <span id="cnt-luarkota">0</span> DO Luar Kota + <span id="cnt-lowutil">0</span> DO Low-Util + <span id="cnt-jabo-overflow">0</span> DO Overflow</div>
-      <!-- Auto-defer summary cards -->
+      <!-- v4.55.7: Split jadi 2 sections — Luar Kota (asli luar Jabodetabek) + Carry Over Jabo (DO Jabo carry-over kemarin) -->
+      <!-- SECTION A: Luar Kota — DO yang asli luar Jabodetabek (Bandung, Cikampek, Subang, dll) -->
+      <div id="luar-kota-summary-header" style="display:none;font-size:11px;color:#9333ea;font-weight:700;margin-bottom:4px">🌏 LUAR KOTA — Akumulasi Volume</div>
       <div id="luar-kota-summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px"></div>
-      <!-- Manual defer summary cards -->
+      <!-- SECTION B: Carry Over Jabo — DO dalam Jabodetabek yang carry over dari kemarin -->
+      <div id="carryover-jabo-summary-header" style="display:none;font-size:11px;color:#dc2626;font-weight:700;margin-bottom:4px">🔄 CARRY OVER JABO — Defer Kemarin Belum Terkirim</div>
+      <div id="carryover-jabo-summary" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px"></div>
+      <!-- SECTION C: Manual defer (tetap, tidak split) -->
       <div id="luar-kota-summary-manual" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px"></div>
 
       <!-- v4.55.5 SEKSI 1: DO Luar Kota — Manual decide per DO. Auto-vendor matikan, semua luar kota tampil di sini dengan badge volume_status (cukup/kurang). -->
@@ -2407,7 +2412,7 @@ async function startAnalysis(){
           pending_current_m3   : +grp.totalVol.toFixed(3),
           pending_threshold_m3 : _minVol,
           pending_reason       : volStatus === 'cukup'
-            ? `Volume cukup ${grp.area}: ${grp.totalVol.toFixed(2)}/${_minVol}m³ (${pct100}%) — siap dispatch`
+            ? `Volume okay ${grp.area}: ${grp.totalVol.toFixed(2)}/${_minVol}m³ (${pct100}%) — siap dispatch`
             : `Akumulasi ${grp.area}: ${grp.totalVol.toFixed(2)}/${_minVol}m³ (${pct100}%) — defer`,
           days_pending         : item.days_pending||0,
           is_pending_carryover : _carryOverDocNos.has(item.doc_no),
@@ -7186,7 +7191,8 @@ async function bulkApply(){
   let actionDesc = '', actionTarget = '', actionType = '';
   if(value.startsWith('INTERNAL:')){
     const routeId = value.replace('INTERNAL:','');
-    const route = (routes||[]).find(r => r.id === routeId);
+    // v4.55.7: r.id biasanya number (rid++ atau routes.length+Date.now()), routeId dari dropdown selalu string. Coerce ke string.
+    const route = (routes||[]).find(r => String(r.id) === routeId);
     if(!route){ alert('Kendaraan tidak ditemukan.'); return; }
     actionType = 'INTERNAL';
     actionTarget = `${route.vehicle.plat} / ${route.vehicle.driver}`;
@@ -7710,7 +7716,8 @@ async function gantungAction(docNo, source, value, selectEl){
 
   if(value.startsWith('INTERNAL:')){
     const routeId = value.replace('INTERNAL:','');
-    const route = (routes||[]).find(r => r.id === routeId);
+    // v4.55.7: r.id = number (rid++ atau routes.length+Date.now()), routeId dari dropdown = string. Coerce.
+    const route = (routes||[]).find(r => String(r.id) === routeId);
     if(!route){
       alert('Kendaraan tidak ditemukan, refresh dan coba lagi.');
       selectEl.value=''; return;
@@ -7751,7 +7758,7 @@ async function gantungAction(docNo, source, value, selectEl){
       // v4.55.5: Mark RELEASED dengan released_via='vendor' supaya muncul
       // di section "Vendor Belum Konfirmasi" besok kalau belum delivered.
       await _markDoGantungReleased(docNo, 'RELEASED', 'vendor');
-      alert(`✅ DO ${docNo} → vendor ${vendor.nama}\n\nDispatcher kontak ${vendor.pic||'PIC'} untuk delivery confirmation.\n\nDO ditandai RELEASED. Jika besok belum delivered, akan muncul di section "Vendor Belum Konfirmasi" untuk re-pending.`);
+      alert(`✅ DO ${docNo} → vendor ${vendor.nama}\n\n📍 Data tersimpan di sheet "Pending Besok":\n   • status = RELEASED\n   • released_via = vendor\n\n📞 Aksi Bapak selanjutnya:\n   1. Kontak ${vendor.pic||'PIC vendor'} untuk pickup & delivery\n   2. Kalau besok belum delivered, DO akan muncul di section\n      "Vendor Belum Konfirmasi" untuk re-pending atau follow-up`);
       syncDoGantungToSheet(false);
       if(typeof renderLuarKotaPending === 'function') renderLuarKotaPending(); // v4.55.6
     } catch(err) {
@@ -10947,30 +10954,35 @@ function renderLuarKotaPending(){
 
   // ── SECTION 1: Summary cards auto-defer per area (progress bar)
   // v4.55.6: berat (kg) sebagai primary display — pakai max(vol%, wt%) untuk progress.
-  const byArea={};
+  // v4.55.7: SPLIT jadi 2 sections — Luar Kota (asli luar Jabo) + Carry Over Jabo (DO Jabo carry-over).
+  //          Logic: r.luar_kota===true → Luar Kota cards. r.luar_kota!==true && carry-over → Carry Over Jabo cards.
+  const byAreaLuarKota = {};   // SECTION A: asli luar kota (Bandung, Subang, Cikampek, dll)
+  const byAreaCarryOverJabo = {}; // SECTION B: DO Jabo carry-over kemarin
   pendingAuto.forEach(r=>{
     const key=r.wh_cons+'|'+(r.luar_kota_area||r.kota_tujuan||'');
-    if(!byArea[key]) byArea[key]={
-      area:r.luar_kota_area||r.kota_tujuan,
+    const isLuarKota = r.luar_kota === true || r.vendor_fallback === true;
+    const target = isLuarKota ? byAreaLuarKota : byAreaCarryOverJabo;
+    if(!target[key]) target[key]={
+      area:r.luar_kota_area||r.kota_tujuan||'-',
       wh:r.wh_cons, items:[], vol:0, wt:0,
       threshold:r.pending_threshold_m3||8,
       threshold_kg:r.pending_threshold_kg||7000  // v4.55.6: default CDD ~7t
     };
-    byArea[key].items.push(r);
-    byArea[key].vol+=r.total_vol||0;
-    byArea[key].wt +=r.total_wt||0;
+    target[key].items.push(r);
+    target[key].vol+=r.total_vol||0;
+    target[key].wt +=r.total_wt||0;
   });
-  const summDiv=document.getElementById('luar-kota-summary');
-  summDiv.innerHTML=Object.values(byArea).map(g=>{
-    // v4.55.6: weight-primary — progress bar pakai max(vol%, wt%).
+
+  // v4.55.7: Helper render card — sama untuk dua sections
+  const _renderAreaCard = (g, emoji) => {
     const pctVol=Math.min(Math.round(g.vol/parseFloat(g.threshold)*100),100);
     const pctWt =Math.min(Math.round(g.wt /parseFloat(g.threshold_kg)*100),100);
     const pct   =Math.max(pctVol,pctWt);
     const color=pct>=75?'var(--amber-l)':'var(--red-l)';
     const fc=pct>=75?'var(--amber)':'var(--red)';
     return `<div style="background:${color};border-radius:8px;padding:8px 14px;border:1px solid ${fc}">
-      <div style="font-weight:700;font-size:12px;color:${fc}">🔄 ${g.area}</div>
-      <div style="font-size:11px;color:var(--muted)">${g.wh.replace('GUDANG ','')}</div>
+      <div style="font-weight:700;font-size:12px;color:${fc}">${emoji} ${g.area}</div>
+      <div style="font-size:11px;color:var(--muted)">${(g.wh||'').replace('GUDANG ','')}</div>
       <div style="font-family:var(--mono);font-size:13px;font-weight:700;margin-top:2px">${fmtKg(g.wt)}/${fmtKg(g.threshold_kg)} kg</div>
       <div style="font-family:var(--mono);font-size:10px;color:var(--muted)">${g.vol.toFixed(2)}/${g.threshold} m³</div>
       <div style="background:#e2e8f0;border-radius:3px;height:5px;margin:4px 0;overflow:hidden">
@@ -10978,7 +10990,21 @@ function renderLuarKotaPending(){
       </div>
       <div style="font-size:10px;color:${fc}">${pct}% — ${g.items.length} item</div>
     </div>`;
-  }).join('');
+  };
+
+  // SECTION A: Luar Kota cards
+  const summDiv=document.getElementById('luar-kota-summary');
+  const summHdr=document.getElementById('luar-kota-summary-header');
+  const luarKotaArr = Object.values(byAreaLuarKota);
+  if(summDiv) summDiv.innerHTML = luarKotaArr.map(g => _renderAreaCard(g, '🌏')).join('');
+  if(summHdr) summHdr.style.display = luarKotaArr.length > 0 ? 'block' : 'none';
+
+  // SECTION B: Carry Over Jabo cards
+  const carryJaboDiv=document.getElementById('carryover-jabo-summary');
+  const carryJaboHdr=document.getElementById('carryover-jabo-summary-header');
+  const carryJaboArr = Object.values(byAreaCarryOverJabo);
+  if(carryJaboDiv) carryJaboDiv.innerHTML = carryJaboArr.map(g => _renderAreaCard(g, '🔄')).join('');
+  if(carryJaboHdr) carryJaboHdr.style.display = carryJaboArr.length > 0 ? 'block' : 'none';
 
   // ── SECTION 2: Manual defer summary cards (no progress bar)
   // v4.55.6: berat (kg) sebagai primary, vol secondary.
@@ -11035,7 +11061,7 @@ function renderLuarKotaPending(){
           <div style="margin-bottom:2px">
             <span style="border-radius:4px;padding:2px 6px;font-size:9px;font-weight:700;
               background:${volStatus==='cukup'?'#22c55e':'#f59e0b'};color:#fff">
-              ${volStatus==='cukup'?'✓ CUKUP':'⏳ KURANG'}
+              ${volStatus==='cukup'?'✓ OKAY':'⏳ KURANG'}
             </span>
           </div>
           <div style="background:#e2e8f0;border-radius:4px;height:6px;width:80px;overflow:hidden;margin-bottom:2px">
