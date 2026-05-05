@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.55.15</title>
+<title>Routing Optimizer v4.55.16</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -474,7 +474,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.15</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.16</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -536,7 +536,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.15</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.16</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -549,7 +549,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     <!-- v4.55.9: Tab DO Vendor di-unhide. Diperlukan untuk dispatcher lihat list DO yang udah di-assign ke vendor + akses tombol "Kirim Order via WhatsApp" untuk batch send. -->
     <button class="tab-btn" onclick="switchTab('vendor',this)" title="DO yang di-assign manual ke vendor — lihat list & kirim WA batch order">DO Vendor (<span id="cnt-vendor">0</span>)</button>
     <!-- v4.55.5: Kirim Besok → DO Gantung. Konsolidasi 5 jenis defer + carry over. -->
-    <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota" title="DO Gantung — DO Carry Over (dari kemarin) + DO Gantung Baru hari ini (DO Luar Kota, DO Overflow, DO Low-Util, KIRIM TGL X). Manual decide per DO via dispatcher.">DO Gantung (<span id="cnt-pending-tab">0</span>)<span id="badge-trip2" class="trip2-badge" title="Trip-2 Auto-Assigned baru — buka tab DO Gantung untuk handle"></span></button>
+    <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota" title="DO Gantung — DO Carry Over (dari kemarin) + DO Gantung Baru hari ini (DO Luar Kota +Low-Util, DO Overflow, KIRIM TGL X). Manual decide per DO via dispatcher. v4.55.16: 1 DO hanya tampil di 1 section (priority dedup).">DO Gantung (<span id="cnt-pending-tab">0</span>)<span id="badge-trip2" class="trip2-badge" title="Trip-2 Auto-Assigned baru — buka tab DO Gantung untuk handle"></span></button>
     <!-- v4.55.5: DO Konflik tab di-hide. -->
     <button class="tab-btn" onclick="switchTab('konflik',this)" id="tab-btn-konflik" style="display:none;color:#b91c1c">⚠ DO Konflik</button>
     <button class="tab-btn" id="tab-btn-biaya" onclick="switchTab('biaya',this)">💰 Biaya Ops</button>
@@ -856,7 +856,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
 
       <!-- Summary cards (auto + manual defer dari capacity) -->
-      <div style="font-size:12px;color:#64748b;margin-bottom:6px">DO Gantung Baru: <span id="cnt-luarkota">0</span> DO Luar Kota + <span id="cnt-lowutil">0</span> DO Low-Util + <span id="cnt-jabo-overflow">0</span> DO Overflow</div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:6px">DO Gantung Baru: <span id="cnt-luarkota">0</span> DO Luar Kota (termasuk Low-Util) + <span id="cnt-jabo-overflow">0</span> DO Overflow<span id="cnt-lowutil-wrap" style="display:none"> + <span id="cnt-lowutil">0</span> DO Low-Util</span></div>
       <!-- v4.55.7: Split jadi 2 sections — Luar Kota (asli luar Jabodetabek) + Carry Over Jabo (DO Jabo carry-over kemarin) -->
       <!-- SECTION A: Luar Kota — DO yang asli luar Jabodetabek (Bandung, Cikampek, Subang, dll) -->
       <div id="luar-kota-summary-header" style="display:none;font-size:11px;color:#9333ea;font-weight:700;margin-bottom:4px">🌏 LUAR KOTA — Akumulasi Volume</div>
@@ -11627,6 +11627,81 @@ Hubungi dispatcher untuk konfirmasi.`;
 }
 
 function renderLuarKotaPending(){
+  // ════════════════════════════════════════════════════════════════════════════
+  // v4.55.16 PRIORITY-BASED DEDUP
+  // 1 DO hanya tampil di 1 section sesuai priority hierarchy:
+  //   1. Titipan Masuk (paling tinggi — beda gudang)
+  //   2. Carry Over (yesterday's pending)
+  //   3. DO Luar Kota (MERGED dengan Low-Util — section terpisah dihilangkan)
+  //   4. Overflow Jabo
+  //   5. KIRIM TGL X / Pending Besok
+  //
+  // Implementation: mutate-with-restore pattern. Apply dedup di awal,
+  // restore originals di finally{} supaya function lain (export, dispatch,
+  // etc.) tetap akses original full data.
+  // ════════════════════════════════════════════════════════════════════════════
+  const _v416_seen = new Set();
+  const _v416_backup = {
+    titipanMasuk : window.doTitipanMasuk,
+    carryOver    : window.doCarryOverItems,
+    luarKota     : (typeof doLuarKota !== 'undefined' && Array.isArray(doLuarKota)) ? doLuarKota.slice() : null,
+    lowUtil      : (typeof doLowUtil  !== 'undefined' && Array.isArray(doLowUtil )) ? doLowUtil.slice()  : null,
+    vendor       : (typeof doVendor   !== 'undefined' && Array.isArray(doVendor  )) ? doVendor.slice()   : null
+  };
+
+  const _v416_dedup = (arr) => {
+    if (!arr || !Array.isArray(arr)) return arr;
+    return arr.filter(it => {
+      const dn = String((it && it.doc_no) || '');
+      if (!dn) return true; // keep tanpa doc_no (rare)
+      if (_v416_seen.has(dn)) return false;
+      _v416_seen.add(dn);
+      return true;
+    });
+  };
+
+  try {
+    // PRIORITY 1: Titipan Masuk
+    window.doTitipanMasuk    = _v416_dedup(_v416_backup.titipanMasuk);
+    // PRIORITY 2: Carry Over
+    window.doCarryOverItems  = _v416_dedup(_v416_backup.carryOver);
+    // PRIORITY 3: Luar Kota + Low-Util MERGED (Low-Util section dihilangkan)
+    if (_v416_backup.luarKota !== null && _v416_backup.lowUtil !== null) {
+      const merged = _v416_dedup([..._v416_backup.luarKota, ..._v416_backup.lowUtil]);
+      doLuarKota.length = 0;
+      doLuarKota.push(...merged);
+      doLowUtil.length = 0; // section Low-Util kosong
+    }
+    // PRIORITY 4: doVendor (overflow source) — filter sisa
+    if (_v416_backup.vendor !== null) {
+      const filteredVendor = _v416_dedup(_v416_backup.vendor);
+      doVendor.length = 0;
+      doVendor.push(...filteredVendor);
+    }
+
+    _v416_renderInner();
+
+  } finally {
+    // RESTORE original arrays — wajib supaya function lain tetap akses full data
+    window.doTitipanMasuk   = _v416_backup.titipanMasuk;
+    window.doCarryOverItems = _v416_backup.carryOver;
+    if (_v416_backup.luarKota !== null) {
+      doLuarKota.length = 0;
+      doLuarKota.push(..._v416_backup.luarKota);
+    }
+    if (_v416_backup.lowUtil !== null) {
+      doLowUtil.length = 0;
+      doLowUtil.push(..._v416_backup.lowUtil);
+    }
+    if (_v416_backup.vendor !== null) {
+      doVendor.length = 0;
+      doVendor.push(..._v416_backup.vendor);
+    }
+  }
+}
+
+function _v416_renderInner(){
+  // v4.55.16: Body asli renderLuarKotaPending — di-rename supaya wrapper bisa apply dedup
   // v4.55.5: Render section "Titipan Belum Konfirmasi" — DOs Bapak titip > threshold jam.
   // Source: window.doTitipanBelumKonfirmasi (set in startAnalysis after GAS fetch).
   // Tampil paling atas — paling kritis (Bapak nitip belum tahu sampai mana).
