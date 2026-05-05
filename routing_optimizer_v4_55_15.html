@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.55.13</title>
+<title>Routing Optimizer v4.55.15</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -375,6 +375,10 @@ body.dispatch-active .dispatch-bar{display:flex}
 /* ── MUSIBAH ALERT ── */
 .musibah-alert{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#dc2626;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:700;z-index:9999;box-shadow:0 4px 20px rgba(220,38,38,.5);animation:alertPulse 1s infinite;display:flex;align-items:center;gap:8px;cursor:pointer;max-width:90vw}
 @keyframes alertPulse{0%,100%{box-shadow:0 4px 20px rgba(220,38,38,.5)}50%{box-shadow:0 4px 30px rgba(220,38,38,.8)}}
+/* v4.55.15: Trip-2 badge counter di tab DO Gantung — merah mencolok dgn pulse */
+@keyframes pulse-trip2{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.1);opacity:.85}}
+.trip2-badge{display:none;background:#dc2626;color:#fff;font-size:10px;font-weight:800;border-radius:10px;padding:2px 7px;margin-left:6px;vertical-align:middle;animation:pulse-trip2 1.5s infinite;box-shadow:0 0 0 2px rgba(220,38,38,.25)}
+.trip2-badge.show{display:inline-block}
 
 /* ── POLLING INDICATOR ── */
 .polling-badge{font-size:9px;padding:2px 7px;border-radius:10px;background:#f0fdf4;color:#15803d;border:1px solid #86efac;margin-left:6px;display:inline-flex;align-items:center;gap:3px}
@@ -470,7 +474,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.13</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.15</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -532,7 +536,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.13</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.15</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -545,7 +549,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     <!-- v4.55.9: Tab DO Vendor di-unhide. Diperlukan untuk dispatcher lihat list DO yang udah di-assign ke vendor + akses tombol "Kirim Order via WhatsApp" untuk batch send. -->
     <button class="tab-btn" onclick="switchTab('vendor',this)" title="DO yang di-assign manual ke vendor — lihat list & kirim WA batch order">DO Vendor (<span id="cnt-vendor">0</span>)</button>
     <!-- v4.55.5: Kirim Besok → DO Gantung. Konsolidasi 5 jenis defer + carry over. -->
-    <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota" title="DO Gantung — DO Carry Over (dari kemarin) + DO Gantung Baru hari ini (DO Luar Kota, DO Overflow, DO Low-Util, KIRIM TGL X). Manual decide per DO via dispatcher.">DO Gantung (<span id="cnt-pending-tab">0</span>)</button>
+    <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota" title="DO Gantung — DO Carry Over (dari kemarin) + DO Gantung Baru hari ini (DO Luar Kota, DO Overflow, DO Low-Util, KIRIM TGL X). Manual decide per DO via dispatcher.">DO Gantung (<span id="cnt-pending-tab">0</span>)<span id="badge-trip2" class="trip2-badge" title="Trip-2 Auto-Assigned baru — buka tab DO Gantung untuk handle"></span></button>
     <!-- v4.55.5: DO Konflik tab di-hide. -->
     <button class="tab-btn" onclick="switchTab('konflik',this)" id="tab-btn-konflik" style="display:none;color:#b91c1c">⚠ DO Konflik</button>
     <button class="tab-btn" id="tab-btn-biaya" onclick="switchTab('biaya',this)">💰 Biaya Ops</button>
@@ -738,6 +742,31 @@ body.dispatch-active .dispatch-bar{display:flex}
               <th style="min-width:200px">Aksi</th>
             </tr></thead>
             <tbody id="tbody-titipan-belum-konfirm"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- v4.55.14 SEKSI 0a: Trip-2 Auto-Assigned — kendaraan dari DY/DM yang sudah selesai trip-1
+           dan auto-assigned ke titipan masuk. Cron jam 12:00-16:00 WIB di GAS. -->
+      <div id="trip2-section" style="margin-bottom:24px;padding:12px;background:#ecfdf5;border-radius:10px;border:2px solid #10b981;display:none">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <div style="width:12px;height:12px;border-radius:50%;background:#059669;flex-shrink:0"></div>
+          <div style="font-size:13px;font-weight:700;color:#064e3b">🔄 Trip-2 Auto-Assigned — Kendaraan Selesai Trip-1 → Pickup Titipan — <span id="cnt-trip2">0</span> assignment</div>
+          <span style="font-size:10px;color:#064e3b">Sistem auto-assign berdasarkan capacity + waktu. Bapak bisa kirim WA atau cancel.</span>
+        </div>
+        <div style="font-size:10px;color:#064e3b;margin-bottom:8px;padding:6px 10px;background:#a7f3d0;border-radius:6px;border-left:3px solid #059669">
+          ℹ️ Trip-2 = pickup di Cikuda → simpan di gudang DY/DM. BUKAN deliver ke customer (jam 14:00 ke atas terlalu sore). Customer dikirim besok dari gudang penerima titipan.
+        </div>
+        <div class="tbl-wrap">
+          <table class="info-tbl">
+            <thead><tr>
+              <th>DO No</th><th>Customer</th><th>Asal → Tujuan</th>
+              <th>Kendaraan</th><th>Driver</th><th>Tipe</th>
+              <th>Berat / Vol</th><th>Util %</th><th>Score</th>
+              <th>Notif WA</th>
+              <th style="min-width:160px">Aksi</th>
+            </tr></thead>
+            <tbody id="tbody-trip2"></tbody>
           </table>
         </div>
       </div>
@@ -1385,6 +1414,20 @@ window.onload=()=>{
   if(savedId) document.getElementById('gs-id').value=savedId;
   loadGeoCache();
   checkSavedSession(); // ← cek session login tersimpan
+
+  // v4.55.15: Background polling untuk badge counter Trip-2 setiap 60 detik.
+  // Dispatcher gak perlu buka tab DO Gantung untuk tahu ada trip-2 baru.
+  setInterval(() => {
+    if (typeof loadTrip2Assignments === 'function' && typeof gasUrl !== 'undefined' && gasUrl) {
+      loadTrip2Assignments(true).then(() => {
+        // Re-render section kalau lagi di tab DO Gantung supaya data fresh
+        const tabBtn = document.getElementById('tab-btn-luarkota');
+        if (tabBtn && tabBtn.classList.contains('active') && typeof renderTrip2Section === 'function') {
+          renderTrip2Section();
+        }
+      });
+    }
+  }, 60 * 1000); // 60 detik
 };
 
 async function connectGSheets(){
@@ -11323,6 +11366,266 @@ function _gantungSearchApply(){
   }
 }
 
+// v4.55.14 Phase 4+6: Trip-2 Auto-Assigned — fetch from GAS, render section, manual cancel + WA notif
+// v4.55.15: Feature flag untuk WA notif (Fonnte deferred). Set ke true kalau Fonnte sudah ready.
+const ENABLE_WA_NOTIF = false; // ⚙ Toggle: false=hidden, true=aktifkan tombol WA + kolom Notif
+window._trip2Assignments = [];
+window._trip2LastFetch = 0;
+
+function loadTrip2Assignments(force){
+  // Throttle: gak refetch kalau < 10 detik dari last fetch (kecuali force=true)
+  const now = Date.now();
+  if (!force && (now - window._trip2LastFetch) < 10000) return Promise.resolve(window._trip2Assignments);
+
+  if (typeof gasUrl === 'undefined' || !gasUrl) {
+    window._trip2Assignments = [];
+    return Promise.resolve([]);
+  }
+
+  const userGudang = (typeof currentUser!=='undefined' && currentUser && currentUser.gudang) || window.SCAN_SAP_WH || window._userGudang || '';
+  const url = gasUrl + '?action=getTrip2AutoAssignments' + (userGudang ? '&gudang='+encodeURIComponent(userGudang) : '');
+
+  return fetch(url, { method: 'GET' })
+    .then(r => r.json())
+    .then(data => {
+      if (data && data.ok) {
+        window._trip2Assignments = data.assignments || [];
+        window._trip2LastFetch = Date.now();
+      } else {
+        window._trip2Assignments = [];
+      }
+      // v4.55.15: Update badge counter di tab DO Gantung (independent dari section render)
+      _updateTrip2Badge();
+      return window._trip2Assignments;
+    })
+    .catch(err => {
+      console.warn('[Trip2] Fetch error:', err);
+      window._trip2Assignments = [];
+      _updateTrip2Badge();
+      return [];
+    });
+}
+
+// v4.55.15: Update badge counter merah di tab "DO Gantung"
+function _updateTrip2Badge(){
+  const badge = document.getElementById('badge-trip2');
+  if (!badge) return;
+  const items = window._trip2Assignments || [];
+  if (items.length > 0) {
+    badge.textContent = '🔄 ' + items.length;
+    badge.classList.add('show');
+  } else {
+    badge.textContent = '';
+    badge.classList.remove('show');
+  }
+}
+
+function renderTrip2Section(){
+  const sect = document.getElementById('trip2-section');
+  const tbody = document.getElementById('tbody-trip2');
+  const cntEl = document.getElementById('cnt-trip2');
+  if (!sect || !tbody) return;
+
+  const items = window._trip2Assignments || [];
+  if (cntEl) cntEl.textContent = items.length;
+
+  if (!items.length) {
+    sect.style.display = 'none';
+    tbody.innerHTML = '';
+    return;
+  }
+
+  sect.style.display = '';
+
+  // v4.55.15: Hide kolom "Notif WA" kalau feature flag off
+  const headerNotifCol = sect.querySelector('thead th:nth-child(10)');
+  if (headerNotifCol) headerNotifCol.style.display = ENABLE_WA_NOTIF ? '' : 'none';
+
+  tbody.innerHTML = items.map(a => {
+    const score = a.total_score >= 70 ? '🟢' : (a.total_score >= 50 ? '🟡' : '🔴');
+    const utilLabel = a.util_pct + '%';
+    const utilColor = a.util_pct >= 60 ? '#059669' : (a.util_pct >= 30 ? '#d97706' : '#9ca3af');
+
+    // v4.55.15: WA badge hanya muncul kalau flag aktif
+    let waBadge = '';
+    if (ENABLE_WA_NOTIF) {
+      const dispatcherWaSent = a.notif_dispatcher_at && a.notif_dispatcher_at.trim();
+      const driverWaSent = a.notif_driver_at && a.notif_driver_at.trim();
+      waBadge = '<td>' + (dispatcherWaSent && driverWaSent
+        ? `<span style="font-size:9px;color:#059669;background:#a7f3d0;padding:2px 6px;border-radius:3px" title="${escapeHtml(a.notif_dispatcher_at)} | Driver: ${escapeHtml(a.notif_driver_at)}">✓ WA Terkirim</span>`
+        : (dispatcherWaSent
+          ? `<span style="font-size:9px;color:#0e7490;background:#cffafe;padding:2px 6px;border-radius:3px">⚠ Driver Belum</span>`
+          : `<span style="font-size:9px;color:#92400e;background:#fef3c7;padding:2px 6px;border-radius:3px">⏳ Belum WA</span>`)) + '</td>';
+    }
+
+    // v4.55.15: Tombol WA hanya muncul kalau flag aktif
+    const waBtn = ENABLE_WA_NOTIF
+      ? `<button onclick="trip2SendWA(${a.sheet_row})" style="font-size:9px;padding:3px 8px;background:#22c55e;color:#fff;border:0;border-radius:4px;cursor:pointer" title="Kirim WA dispatcher asal + driver">📱 WA</button>`
+      : '';
+
+    return `<tr>
+      <td style="font-family:var(--mono);font-size:10px">${escapeHtml(a.doc_no)}</td>
+      <td style="font-size:10px">${escapeHtml(a.customer)}</td>
+      <td style="font-size:10px"><span style="color:#7c2d12;font-weight:700">${escapeHtml(a.titipan_dari)}</span> → <span style="color:#059669;font-weight:700">${escapeHtml(a.gudang_penerima)}</span></td>
+      <td style="font-family:var(--mono);font-size:11px;font-weight:700">${escapeHtml(a.plat)}</td>
+      <td style="font-size:10px">${escapeHtml(a.driver)}</td>
+      <td style="font-size:10px">${escapeHtml(a.tipe)}</td>
+      <td style="font-size:10px;font-family:var(--mono)">${Number(a.total_wt).toLocaleString('id-ID')}kg / ${Number(a.total_vol).toFixed(2)}m³</td>
+      <td style="font-size:10px;font-family:var(--mono);color:${utilColor};font-weight:700">${utilLabel}</td>
+      <td style="font-size:10px;font-family:var(--mono)" title="cap=${a.capacity_score} time=${a.time_score} via=${a.via}">${score} ${a.total_score}</td>
+      ${waBadge}
+      <td>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          ${waBtn}
+          <button onclick="trip2Cancel(${a.sheet_row})" style="font-size:9px;padding:3px 8px;background:#fff;color:#dc2626;border:1px solid #fca5a5;border-radius:4px;cursor:pointer" title="Batalkan auto-assignment">✗ Batal</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// Phase 6: Manual cancel
+async function trip2Cancel(sheetRow){
+  const a = (window._trip2Assignments||[]).find(x => x.sheet_row === sheetRow);
+  if (!a) { alert('Assignment tidak ditemukan'); return; }
+
+  const reason = prompt(`Batalkan trip-2 ${a.doc_no} → ${a.plat} (${a.driver})?\n\nAlasan (akan tercatat di audit log):`);
+  if (reason === null) return; // user batal
+  if (!reason.trim()) { alert('Alasan wajib diisi'); return; }
+
+  const userGudang = (typeof currentUser!=='undefined' && currentUser && currentUser.gudang) || '';
+  const canceledBy = userGudang || 'unknown';
+
+  try {
+    const res = await fetch(gasUrl, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'cancelTrip2Assignment',
+        sheet_row: sheetRow,
+        reason: reason.trim(),
+        canceled_by: canceledBy
+      })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      alert(`✓ Trip-2 ${a.doc_no} dibatalkan.\n\nKendaraan ${a.plat} di-release. DO kembali ke pool titipan masuk.`);
+      await loadTrip2Assignments(true);
+      renderTrip2Section();
+      // Re-render section titipan masuk juga (DO mungkin balik ke pool)
+      if (typeof renderLuarKotaPending === 'function') renderLuarKotaPending();
+    } else {
+      alert('Gagal cancel: ' + (data.error || 'unknown'));
+    }
+  } catch (e) {
+    alert('Error cancel trip-2: ' + e.message);
+  }
+}
+
+// Phase 5: Send WA to dispatcher gudang asal kendaraan + driver
+async function trip2SendWA(sheetRow){
+  const a = (window._trip2Assignments||[]).find(x => x.sheet_row === sheetRow);
+  if (!a) { alert('Assignment tidak ditemukan'); return; }
+
+  if (!confirm(`Kirim WA notifikasi trip-2 ke:\n\n• Dispatcher ${a.gudang_asal_kendaraan} (asal kendaraan)\n• Driver ${a.driver} (HP plat ${a.plat})\n\nDO ${a.doc_no} pickup ${a.titipan_dari} → drop ${a.gudang_penerima}.`)) return;
+
+  // Build WA messages
+  const dispatcherMsg = `🔔 *TRIP-2 AUTO-ASSIGNED*
+
+Kendaraan ${a.plat} (${a.driver}) di-assign trip-2:
+
+DO: ${a.doc_no}
+Customer: ${a.customer}
+Pickup: Gudang ${a.titipan_dari}
+Drop: Gudang ${a.gudang_penerima}
+Berat: ${Number(a.total_wt).toLocaleString('id-ID')} kg
+Volume: ${Number(a.total_vol).toFixed(2)} m³
+
+Score: ${a.total_score}/100 (cap ${a.capacity_score} + waktu ${a.time_score})
+Trip ini transport antar gudang saja, bukan antar customer.`;
+
+  const driverMsg = `🚛 *TRIP-2 BARU — ${a.plat}*
+
+Halo ${a.driver}, kendaraan ${a.plat} di-assign trip-2:
+
+📍 Pickup: Gudang ${a.titipan_dari}
+📍 Drop: Gudang ${a.gudang_penerima} (parkir di sini)
+
+DO: ${a.doc_no}
+Customer: ${a.customer}
+Berat: ${Number(a.total_wt).toLocaleString('id-ID')} kg
+Volume: ${Number(a.total_vol).toFixed(2)} m³
+
+Hubungi dispatcher untuk konfirmasi.`;
+
+  // Try to find driver phone via vehicles list
+  const veh = (typeof getAllVehicles === 'function' ? getAllVehicles() : []).find(v => v.plat === a.plat);
+  const driverPhone = veh && veh.telp ? String(veh.telp).replace(/\D/g,'') : '';
+
+  let dispatcherSent = false, driverSent = false;
+
+  // Send dispatcher message — open WA web
+  try {
+    // Method paling reliable: WA web with copy-able text
+    const waUrl = 'https://wa.me/?text=' + encodeURIComponent(dispatcherMsg);
+    window.open(waUrl, '_blank');
+    dispatcherSent = true;
+  } catch (e) {
+    console.warn('Dispatcher WA error:', e);
+  }
+
+  // Send driver message
+  if (driverPhone) {
+    try {
+      let phone = driverPhone;
+      if (phone.startsWith('0')) phone = '62' + phone.slice(1);
+      else if (!phone.startsWith('62')) phone = '62' + phone;
+      const waUrl = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(driverMsg);
+      setTimeout(() => window.open(waUrl, '_blank'), 1000);
+      driverSent = true;
+    } catch (e) {
+      console.warn('Driver WA error:', e);
+    }
+  } else {
+    alert('Nomor telepon driver tidak ditemukan di master Kendaraan. Driver WA dilewati.');
+  }
+
+  // Mark as sent in GAS
+  const markPromises = [];
+  const userGudang = (typeof currentUser!=='undefined' && currentUser && currentUser.gudang) || 'unknown';
+  if (dispatcherSent) {
+    markPromises.push(fetch(gasUrl, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'markTrip2NotifSent',
+        sheet_row: sheetRow,
+        target: 'dispatcher',
+        sent_by: userGudang
+      })
+    }));
+  }
+  if (driverSent) {
+    markPromises.push(fetch(gasUrl, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'markTrip2NotifSent',
+        sheet_row: sheetRow,
+        target: 'driver',
+        sent_by: userGudang
+      })
+    }));
+  }
+
+  try {
+    await Promise.all(markPromises);
+    setTimeout(async () => {
+      await loadTrip2Assignments(true);
+      renderTrip2Section();
+    }, 500);
+  } catch (e) {
+    console.warn('Mark WA sent error:', e);
+  }
+}
+
 function renderLuarKotaPending(){
   // v4.55.5: Render section "Titipan Belum Konfirmasi" — DOs Bapak titip > threshold jam.
   // Source: window.doTitipanBelumKonfirmasi (set in startAnalysis after GAS fetch).
@@ -11538,6 +11841,13 @@ function renderLuarKotaPending(){
 
   // v4.55.13: Re-apply search filter setelah re-render supaya state persist
   if(typeof _gantungSearchApply === 'function') _gantungSearchApply();
+
+  // v4.55.14 Phase 4: Load + render Trip-2 Auto-Assigned section (async, non-blocking)
+  if(typeof loadTrip2Assignments === 'function'){
+    loadTrip2Assignments().then(() => {
+      if(typeof renderTrip2Section === 'function') renderTrip2Section();
+    });
+  }
 }
 
 function downloadLuarKotaPending(){
