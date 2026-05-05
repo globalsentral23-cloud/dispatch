@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.55.16</title>
+<title>Routing Optimizer v4.55.17</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -474,7 +474,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.16</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.17</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -536,7 +536,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.16</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.17</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -11628,20 +11628,29 @@ Hubungi dispatcher untuk konfirmasi.`;
 
 function renderLuarKotaPending(){
   // ════════════════════════════════════════════════════════════════════════════
-  // v4.55.16 PRIORITY-BASED DEDUP
-  // 1 DO hanya tampil di 1 section sesuai priority hierarchy:
+  // v4.55.17 PRIORITY-BASED DEDUP (FIXED)
+  // 1 LINE ITEM hanya tampil di 1 section sesuai priority hierarchy:
   //   1. Titipan Masuk (paling tinggi — beda gudang)
   //   2. Carry Over (yesterday's pending)
   //   3. DO Luar Kota (MERGED dengan Low-Util — section terpisah dihilangkan)
   //   4. Overflow Jabo
   //   5. KIRIM TGL X / Pending Besok
   //
+  // v4.55.17 FIX: Dedup pakai SIGNATURE GABUNGAN supaya multi-line item
+  //   tidak salah skip. Signature: doc_no|size|qty|total_vol|total_wt
+  //
+  //   Bug v4.55.16: dedup pakai doc_no aja → DO multi-line (qty 260 + qty 520)
+  //                 → line ke-2 hilang dari render (CRITICAL data visibility issue).
+  //   Fix v4.55.17: signature gabungan → multi-line item beda qty/vol/wt
+  //                 → tampil semua. Bug original (3 instance dengan data
+  //                 100% identik) tetap ke-dedup karena signature sama.
+  //
   // Implementation: mutate-with-restore pattern. Apply dedup di awal,
   // restore originals di finally{} supaya function lain (export, dispatch,
   // etc.) tetap akses original full data.
   // ════════════════════════════════════════════════════════════════════════════
-  const _v416_seen = new Set();
-  const _v416_backup = {
+  const _v417_seen = new Set();
+  const _v417_backup = {
     titipanMasuk : window.doTitipanMasuk,
     carryOver    : window.doCarryOverItems,
     luarKota     : (typeof doLuarKota !== 'undefined' && Array.isArray(doLuarKota)) ? doLuarKota.slice() : null,
@@ -11649,32 +11658,46 @@ function renderLuarKotaPending(){
     vendor       : (typeof doVendor   !== 'undefined' && Array.isArray(doVendor  )) ? doVendor.slice()   : null
   };
 
-  const _v416_dedup = (arr) => {
+  // v4.55.17: Build signature dari doc_no + size + qty + total_vol + total_wt.
+  // Multi-line item dengan beda salah satu field → signature beda → tampil semua.
+  // Duplicate identik (bug original) → signature sama → ke-dedup ke 1.
+  const _v417_sig = (it) => {
+    if (!it) return '';
+    const dn = String(it.doc_no || '');
+    if (!dn) return '';
+    return dn + '|' +
+           String(it.size || '').trim().toUpperCase() + '|' +
+           String(it.qty || 0) + '|' +
+           Number(it.total_vol || 0).toFixed(3) + '|' +
+           Number(it.total_wt || 0).toFixed(2);
+  };
+
+  const _v417_dedup = (arr) => {
     if (!arr || !Array.isArray(arr)) return arr;
     return arr.filter(it => {
-      const dn = String((it && it.doc_no) || '');
-      if (!dn) return true; // keep tanpa doc_no (rare)
-      if (_v416_seen.has(dn)) return false;
-      _v416_seen.add(dn);
+      const sig = _v417_sig(it);
+      if (!sig) return true; // keep tanpa signature (rare)
+      if (_v417_seen.has(sig)) return false;
+      _v417_seen.add(sig);
       return true;
     });
   };
 
   try {
     // PRIORITY 1: Titipan Masuk
-    window.doTitipanMasuk    = _v416_dedup(_v416_backup.titipanMasuk);
+    window.doTitipanMasuk    = _v417_dedup(_v417_backup.titipanMasuk);
     // PRIORITY 2: Carry Over
-    window.doCarryOverItems  = _v416_dedup(_v416_backup.carryOver);
+    window.doCarryOverItems  = _v417_dedup(_v417_backup.carryOver);
     // PRIORITY 3: Luar Kota + Low-Util MERGED (Low-Util section dihilangkan)
-    if (_v416_backup.luarKota !== null && _v416_backup.lowUtil !== null) {
-      const merged = _v416_dedup([..._v416_backup.luarKota, ..._v416_backup.lowUtil]);
+    if (_v417_backup.luarKota !== null && _v417_backup.lowUtil !== null) {
+      const merged = _v417_dedup([..._v417_backup.luarKota, ..._v417_backup.lowUtil]);
       doLuarKota.length = 0;
       doLuarKota.push(...merged);
       doLowUtil.length = 0; // section Low-Util kosong
     }
     // PRIORITY 4: doVendor (overflow source) — filter sisa
-    if (_v416_backup.vendor !== null) {
-      const filteredVendor = _v416_dedup(_v416_backup.vendor);
+    if (_v417_backup.vendor !== null) {
+      const filteredVendor = _v417_dedup(_v417_backup.vendor);
       doVendor.length = 0;
       doVendor.push(...filteredVendor);
     }
@@ -11683,19 +11706,19 @@ function renderLuarKotaPending(){
 
   } finally {
     // RESTORE original arrays — wajib supaya function lain tetap akses full data
-    window.doTitipanMasuk   = _v416_backup.titipanMasuk;
-    window.doCarryOverItems = _v416_backup.carryOver;
-    if (_v416_backup.luarKota !== null) {
+    window.doTitipanMasuk   = _v417_backup.titipanMasuk;
+    window.doCarryOverItems = _v417_backup.carryOver;
+    if (_v417_backup.luarKota !== null) {
       doLuarKota.length = 0;
-      doLuarKota.push(..._v416_backup.luarKota);
+      doLuarKota.push(..._v417_backup.luarKota);
     }
-    if (_v416_backup.lowUtil !== null) {
+    if (_v417_backup.lowUtil !== null) {
       doLowUtil.length = 0;
-      doLowUtil.push(..._v416_backup.lowUtil);
+      doLowUtil.push(..._v417_backup.lowUtil);
     }
-    if (_v416_backup.vendor !== null) {
+    if (_v417_backup.vendor !== null) {
       doVendor.length = 0;
-      doVendor.push(..._v416_backup.vendor);
+      doVendor.push(..._v417_backup.vendor);
     }
   }
 }
