@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.55.12</title>
+<title>Routing Optimizer v4.55.13</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -470,7 +470,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.12</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.13</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -532,7 +532,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.12</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.13</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -817,6 +817,13 @@ body.dispatch-active .dispatch-bar{display:flex}
           <span style="font-size:10px;color:var(--muted)">Pindah ke tanggal X yang sudah di-set di SAP</span>
         </div>
         <div class="tbl-wrap"><table class="info-tbl"><thead><tr><th>DO No</th><th>Gudang</th><th>Customer</th><th>Tujuan</th><th>QTY</th><th>Vol (m³)</th><th>Berat (kg)</th><th>Tgl Kirim</th><th>Aksi</th></tr></thead><tbody id="tbody-defer"></tbody></table></div>
+      </div>
+
+      <!-- v4.55.13: Search box untuk filter DO Gantung — search by docNo / customer / plat / driver -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 10px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0">
+        <input id="gantung-search" oninput="_gantungSearchApply()" placeholder="🔍 Cari DO/customer/plat/driver di tab ini..." style="font-size:11px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;flex:1;max-width:380px">
+        <button onclick="document.getElementById('gantung-search').value='';_gantungSearchApply();" style="font-size:10px;padding:4px 8px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;color:#64748b;cursor:pointer" title="Clear search">✗</button>
+        <span id="gantung-search-count" style="font-size:10px;color:#64748b;font-style:italic"></span>
       </div>
 
       <!-- Summary cards (auto + manual defer dari capacity) -->
@@ -11286,6 +11293,36 @@ async function emergencyRestoreToToday(docNo, source){
   });
 }
 
+// v4.55.13: Filter DO Gantung rows by search query — DOM-based filter setelah render.
+// Search di docNo + customer + plat + driver + alamat.
+// Pakai data attribute supaya gak rebuild render.
+function _gantungSearchApply(){
+  const inp = document.getElementById('gantung-search');
+  if(!inp) return;
+  const q = String(inp.value||'').trim().toLowerCase();
+  // Sasaran: semua tbody yang ada di tab DO Gantung — punya checkbox dengan data-bulk-section
+  const tabPane = document.getElementById('tab-gantung');
+  if(!tabPane) return;
+  const rows = tabPane.querySelectorAll('tbody tr');
+  let visible = 0, total = 0;
+  rows.forEach(tr => {
+    total++;
+    if(!q){ tr.style.display = ''; visible++; return; }
+    // Build search haystack dari text seluruh row (lowercase)
+    const haystack = (tr.textContent||'').toLowerCase();
+    const match = haystack.includes(q);
+    tr.style.display = match ? '' : 'none';
+    if(match) visible++;
+  });
+  // Update counter di header
+  const cnt = document.getElementById('gantung-search-count');
+  if(cnt){
+    cnt.textContent = q
+      ? `Menampilkan ${visible} dari ${total} row`
+      : '';
+  }
+}
+
 function renderLuarKotaPending(){
   // v4.55.5: Render section "Titipan Belum Konfirmasi" — DOs Bapak titip > threshold jam.
   // Source: window.doTitipanBelumKonfirmasi (set in startAnalysis after GAS fetch).
@@ -11498,6 +11535,9 @@ function renderLuarKotaPending(){
   // v4.55.5: Re-render bulk action bar (sticky di top tab-luarkota)
   // Sync state karena tbody di-re-render → checkbox state di-restore via bulkSelection.has()
   _renderBulkBar();
+
+  // v4.55.13: Re-apply search filter setelah re-render supaya state persist
+  if(typeof _gantungSearchApply === 'function') _gantungSearchApply();
 }
 
 function downloadLuarKotaPending(){
@@ -12037,6 +12077,35 @@ function buildDataDORows(){
     _add(unassignedItems, { source:'unassigned' });
   }
 
+  // v4.55.13: Tambah 4 source DO Gantung supaya DO yang ada di pool tampil di Data DO
+  // (jika belum ada di sources sebelumnya). Pakai map check untuk avoid duplicate.
+  const _addIfNew = (items, opts) => {
+    items.forEach(it => {
+      if(it && it.doc_no && !map.has(it.doc_no)){
+        _add([it], opts);
+      } else if(it && it.doc_no && map.has(it.doc_no)){
+        // Sudah ada — tambah line item ke existing
+        const existing = map.get(it.doc_no);
+        if(!existing.items.some(x => x === it)){
+          existing.items.push(it);
+          existing.qty += (parseFloat(it.qty)||0);
+        }
+      }
+    });
+  };
+  if(typeof window.doCarryOverItems !== 'undefined' && Array.isArray(window.doCarryOverItems)){
+    _addIfNew(window.doCarryOverItems, { source:'carry_over' });
+  }
+  if(typeof doLuarKota !== 'undefined' && Array.isArray(doLuarKota)){
+    _addIfNew(doLuarKota, { source:'luar_kota' });
+  }
+  if(typeof doLowUtil !== 'undefined' && Array.isArray(doLowUtil)){
+    _addIfNew(doLowUtil, { source:'low_util' });
+  }
+  if(typeof window.doTitipanMasuk !== 'undefined' && Array.isArray(window.doTitipanMasuk)){
+    _addIfNew(window.doTitipanMasuk, { source:'titipan_masuk' });
+  }
+
   // 5. Determine status per DO based on dispatchLog + RT data + vendor assignment
   const rows = Array.from(map.values());
   rows.forEach(row => {
@@ -12080,6 +12149,49 @@ function buildDataDORows(){
       row.status = 'suggested';
       row.is_suggestion = true;
       return;
+    }
+
+    // v4.55.13: Cek _gantungState — kalau dispatcher udah action di DO Gantung,
+    // DO ini SHOULD LOCKED di Data DO (gak boleh edit driver lagi).
+    // Solve BUG: DO TUNDA di DO Gantung masih bisa di-assign driver di Data DO.
+    const gantungAct = (typeof window._gantungState === 'object' && window._gantungState) ? window._gantungState[row.doc_no] : null;
+    if(gantungAct && gantungAct.action){
+      switch(gantungAct.action){
+        case 'TUNDA':
+          row.status = 'kirim_besok';
+          row.is_locked = true;
+          row.gantung_action_label = '📅 Ditunda dispatcher';
+          return;
+        case 'CANCEL':
+          row.status = 'skipped';
+          row.is_locked = true;
+          row.last_action = 'cancel';
+          row.gantung_action_label = '✗ Cancel di DO Gantung';
+          return;
+        case 'VENDOR':
+          // Already handled by vendor flag below — but if reach here, mark locked
+          {
+            const v = (typeof vendorState !== 'undefined' ? vendorState : []).find(x => x.kode === gantungAct.target);
+            row.status = 'vendor';
+            row.is_locked = true;
+            row.is_vendor = true;
+            row.plat = 'VENDOR:' + gantungAct.target;
+            row.driver = v ? v.nama : gantungAct.target;
+            row.gantung_action_label = `📦 Assigned vendor (DO Gantung)`;
+            return;
+          }
+        case 'INTERNAL':
+          // Already handled by route find — but if reach here, mark locked
+          row.is_locked = true;
+          row.gantung_action_label = `🚛 Assigned internal (DO Gantung)`;
+          // status determined below by plat
+          break;
+        case 'TITIP':
+          row.status = 'kirim_besok'; // best fit semantik
+          row.is_locked = true;
+          row.gantung_action_label = `↪ Titip ke ${gantungAct.target}`;
+          return;
+      }
     }
 
     // Default: assigned kalau punya plat, pending kalau belum
@@ -12187,7 +12299,11 @@ function renderDataDO(){
     if(row.status === 'skipped'){
       driverCell = `<span style="font-size:10px;color:#94a3b8;font-style:italic">— di-${row.last_action} dispatcher</span>`;
     } else if(row.is_locked){
-      driverCell = `<span style="font-size:10px">${escapeHtml(row.plat||'—')}<br><span style="color:#94a3b8;font-size:9px">${escapeHtml(row.driver||'')}</span></span>`;
+      // v4.55.13: Tampilkan label aksi DO Gantung (TUNDA/CANCEL/TITIP) supaya dispatcher tahu kenapa DO ini ke-lock
+      const gLabel = row.gantung_action_label
+        ? `<div style="font-size:9px;color:#92400e;font-style:italic;background:#fef3c7;padding:1px 5px;border-radius:3px;margin-top:2px;display:inline-block">${escapeHtml(row.gantung_action_label)}</div>`
+        : '';
+      driverCell = `<span style="font-size:10px">${escapeHtml(row.plat||'—')}<br><span style="color:#94a3b8;font-size:9px">${escapeHtml(row.driver||'')}</span>${gLabel}</span>`;
     } else if(!dispatchOn){
       // Dispatch mode off — show current assignment as readonly
       driverCell = row.plat
@@ -12705,33 +12821,75 @@ function _dataDOExecuteAssign(docNos, plat){
   const veh = (typeof vehicles !== 'undefined' && vehicles ? vehicles : (typeof getAllVehicles === 'function' ? getAllVehicles() : [])).find(v=>v.plat===plat);
   if(!veh){ alert('Driver tidak ditemukan.'); return; }
   let moved = 0;
+  let notFound = []; // v4.55.13: track DO yang gak ditemukan di source manapun
   docNos.forEach(docNo => {
     // Find DO across all sources
     const oldRoute = routes.find(r => (r.items||[]).some(i => i.doc_no === docNo));
     let do_items = [];
+    let foundIn = null; // v4.55.13: track sumber asal
     if(oldRoute){
       do_items = oldRoute.items.filter(i => i.doc_no === docNo);
       oldRoute.items = oldRoute.items.filter(i => i.doc_no !== docNo);
       // Recalc route load
       oldRoute.total_wt = oldRoute.items.reduce((a,i)=>a+(i.weight_kg||0),0);
       oldRoute.total_vol = oldRoute.items.reduce((a,i)=>a+(i.volume||0),0);
+      foundIn = 'route';
     } else {
       // Coba dari doVendor
       do_items = (typeof doVendor !== 'undefined' ? doVendor : []).filter(i => i.doc_no === docNo);
-      if(typeof doVendor !== 'undefined'){
+      if(do_items.length > 0 && typeof doVendor !== 'undefined'){
         for(let i = doVendor.length-1; i >= 0; i--){
           if(doVendor[i].doc_no === docNo) doVendor.splice(i, 1);
         }
+        foundIn = 'doVendor';
       }
       // v4.52.1: Coba juga dari unassignedItems pool (DO yang reject dari suggestion)
       if(do_items.length === 0 && typeof unassignedItems !== 'undefined'){
         do_items = unassignedItems.filter(i => i.doc_no === docNo);
-        for(let i = unassignedItems.length-1; i >= 0; i--){
-          if(unassignedItems[i].doc_no === docNo) unassignedItems.splice(i, 1);
+        if(do_items.length > 0){
+          for(let i = unassignedItems.length-1; i >= 0; i--){
+            if(unassignedItems[i].doc_no === docNo) unassignedItems.splice(i, 1);
+          }
+          foundIn = 'unassignedItems';
+        }
+      }
+      // v4.55.13: Cari di 4 source DO Gantung — solve BUG phantom success
+      // Saat ditemukan di sini, panggil _markDoGantungReleased supaya GAS state consistent.
+      const _gantungSources = [
+        { name:'doCarryOverItems', arr: window.doCarryOverItems || [] },
+        { name:'doLuarKota',       arr: typeof doLuarKota !== 'undefined' ? doLuarKota : [] },
+        { name:'doLowUtil',        arr: typeof doLowUtil !== 'undefined' ? doLowUtil : [] },
+        { name:'doTitipanMasuk',   arr: window.doTitipanMasuk || [] }
+      ];
+      for(const src of _gantungSources){
+        if(do_items.length > 0) break;
+        const items = src.arr.filter(i => i.doc_no === docNo);
+        if(items.length > 0){
+          do_items = items;
+          // Splice out dari array — DO hari ini akan masuk ke route internal
+          for(let i = src.arr.length-1; i >= 0; i--){
+            if(src.arr[i].doc_no === docNo) src.arr.splice(i, 1);
+          }
+          foundIn = src.name;
+          // Mark gantung state INTERNAL — supaya state Data DO + DO Gantung consistent
+          if(typeof window._gantungState === 'object' && window._gantungState){
+            window._gantungState[docNo] = { action: 'INTERNAL', target: plat, timestamp: Date.now(), via: 'datado' };
+          }
+          // Persist via _markDoGantungReleased async (fire-and-forget, gak block UI)
+          if(typeof _markDoGantungReleased === 'function'){
+            _markDoGantungReleased(docNo, 'RELEASED', 'internal').catch(err => {
+              console.warn(`[v4.55.13] _markDoGantungReleased failed for ${docNo}:`, err);
+            });
+          }
         }
       }
     }
-    if(!do_items.length) return;
+    if(!do_items.length){
+      // v4.55.13: track + log notFound supaya alert akurat (bukan phantom success)
+      notFound.push(docNo);
+      console.warn(`[v4.55.13] _dataDOExecuteAssign: DO ${docNo} tidak ditemukan di routes / doVendor / unassignedItems / doCarryOverItems / doLuarKota / doLowUtil / doTitipanMasuk — skip.`);
+      return;
+    }
 
     // v4.52.1: Manual assign clears is_suggestion flag (committed)
     do_items.forEach(it => { it.is_suggestion = false; });
@@ -12762,7 +12920,7 @@ function _dataDOExecuteAssign(docNos, plat){
 
     dispatchLog.push({
       route_id: newRoute.id, doc_no: docNo, action: 'assign_manual',
-      alasan: `Manual assign via tab Data DO ${oldRoute?'(override auto)':''}`,
+      alasan: `Manual assign via tab Data DO ${oldRoute?'(override auto)':foundIn?'(from '+foundIn+')':''}`,
       source: 'datado',
       waktu: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
       plat: plat, driver: veh.driver||''
@@ -12779,7 +12937,15 @@ function _dataDOExecuteAssign(docNos, plat){
     if(typeof showApp === 'function') showApp();
     if(typeof renderKPI === 'function') renderKPI();
     renderDataDO();
-    alert(`✓ ${moved} DO berhasil di-assign ke ${plat} / ${veh.driver||''}.`);
+    // v4.55.13: Truthful alert — kalau ada notFound, kasih tau dispatcher
+    let msg = `✓ ${moved} DO berhasil di-assign ke ${plat} / ${veh.driver||''}.`;
+    if(notFound.length > 0){
+      msg += `\n\n⚠ ${notFound.length} DO TIDAK ditemukan di pool routes/vendor/gantung:\n   ${notFound.join(', ')}\n\nMungkin sudah di-action sebelumnya. Refresh halaman & cek state.`;
+    }
+    alert(msg);
+  } else if(notFound.length > 0){
+    // v4.55.13: SEMUA DO gagal — gak ada moved, gak ada phantom success
+    alert(`⚠ GAGAL assign — ${notFound.length} DO tidak ditemukan di pool manapun:\n   ${notFound.join(', ')}\n\nMungkin sudah di-action sebelumnya (TUNDA, vendor, dll). Refresh halaman & cek state DO.`);
   }
 }
 
