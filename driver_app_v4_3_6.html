@@ -6,7 +6,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>GST Logistics — Driver App v4.3.5</title>
+<title>GST Logistics — Driver App v4.3.6</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <!-- Eruda Mobile DevTools — opt-in via ?debug=1 (sticky di localStorage HP) -->
 <!-- Cara pakai:                                                              -->
@@ -524,6 +524,17 @@ body{background:var(--bg);color:var(--text-main);padding-bottom:72px}
       <canvas id="canvas-foto-do" style="display:none"></canvas>
     </div>
 
+    <div class="form-group" id="group-reason-damage" style="display:none">
+      <label class="form-label" style="color:#991b1b">⚠ Alasan Selisih <span class="req">*wajib</span></label>
+      <select class="form-select" id="reason-damage" onchange="modalCtx.reason=this.value"
+              style="border-color:#fca5a5;background:#fff;color:#7f1d1d;font-weight:600">
+        <option value="">— Pilih alasan —</option>
+        <option value="Rusak">Rusak (pecah/cacat)</option>
+        <option value="Hilang">Hilang/Kurang dari gudang</option>
+        <option value="Customer Tolak">Customer tolak/kembali</option>
+      </select>
+    </div>
+
     <div class="form-group" id="group-foto-rusak" style="display:none">
       <label class="form-label">Foto Barang Rusak <span class="req">*wajib jika ada kerusakan</span></label>
       <div class="photo-guide-wrap" id="wrap-foto-rusak" onclick="openCamera('rusak')"
@@ -794,7 +805,7 @@ const CURRENT_BUILD = 'v3914-20260414';
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = 'v4.3.5';
+const APP_VERSION    = "v4.3.6";
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -845,6 +856,7 @@ let tripState = {
 
 let modalCtx = {
   doc_no:'', qty_kirim:0, qty_terima:0, qty_rusak:0,
+  reason:'', vendor_code:'',  // v4.3.6 Phase 3: damage reason + vendor audit
   foto_do:null, foto_rusak:null, foto_sj:null, foto_gagal:null,
   gps_coords:'', gps_address:'',
 };
@@ -2037,10 +2049,13 @@ function openSelesaiGrup(docNos) {
       qty_kirim: parseInt(t.qty)||0,
       qty_terima: parseInt(t.qty)||0,
       qty_rusak: 0,
+      reason   : '',          // v4.3.6 Phase 3: damage reason (Rusak/Hilang/Customer Tolak)
       foto_do  : null,
       foto_rusak: null,
-      customer : t.customer || '',
-      alamat   : t.alamat   || '',
+      customer : t.customer   || '',
+      alamat   : t.alamat     || '',
+      // v4.3.6: vendor_code untuk audit di Stock Rusak Pending
+      vendor_code: t.vendor_code || '',
     };
   });
   grupActiveIdx = 0;
@@ -2051,7 +2066,10 @@ function openSelesaiGrup(docNos) {
 function renderGrupModal() {
   const container = document.getElementById('grup-do-list');
   if (!container) return;
-  container.innerHTML = grupCtx.map((g, idx) => `
+  container.innerHTML = grupCtx.map((g, idx) => {
+    const hasDamage = (g.qty_terima < g.qty_kirim) || (g.qty_rusak > 0);
+    const damageWarning = (g.qty_terima + g.qty_rusak !== g.qty_kirim);
+    return `
     <div style="border:2px solid ${idx===grupActiveIdx?'#2563eb':'#e2e8f0'};
       border-radius:12px;padding:14px;margin-bottom:12px;background:#fff">
       <div style="font-weight:800;font-size:13px;color:#0b1f3a">
@@ -2079,6 +2097,28 @@ function renderGrupModal() {
           </div>
         </div>
       </div>
+
+      ${hasDamage ? `
+      <!-- v4.3.6 Phase 3: Damage section — auto-show kalau qty mismatch atau qty_rusak>0 -->
+      <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:#991b1b;margin-bottom:6px">
+          ⚠ Ada selisih barang — pilih alasan:
+        </div>
+        <select id="g-reason-${idx}" onchange="setGrupReason(${idx}, this.value)"
+                style="width:100%;font-size:12px;padding:6px 8px;border:1px solid #fca5a5;border-radius:5px;background:#fff;color:#7f1d1d;font-weight:600">
+          <option value="" ${!g.reason?'selected':''}>— Pilih alasan —</option>
+          <option value="Rusak" ${g.reason==='Rusak'?'selected':''}>Rusak (pecah/cacat)</option>
+          <option value="Hilang" ${g.reason==='Hilang'?'selected':''}>Hilang/Kurang dari gudang</option>
+          <option value="Customer Tolak" ${g.reason==='Customer Tolak'?'selected':''}>Customer tolak/kembali</option>
+        </select>
+        ${damageWarning ? `
+        <div style="font-size:10px;color:#991b1b;margin-top:5px;line-height:1.4">
+          📊 Kirim: ${g.qty_kirim} = Diterima ${g.qty_terima} + Rusak ${g.qty_rusak}
+          ${(g.qty_terima + g.qty_rusak === g.qty_kirim) ? '✓' : `<b>(selisih ${g.qty_kirim - g.qty_terima - g.qty_rusak})</b>`}
+        </div>` : ''}
+      </div>
+      ` : ''}
+
       <!-- Foto row -->
       <div style="display:flex;gap:8px">
         <div style="flex:1" onclick="openCameraGrup(${idx},'do')">
@@ -2091,17 +2131,23 @@ function renderGrupModal() {
           </div>
         </div>
         <div style="flex:1" onclick="openCameraGrup(${idx},'rusak')">
-          <div style="border:2px dashed ${g.foto_rusak?'#dc2626':'#cbd5e1'};border-radius:8px;
-            padding:10px;text-align:center;cursor:pointer;background:${g.foto_rusak?'#fff5f5':'#f8fafc'}">
+          <div style="border:2px dashed ${g.foto_rusak?'#dc2626':(hasDamage?'#fca5a5':'#cbd5e1')};border-radius:8px;
+            padding:10px;text-align:center;cursor:pointer;background:${g.foto_rusak?'#fff5f5':(hasDamage?'#fef2f2':'#f8fafc')}">
             ${g.foto_rusak
               ? `<img src="${g.foto_rusak}" style="width:100%;height:60px;object-fit:cover;border-radius:4px">`
-              : `<i class="fas fa-camera" style="color:#94a3b8;font-size:18px"></i>
-                 <div style="font-size:10px;color:#64748b;margin-top:4px">Foto Rusak</div>`}
+              : `<i class="fas fa-camera" style="color:${hasDamage?'#dc2626':'#94a3b8'};font-size:18px"></i>
+                 <div style="font-size:10px;color:${hasDamage?'#991b1b':'#64748b'};margin-top:4px;font-weight:${hasDamage?'700':'400'}">Foto Rusak${hasDamage?'*':''}</div>`}
           </div>
         </div>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
+}
+
+// v4.3.6 Phase 3: Set reason damage (called from select onchange)
+function setGrupReason(idx, value) {
+  if (grupCtx[idx]) grupCtx[idx].reason = String(value||'');
 }
 
 function adjGrupQty(idx, field, delta) {
@@ -2109,13 +2155,12 @@ function adjGrupQty(idx, field, delta) {
   if (!g) return;
   if (field === 'terima') {
     g.qty_terima = Math.max(0, Math.min(g.qty_kirim, g.qty_terima + delta));
-    const el = document.getElementById(`g-terima-${idx}`);
-    if (el) el.textContent = g.qty_terima;
   } else {
     g.qty_rusak = Math.max(0, Math.min(g.qty_kirim, g.qty_rusak + delta));
-    const el = document.getElementById(`g-rusak-${idx}`);
-    if (el) el.textContent = g.qty_rusak;
   }
+  // v4.3.6 Phase 3: full re-render — supaya section damage muncul/hilang otomatis
+  // Sebelumnya cuma update count text, jadi reason dropdown gak muncul kalau driver kurangi qty.
+  renderGrupModal();
 }
 
 function openCameraGrup(idx, type) {
@@ -2138,9 +2183,22 @@ async function submitSelesaiGrup() {
       alert(`DO ${g.doc_no}: Foto DO wajib diambil`);
       return;
     }
-    if (g.qty_rusak > 0 && !g.foto_rusak) {
-      alert(`DO ${g.doc_no}: Ada barang rusak — foto kerusakan wajib`);
-      return;
+    // v4.3.6 Phase 3: validasi reason kalau ada damage atau qty_terima<qty_kirim
+    const hasDamage = (g.qty_terima < g.qty_kirim) || (g.qty_rusak > 0);
+    if (hasDamage) {
+      if (!g.reason) {
+        alert(`DO ${g.doc_no}: Pilih alasan selisih barang dulu (Rusak / Hilang / Customer Tolak)`);
+        return;
+      }
+      if (g.qty_rusak > 0 && !g.foto_rusak) {
+        alert(`DO ${g.doc_no}: Ada barang rusak — foto kerusakan wajib`);
+        return;
+      }
+      // Kalau qty_terima<qty_kirim DAN qty_rusak=0 → barang hilang/customer tolak,
+      // foto opsional tapi rekomendasi
+      if (g.qty_terima < g.qty_kirim && g.qty_rusak === 0 && !g.foto_rusak && g.reason !== 'Customer Tolak') {
+        if (!confirm(`DO ${g.doc_no}: Selisih ${g.qty_kirim - g.qty_terima} DUS tanpa foto bukti.\nLanjut tanpa foto?`)) return;
+      }
     }
   }
 
@@ -2160,11 +2218,13 @@ async function submitSelesaiGrup() {
       qty_kirim  : g.qty_kirim,
       qty_terima : g.qty_terima,
       qty_rusak  : g.qty_rusak,
+      reason     : g.reason || '',         // v4.3.6 Phase 3: damage reason
+      vendor_code: g.vendor_code || '',    // v4.3.6: audit field utk Stock Rusak Pending
       catatan    : catatan,
       titip_sj   : 'Tidak',
       gps_coords : gps,
       foto_do    : g.foto_do,
-      foto_rusak : g.qty_rusak > 0 ? (g.foto_rusak||null) : null,
+      foto_rusak : (g.qty_rusak > 0 || g.qty_terima < g.qty_kirim) ? (g.foto_rusak||null) : null,
       foto_sj    : null,
       timestamp  : new Date().toISOString(),
     };
@@ -2586,13 +2646,21 @@ function openSelesai(docNo, qty, customer) {
     console.warn('[openSelesai] DO '+docNo+' sedang diproses, skip double tap');
     return;
   }
+  // v4.3.6 Phase 3: pickup vendor_code dari task untuk audit Stock Rusak Pending
+  const _t = (currentTasks||[]).find(x => String(x.doc_no) === String(docNo)) || {};
   modalCtx = { doc_no:docNo, qty_kirim:qty, qty_terima:qty, qty_rusak:0,
+    reason:'', vendor_code: _t.vendor_code || '',
     foto_do:null, foto_rusak:null, foto_sj:null, gps_coords:modalCtx.gps_coords||'' };
   document.getElementById('m-selesai-info').textContent = customer + ' · ' + qty + ' DUS';
   document.getElementById('qty-kirim').textContent      = qty;
   document.getElementById('qty-terima-disp').textContent = qty;
   document.getElementById('qty-rusak-disp').textContent  = 0;
   document.getElementById('group-foto-rusak').style.display = 'none';
+  // v4.3.6: hide reason dropdown saat modal baru open
+  const _rg = document.getElementById('group-reason-damage');
+  if (_rg) _rg.style.display = 'none';
+  const _rs = document.getElementById('reason-damage');
+  if (_rs) _rs.value = '';
   document.getElementById('titip-sj').value  = 'Tidak';
   document.getElementById('titip-extra').classList.remove('show');
   document.getElementById('catatan-selesai').value = '';
@@ -2649,6 +2717,15 @@ function adjQty(type, delta) {
   document.getElementById('qty-terima-disp').textContent = modalCtx.qty_terima;
   document.getElementById('qty-rusak-disp').textContent  = modalCtx.qty_rusak;
   document.getElementById('group-foto-rusak').style.display = modalCtx.qty_rusak>0?'block':'none';
+  // v4.3.6 Phase 3: Auto-show/hide reason dropdown saat qty mismatch
+  const hasDamage = (modalCtx.qty_terima < modalCtx.qty_kirim) || (modalCtx.qty_rusak > 0);
+  const reasonGroup = document.getElementById('group-reason-damage');
+  if (reasonGroup) reasonGroup.style.display = hasDamage ? 'block' : 'none';
+  if (!hasDamage) {
+    modalCtx.reason = '';
+    const sel = document.getElementById('reason-damage');
+    if (sel) sel.value = '';
+  }
 }
 
 function toggleTitipSJ(val) {
@@ -2849,7 +2926,20 @@ function captureStruk(type, inputEl) {
 // ═══════════════════════════════════════════════════════
 async function submitSelesai() {
   if (!modalCtx.foto_do) { alert('Foto DO wajib diambil dari kamera'); return; }
-  if (modalCtx.qty_rusak>0 && !modalCtx.foto_rusak) { alert('Ada barang rusak — foto kerusakan wajib'); return; }
+  // v4.3.6 Phase 3: validasi reason kalau ada damage
+  const hasDamage = (modalCtx.qty_terima < modalCtx.qty_kirim) || (modalCtx.qty_rusak > 0);
+  if (hasDamage) {
+    if (!modalCtx.reason) {
+      alert('Ada selisih barang — pilih alasan dulu (Rusak / Hilang / Customer Tolak)');
+      return;
+    }
+    if (modalCtx.qty_rusak > 0 && !modalCtx.foto_rusak) { alert('Ada barang rusak — foto kerusakan wajib'); return; }
+    if (modalCtx.qty_terima < modalCtx.qty_kirim && modalCtx.qty_rusak === 0 && !modalCtx.foto_rusak && modalCtx.reason !== 'Customer Tolak') {
+      if (!confirm(`Selisih ${modalCtx.qty_kirim - modalCtx.qty_terima} DUS tanpa foto bukti.\nLanjut tanpa foto?`)) return;
+    }
+  } else {
+    if (modalCtx.qty_rusak>0 && !modalCtx.foto_rusak) { alert('Ada barang rusak — foto kerusakan wajib'); return; }
+  }
   const titipSJ = document.getElementById('titip-sj').value;
   if (titipSJ==='Ya') {
     if (!document.getElementById('nama-spg').value.trim()) { alert('Nama penerima SJ wajib diisi'); return; }
@@ -2868,13 +2958,15 @@ async function submitSelesai() {
     qty_kirim   : modalCtx.qty_kirim,
     qty_terima  : modalCtx.qty_terima,
     qty_rusak   : modalCtx.qty_rusak,
+    reason      : modalCtx.reason || '',          // v4.3.6 Phase 3
+    vendor_code : modalCtx.vendor_code || '',     // v4.3.6 audit
     catatan     : document.getElementById('catatan-selesai').value,
     titip_sj    : titipSJ,
     nama_spg    : document.getElementById('nama-spg').value,
     jabatan_spg : document.getElementById('jabatan-spg').value,
     gps_coords  : modalCtx.gps_coords,
     foto_do     : modalCtx.foto_do,
-    foto_rusak  : modalCtx.qty_rusak>0 ? (modalCtx.foto_rusak||null) : null,
+    foto_rusak  : (modalCtx.qty_rusak>0 || modalCtx.qty_terima<modalCtx.qty_kirim) ? (modalCtx.foto_rusak||null) : null,
     foto_sj     : titipSJ==='Ya' ? (modalCtx.foto_sj||null) : null,
     timestamp   : new Date().toISOString(),
   };
