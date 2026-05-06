@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.55.17</title>
+<title>Routing Optimizer v4.55.18</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -474,7 +474,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.17</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.18</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -536,7 +536,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.17</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.18</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -549,7 +549,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     <!-- v4.55.9: Tab DO Vendor di-unhide. Diperlukan untuk dispatcher lihat list DO yang udah di-assign ke vendor + akses tombol "Kirim Order via WhatsApp" untuk batch send. -->
     <button class="tab-btn" onclick="switchTab('vendor',this)" title="DO yang di-assign manual ke vendor — lihat list & kirim WA batch order">DO Vendor (<span id="cnt-vendor">0</span>)</button>
     <!-- v4.55.5: Kirim Besok → DO Gantung. Konsolidasi 5 jenis defer + carry over. -->
-    <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota" title="DO Gantung — DO Carry Over (dari kemarin) + DO Gantung Baru hari ini (DO Luar Kota +Low-Util, DO Overflow, KIRIM TGL X). Manual decide per DO via dispatcher. v4.55.16: 1 DO hanya tampil di 1 section (priority dedup).">DO Gantung (<span id="cnt-pending-tab">0</span>)<span id="badge-trip2" class="trip2-badge" title="Trip-2 Auto-Assigned baru — buka tab DO Gantung untuk handle"></span></button>
+    <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota" title="DO Gantung — DO Carry Over (dari kemarin) + DO Gantung Baru hari ini (DO Luar Kota, DO Overflow, DO Low-Util, KIRIM TGL X). Manual decide per DO via dispatcher. v4.55.18: Dedup priority + Trip-2 auto DISABLED (manual workflow mode).">DO Gantung (<span id="cnt-pending-tab">0</span>)<span id="badge-trip2" class="trip2-badge" title="Trip-2 Auto-Assigned baru — buka tab DO Gantung untuk handle"></span></button>
     <!-- v4.55.5: DO Konflik tab di-hide. -->
     <button class="tab-btn" onclick="switchTab('konflik',this)" id="tab-btn-konflik" style="display:none;color:#b91c1c">⚠ DO Konflik</button>
     <button class="tab-btn" id="tab-btn-biaya" onclick="switchTab('biaya',this)">💰 Biaya Ops</button>
@@ -856,7 +856,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
 
       <!-- Summary cards (auto + manual defer dari capacity) -->
-      <div style="font-size:12px;color:#64748b;margin-bottom:6px">DO Gantung Baru: <span id="cnt-luarkota">0</span> DO Luar Kota (termasuk Low-Util) + <span id="cnt-jabo-overflow">0</span> DO Overflow<span id="cnt-lowutil-wrap" style="display:none"> + <span id="cnt-lowutil">0</span> DO Low-Util</span></div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:6px">DO Gantung Baru: <span id="cnt-luarkota">0</span> DO Luar Kota + <span id="cnt-lowutil">0</span> DO Low-Util + <span id="cnt-jabo-overflow">0</span> DO Overflow</div>
       <!-- v4.55.7: Split jadi 2 sections — Luar Kota (asli luar Jabodetabek) + Carry Over Jabo (DO Jabo carry-over kemarin) -->
       <!-- SECTION A: Luar Kota — DO yang asli luar Jabodetabek (Bandung, Cikampek, Subang, dll) -->
       <div id="luar-kota-summary-header" style="display:none;font-size:11px;color:#9333ea;font-weight:700;margin-bottom:4px">🌏 LUAR KOTA — Akumulasi Volume</div>
@@ -1417,17 +1417,20 @@ window.onload=()=>{
 
   // v4.55.15: Background polling untuk badge counter Trip-2 setiap 60 detik.
   // Dispatcher gak perlu buka tab DO Gantung untuk tahu ada trip-2 baru.
-  setInterval(() => {
-    if (typeof loadTrip2Assignments === 'function' && typeof gasUrl !== 'undefined' && gasUrl) {
-      loadTrip2Assignments(true).then(() => {
-        // Re-render section kalau lagi di tab DO Gantung supaya data fresh
-        const tabBtn = document.getElementById('tab-btn-luarkota');
-        if (tabBtn && tabBtn.classList.contains('active') && typeof renderTrip2Section === 'function') {
-          renderTrip2Section();
-        }
-      });
-    }
-  }, 60 * 1000); // 60 detik
+  // v4.55.18: Skip kalau Trip-2 auto disabled (manual workflow mode)
+  if (typeof ENABLE_TRIP2_AUTO !== 'undefined' && ENABLE_TRIP2_AUTO) {
+    setInterval(() => {
+      if (typeof loadTrip2Assignments === 'function' && typeof gasUrl !== 'undefined' && gasUrl) {
+        loadTrip2Assignments(true).then(() => {
+          // Re-render section kalau lagi di tab DO Gantung supaya data fresh
+          const tabBtn = document.getElementById('tab-btn-luarkota');
+          if (tabBtn && tabBtn.classList.contains('active') && typeof renderTrip2Section === 'function') {
+            renderTrip2Section();
+          }
+        });
+      }
+    }, 60 * 1000); // 60 detik
+  }
 };
 
 async function connectGSheets(){
@@ -11368,11 +11371,22 @@ function _gantungSearchApply(){
 
 // v4.55.14 Phase 4+6: Trip-2 Auto-Assigned — fetch from GAS, render section, manual cancel + WA notif
 // v4.55.15: Feature flag untuk WA notif (Fonnte deferred). Set ke true kalau Fonnte sudah ready.
-const ENABLE_WA_NOTIF = false; // ⚙ Toggle: false=hidden, true=aktifkan tombol WA + kolom Notif
+// v4.55.18: PIVOT KE MANUAL WORKFLOW — feature flags untuk disable v4.5+ otomatisasi.
+//           Code tetap dipertahankan, hanya di-skip via flag. Reaktivasi: flip flag ke true.
+const ENABLE_WA_NOTIF       = false; // ⚙ Toggle: false=hidden, true=aktifkan tombol WA + kolom Notif
+const ENABLE_TRIP2_AUTO     = false; // ⚙ v4.55.18: Trip-2 cron + section + badge + polling — DISABLED
+const ENABLE_DEDUP_PRIORITY = false; // ⚙ v4.55.18: Dedup priority hierarchy v4.55.16/17 — DISABLED (revert ke v4.55.13 behavior)
 window._trip2Assignments = [];
 window._trip2LastFetch = 0;
 
 function loadTrip2Assignments(force){
+  // v4.55.18: Skip kalau Trip-2 auto disabled (manual workflow mode)
+  if (!ENABLE_TRIP2_AUTO) {
+    window._trip2Assignments = [];
+    _updateTrip2Badge();
+    return Promise.resolve([]);
+  }
+
   // Throttle: gak refetch kalau < 10 detik dari last fetch (kecuali force=true)
   const now = Date.now();
   if (!force && (now - window._trip2LastFetch) < 10000) return Promise.resolve(window._trip2Assignments);
@@ -11410,6 +11424,12 @@ function loadTrip2Assignments(force){
 function _updateTrip2Badge(){
   const badge = document.getElementById('badge-trip2');
   if (!badge) return;
+  // v4.55.18: Hide badge kalau Trip-2 auto disabled
+  if (!ENABLE_TRIP2_AUTO) {
+    badge.textContent = '';
+    badge.classList.remove('show');
+    return;
+  }
   const items = window._trip2Assignments || [];
   if (items.length > 0) {
     badge.textContent = '🔄 ' + items.length;
@@ -11425,6 +11445,14 @@ function renderTrip2Section(){
   const tbody = document.getElementById('tbody-trip2');
   const cntEl = document.getElementById('cnt-trip2');
   if (!sect || !tbody) return;
+
+  // v4.55.18: Hide section kalau Trip-2 auto disabled
+  if (!ENABLE_TRIP2_AUTO) {
+    sect.style.display = 'none';
+    tbody.innerHTML = '';
+    if (cntEl) cntEl.textContent = '0';
+    return;
+  }
 
   const items = window._trip2Assignments || [];
   if (cntEl) cntEl.textContent = items.length;
@@ -11628,7 +11656,7 @@ Hubungi dispatcher untuk konfirmasi.`;
 
 function renderLuarKotaPending(){
   // ════════════════════════════════════════════════════════════════════════════
-  // v4.55.17 PRIORITY-BASED DEDUP (FIXED)
+  // v4.55.17 PRIORITY-BASED DEDUP (FIXED) — disabled by default in v4.55.18
   // 1 LINE ITEM hanya tampil di 1 section sesuai priority hierarchy:
   //   1. Titipan Masuk (paling tinggi — beda gudang)
   //   2. Carry Over (yesterday's pending)
@@ -11639,16 +11667,19 @@ function renderLuarKotaPending(){
   // v4.55.17 FIX: Dedup pakai SIGNATURE GABUNGAN supaya multi-line item
   //   tidak salah skip. Signature: doc_no|size|qty|total_vol|total_wt
   //
-  //   Bug v4.55.16: dedup pakai doc_no aja → DO multi-line (qty 260 + qty 520)
-  //                 → line ke-2 hilang dari render (CRITICAL data visibility issue).
-  //   Fix v4.55.17: signature gabungan → multi-line item beda qty/vol/wt
-  //                 → tampil semua. Bug original (3 instance dengan data
-  //                 100% identik) tetap ke-dedup karena signature sama.
-  //
-  // Implementation: mutate-with-restore pattern. Apply dedup di awal,
-  // restore originals di finally{} supaya function lain (export, dispatch,
-  // etc.) tetap akses original full data.
+  // v4.55.18: Pivot ke manual workflow — dedup DI-DISABLE via feature flag.
+  //   Hipotesa: mutation+restore pattern berpotensi sebabkan side-effect ke
+  //   routing engine state (DO routing Cikuda hilang). Untuk safety, pakai
+  //   v4.55.13 behavior (no dedup, semua section tampil apa adanya).
+  //   Reaktivasi: flip ENABLE_DEDUP_PRIORITY = true.
   // ════════════════════════════════════════════════════════════════════════════
+
+  // v4.55.18: Bypass dedup wrapper kalau flag disabled — call renderInner langsung
+  if (!ENABLE_DEDUP_PRIORITY) {
+    _v416_renderInner();
+    return;
+  }
+
   const _v417_seen = new Set();
   const _v417_backup = {
     titipanMasuk : window.doTitipanMasuk,
