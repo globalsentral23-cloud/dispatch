@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Routing Optimizer v4.55.19</title>
+<title>Routing Optimizer v4.55.20</title>
 <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22&gt;&lt;rect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%231e293b%22/&gt;&lt;text x=%2250%25%22 y=%2258%25%22 text-anchor=%22middle%22 font-size=%2214%22 font-family=%22monospace%22 font-weight=%22700%22 fill=%22%2360a5fa%22&gt;GST&lt;/text&gt;&lt;/svg&gt;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -474,7 +474,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     </button>
   </div>
 
-  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.19</div>
+  <div class="up-logo">⬡ ROUTING OPTIMIZER v4.55.20</div>
   <div class="up-title">Routing Pengiriman Harian</div>
   <div class="up-sub">Drop file SAP & PG · Data master otomatis dari Google Sheets</div>
 
@@ -536,7 +536,7 @@ body.dispatch-active .dispatch-bar{display:flex}
       </div>
     </div>
     <div class="tb-logo-text" style="flex-direction:column;display:flex">
-      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.19</span></span>
+      <span style="font-size:12px;color:#e2e8f0;font-weight:700;font-family:var(--mono);letter-spacing:.08em">ROUTING <span style="color:#60a5fa">v4.55.20</span></span>
       <span style="font-size:9px;color:#475569;font-family:var(--sans)">GlobalSentral Transport</span>
     </div>
     <span class="tb-sep">|</span>
@@ -549,7 +549,7 @@ body.dispatch-active .dispatch-bar{display:flex}
     <!-- v4.55.9: Tab DO Vendor di-unhide. Diperlukan untuk dispatcher lihat list DO yang udah di-assign ke vendor + akses tombol "Kirim Order via WhatsApp" untuk batch send. -->
     <button class="tab-btn" onclick="switchTab('vendor',this)" title="DO yang di-assign manual ke vendor — lihat list & kirim WA batch order">DO Vendor (<span id="cnt-vendor">0</span>)</button>
     <!-- v4.55.5: Kirim Besok → DO Gantung. Konsolidasi 5 jenis defer + carry over. -->
-    <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota" title="DO Gantung — DO Carry Over (dari kemarin) + DO Gantung Baru hari ini (DO Luar Kota, DO Overflow, DO Low-Util, KIRIM TGL X). Manual decide per DO via dispatcher. v4.55.19: Dedup priority + Trip-2 auto DISABLED (manual workflow mode).">DO Gantung (<span id="cnt-pending-tab">0</span>)<span id="badge-trip2" class="trip2-badge" title="Trip-2 Auto-Assigned baru — buka tab DO Gantung untuk handle"></span></button>
+    <button class="tab-btn" onclick="switchTab('luarkota',this)" id="tab-btn-luarkota" title="DO Gantung — DO Carry Over (dari kemarin) + DO Gantung Baru hari ini (DO Luar Kota, DO Overflow, DO Low-Util, KIRIM TGL X). Manual decide per DO via dispatcher. v4.55.20: Dedup priority + Trip-2 auto DISABLED (manual workflow mode).">DO Gantung (<span id="cnt-pending-tab">0</span>)<span id="badge-trip2" class="trip2-badge" title="Trip-2 Auto-Assigned baru — buka tab DO Gantung untuk handle"></span></button>
     <!-- v4.55.5: DO Konflik tab di-hide. -->
     <button class="tab-btn" onclick="switchTab('konflik',this)" id="tab-btn-konflik" style="display:none;color:#b91c1c">⚠ DO Konflik</button>
     <button class="tab-btn" id="tab-btn-biaya" onclick="switchTab('biaya',this)">💰 Biaya Ops</button>
@@ -1417,7 +1417,7 @@ window.onload=()=>{
 
   // v4.55.15: Background polling untuk badge counter Trip-2 setiap 60 detik.
   // Dispatcher gak perlu buka tab DO Gantung untuk tahu ada trip-2 baru.
-  // v4.55.19: Skip kalau Trip-2 auto disabled (manual workflow mode)
+  // v4.55.20: Skip kalau Trip-2 auto disabled (manual workflow mode)
   if (typeof ENABLE_TRIP2_AUTO !== 'undefined' && ENABLE_TRIP2_AUTO) {
     setInterval(() => {
       if (typeof loadTrip2Assignments === 'function' && typeof gasUrl !== 'undefined' && gasUrl) {
@@ -1865,7 +1865,7 @@ async function syncToGSheets(){
     }
 
     // 4. Populate DO Status (untuk driver app)
-    // v4.55.19 Phase 2: Block selalu jalan — internal routes optional, vendor DOs juga di-include
+    // v4.55.20 Phase 2: Block selalu jalan — internal routes optional, vendor DOs juga di-include
     {
       const doRows=[];
       const todaySync=new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric'});
@@ -1888,7 +1888,7 @@ async function syncToGSheets(){
         });
       }
 
-      // v4.55.19 Phase 2: Include DO Vendor (yang ada manual_vendor_kode + vendor_plat + vendor_driver)
+      // v4.55.20 Phase 2: Include DO Vendor (yang ada manual_vendor_kode + vendor_plat + vendor_driver)
       // Source: scan semua items in unassignedItems / loadedItems untuk yang punya manual_vendor_kode.
       // Ini penting supaya driver app vendor bisa fetch tasks pakai plat vendor yang di-input dispatcher.
       try {
@@ -1924,7 +1924,7 @@ async function syncToGSheets(){
               alamat: i.kirim, produk: i.stock_name || i.size || '',
               qty: parseFloat(i.qty)||0, status: 'Baru',
               do_date: i.do_date || '',
-              vendor_code: i.manual_vendor_kode  // v4.55.19: audit field
+              vendor_code: i.manual_vendor_kode  // v4.55.20: audit field
             };
           }
         }
@@ -1946,10 +1946,10 @@ async function syncToGSheets(){
           doRows.push(vendorDoMap[docNo]);
         }
         if(Object.keys(vendorDoMap).length > 0){
-          console.log(`%c[v4.55.19 Phase 2] Vendor DO included in DO Status sync: ${Object.keys(vendorDoMap).length} DO`, 'color:#0ea5e9;font-weight:bold');
+          console.log(`%c[v4.55.20 Phase 2] Vendor DO included in DO Status sync: ${Object.keys(vendorDoMap).length} DO`, 'color:#0ea5e9;font-weight:bold');
         }
       } catch(e){
-        console.warn('[v4.55.19 Phase 2] Vendor DO sync skipped:', e.message);
+        console.warn('[v4.55.20 Phase 2] Vendor DO sync skipped:', e.message);
       }
 
       if(doRows.length>0){
@@ -6840,44 +6840,48 @@ function _renderVendorBelumKonfirmasi(){
   const allItems = (window.doVendorBelumKonfirmasi||[]).slice();
   const threshold = window.doVendorAwaitThresholdHours || 12;
 
-  // v4.55.19 Phase 4: Split items berdasarkan jam_selesai
-  // - Belum Konfirmasi: jam_selesai kosong (vendor belum lapor selesai)
-  // - Recently Confirmed: jam_selesai filled DAN dalam 24 jam terakhir
-  // - Hidden: jam_selesai > 24 jam yang lalu (auto-clear penuh)
+  // v4.55.20: Split items 3 sub-section based on do_status_real (cross-check dari GAS DO Status)
+  // - Belum Konfirmasi: do_status_real kosong / status='Baru' (vendor belum submit)
+  // - Recently Confirmed: do_status_real='Selesai' + jam_selesai dalam 24 jam terakhir
+  // - Recently Failed: do_status_real='Gagal Kirim' + jam_selesai dalam 24 jam terakhir
+  // - Hidden: jam_selesai > 24 jam (auto-clear penuh, sudah di-skip di backend)
   const NOW = Date.now();
-  const _parseJamSelesai = (j) => {
+  const _parseTs = (j) => {
     if(!j) return 0;
-    const s = String(j).trim();
-    if(!s) return 0;
-    const t = new Date(s).getTime();
+    const t = new Date(String(j).trim()).getTime();
     return isNaN(t) ? 0 : t;
   };
   const belumItems = [];
-  const recentItems = [];
-  // Local in-session manual confirm — diisi oleh vendorAwaitConfirm('delivered')
+  const recentSelesaiItems = [];
+  const recentGagalItems = [];
+  // In-session local manual confirms — diisi oleh vendorAwaitConfirm('delivered')
   const sessionConfirmed = (window._vendorRecentlyConfirmed||[]).slice();
 
   for(const it of allItems){
-    const ts = _parseJamSelesai(it.jam_selesai);
-    if(ts > 0){
-      if((NOW - ts) <= 24*3600*1000) recentItems.push({...it, _confirmedAt: ts});
-      // else: auto-clear penuh (>24h, hidden)
+    const stReal = String(it.do_status_real||'').toLowerCase();
+    const ts = _parseTs(it.jam_selesai);
+    if(stReal === 'selesai' && ts > 0){
+      recentSelesaiItems.push({...it, _confirmedAt: ts, _kind: 'selesai'});
+    } else if(stReal === 'gagal kirim' && ts > 0){
+      recentGagalItems.push({...it, _confirmedAt: ts, _kind: 'gagal'});
     } else {
       belumItems.push(it);
     }
   }
-  // Merge in-session local confirms (deduped by doc_no)
+  // Merge in-session manual confirms ke recentSelesaiItems (deduped by doc_no)
   for(const sc of sessionConfirmed){
-    if(!recentItems.find(r => String(r.doc_no) === String(sc.doc_no))){
-      recentItems.push(sc);
+    if(!recentSelesaiItems.find(r => String(r.doc_no) === String(sc.doc_no)) &&
+       !recentGagalItems.find(r => String(r.doc_no) === String(sc.doc_no))){
+      recentSelesaiItems.push({...sc, _kind:'selesai_manual'});
     }
   }
-  recentItems.sort((a,b) => (b._confirmedAt||0) - (a._confirmedAt||0)); // newest first
+  recentSelesaiItems.sort((a,b) => (b._confirmedAt||0) - (a._confirmedAt||0));
+  recentGagalItems.sort((a,b) => (b._confirmedAt||0) - (a._confirmedAt||0));
 
   if(cntEl) cntEl.textContent = belumItems.length;
   if(thresEl) thresEl.textContent = threshold;
 
-  if(belumItems.length === 0 && recentItems.length === 0){
+  if(belumItems.length === 0 && recentSelesaiItems.length === 0 && recentGagalItems.length === 0){
     sect.style.display = 'none';
     tbody.innerHTML = '';
     return;
@@ -6887,7 +6891,7 @@ function _renderVendorBelumKonfirmasi(){
   // Sort belum by age_hours DESC — paling tua di atas (kritis review duluan)
   belumItems.sort((a,b) => (b.age_hours||0) - (a.age_hours||0));
 
-  // Render Belum Konfirmasi rows
+  // Render Belum Konfirmasi rows (kuning)
   let html = belumItems.map(r => {
     const docNo = String(r.doc_no||'-');
     const tglUpdate = String(r.last_update_date||'-');
@@ -6927,36 +6931,73 @@ function _renderVendorBelumKonfirmasi(){
     </tr>`;
   }).join('');
 
-  // v4.55.19 Phase 4: Recently Confirmed sub-section (last 24h)
-  if(recentItems.length > 0){
+  // v4.55.20: Recently Confirmed — Selesai sub-section (hijau, last 24h)
+  if(recentSelesaiItems.length > 0){
     html += `<tr><td colspan="10" style="padding:8px 4px 4px 4px;background:#ecfdf5;border-top:2px solid #16a34a">
       <div style="font-size:11px;font-weight:700;color:#15803d">
-        ✓ Recently Confirmed by Vendor App — last 24h (${recentItems.length})
+        ✓ Recently Confirmed by Vendor App — Selesai (${recentSelesaiItems.length})
       </div>
       <div style="font-size:9px;color:#16a34a;opacity:.85;margin-top:1px">
         Auto-clear setelah 24 jam — historical reference saja
       </div>
     </td></tr>`;
-    html += recentItems.slice(0,30).map(r => {
+    html += recentSelesaiItems.slice(0,30).map(r => {
       const docNo = String(r.doc_no||'-');
       const customer = String(r.customer||'-').slice(0,28);
       const tujuan = String(r.kirim || r.alamat || '-').slice(0,55);
       const qty = parseFloat(r.qty)||0;
+      const qtyTerima = parseFloat(r.qty_terima)||0;
+      const qtyRusak = parseFloat(r.qty_rusak)||0;
       const confirmedAt = r._confirmedAt ? new Date(r._confirmedAt) : null;
       const tglConf = confirmedAt
         ? `${confirmedAt.toLocaleDateString('id-ID',{day:'2-digit',month:'short'})} ${confirmedAt.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})}`
         : '—';
       const escDoc = escapeHtml(docNo);
-      const reasonBadge = r.qty_rusak && parseFloat(r.qty_rusak)>0
-        ? ` <span style="background:#fee2e2;color:#b91c1c;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700">RUSAK ${r.qty_rusak}</span>`
+      const reasonBadge = qtyRusak > 0
+        ? ` <span style="background:#fee2e2;color:#b91c1c;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700">RUSAK ${qtyRusak}</span>`
         : '';
+      const qtyDisplay = (qtyTerima > 0 || qtyRusak > 0)
+        ? `${qtyTerima}/${qty}${qtyRusak>0?` (rusak ${qtyRusak})`:''}`
+        : `${qty}`;
       return `<tr style="background:#f0fdf4;opacity:.85">
         <td style="font-family:var(--mono);font-size:10px;font-weight:600;color:#166534">${escDoc}${reasonBadge}</td>
         <td style="font-family:var(--mono);font-size:10px;color:#16a34a" colspan="2">✓ ${escapeHtml(tglConf)}</td>
         <td style="font-size:10px">${escapeHtml(customer)}</td>
         <td style="color:#64748b;font-size:10px">${escapeHtml(tujuan)}</td>
-        <td colspan="2" style="font-family:var(--mono);font-size:10px">qty: ${qty}</td>
+        <td colspan="2" style="font-family:var(--mono);font-size:10px">qty: ${qtyDisplay}</td>
         <td colspan="3" style="font-size:10px;color:#15803d;font-weight:600">Confirmed via vendor app</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // v4.55.20: Recently Failed — Gagal Kirim sub-section (merah, last 24h)
+  if(recentGagalItems.length > 0){
+    html += `<tr><td colspan="10" style="padding:8px 4px 4px 4px;background:#fef2f2;border-top:2px solid #dc2626">
+      <div style="font-size:11px;font-weight:700;color:#991b1b">
+        ⚠ Recently Failed by Vendor App — Gagal Kirim (${recentGagalItems.length})
+      </div>
+      <div style="font-size:9px;color:#dc2626;opacity:.85;margin-top:1px">
+        Vendor lapor gagal kirim — review alasan & action lanjut
+      </div>
+    </td></tr>`;
+    html += recentGagalItems.slice(0,30).map(r => {
+      const docNo = String(r.doc_no||'-');
+      const customer = String(r.customer||'-').slice(0,28);
+      const tujuan = String(r.kirim || r.alamat || '-').slice(0,55);
+      const qty = parseFloat(r.qty)||0;
+      const alasan = String(r.alasan_gagal||'-').slice(0,40);
+      const confirmedAt = r._confirmedAt ? new Date(r._confirmedAt) : null;
+      const tglConf = confirmedAt
+        ? `${confirmedAt.toLocaleDateString('id-ID',{day:'2-digit',month:'short'})} ${confirmedAt.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})}`
+        : '—';
+      const escDoc = escapeHtml(docNo);
+      return `<tr style="background:#fef2f2;opacity:.9">
+        <td style="font-family:var(--mono);font-size:10px;font-weight:700;color:#991b1b">${escDoc} <span style="background:#dc2626;color:#fff;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700">GAGAL</span></td>
+        <td style="font-family:var(--mono);font-size:10px;color:#dc2626" colspan="2">⚠ ${escapeHtml(tglConf)}</td>
+        <td style="font-size:10px">${escapeHtml(customer)}</td>
+        <td style="color:#64748b;font-size:10px">${escapeHtml(tujuan)}</td>
+        <td colspan="2" style="font-family:var(--mono);font-size:10px">qty: ${qty}</td>
+        <td colspan="3" style="font-size:10px;color:#991b1b;font-weight:600">Alasan: ${escapeHtml(alasan)}</td>
       </tr>`;
     }).join('');
   }
@@ -6973,7 +7014,7 @@ async function vendorAwaitConfirm(docNo, type, btn){
 
   if(type === 'delivered'){
     if(!confirm(`Konfirmasi DO ${docNo} sudah delivered oleh vendor?\n\nDO tetap RELEASED di spreadsheet (tidak ada perubahan).\nDO akan pindah ke "Recently Confirmed" sub-section.`)) return;
-    // v4.55.19 Phase 4: Pindah dari Belum Konfirmasi → Recently Confirmed (in-session)
+    // v4.55.20 Phase 4: Pindah dari Belum Konfirmasi → Recently Confirmed (in-session)
     const item = (window.doVendorBelumKonfirmasi||[]).find(i => String(i.doc_no) === String(docNo));
     if(item){
       window._vendorRecentlyConfirmed = window._vendorRecentlyConfirmed || [];
@@ -6983,7 +7024,7 @@ async function vendorAwaitConfirm(docNo, type, btn){
     window.doVendorBelumKonfirmasi = (window.doVendorBelumKonfirmasi||[])
       .filter(i => String(i.doc_no) !== String(docNo));
     _renderVendorBelumKonfirmasi();
-    console.log(`%c[v4.55.19] DO ${docNo} dikonfirmasi delivered (manual) → Recently Confirmed`, 'color:#22c55e;font-weight:bold');
+    console.log(`%c[v4.55.20] DO ${docNo} dikonfirmasi delivered (manual) → Recently Confirmed`, 'color:#22c55e;font-weight:bold');
     return;
   }
 
@@ -7522,7 +7563,7 @@ async function bulkApply(){
     const vendorKode = value.replace('VENDOR:','');
     const vendor = (vendorList||[]).find(v => v.kode === vendorKode);
     if(!vendor){ alert('Vendor tidak ditemukan.'); return; }
-    // v4.55.19 Phase 1: Prompt plat+driver vendor sekali untuk semua DO di batch
+    // v4.55.20 Phase 1: Prompt plat+driver vendor sekali untuk semua DO di batch
     const platDriver = await _promptVendorPlatDriver(vendorKode, vendor.nama, sel.length);
     if(!platDriver) return; // user cancel
     // Stash ke variabel scope ini supaya _processOneAction VENDOR pickup
@@ -7642,7 +7683,7 @@ async function _bulkApplySingle(docNo, section, value, actionType, actionTarget)
     } catch(err) { _rollback(); throw err; }
   } else if(actionType === 'VENDOR'){
     const vendorKode = value.replace('VENDOR:','');
-    // v4.55.19 Phase 1: Pickup plat+driver dari batch stash (set di bulkApply)
+    // v4.55.20 Phase 1: Pickup plat+driver dari batch stash (set di bulkApply)
     const stash = (window._bulkVendorPlatDriver && window._bulkVendorPlatDriver.vendorKode === vendorKode)
                   ? window._bulkVendorPlatDriver : null;
     window._gantungState[docNo] = {
@@ -7655,7 +7696,7 @@ async function _bulkApplySingle(docNo, section, value, actionType, actionTarget)
       await _markDoGantungReleased(docNo, 'RELEASED', 'vendor');
       // v4.55.8 Fase 2: Sync doVendor — tab Vendor pickup DO ini.
       // Bulk path TIDAK auto-open WA per DO (akan spam tab); dispatcher kirim batch via tab Vendor.
-      // v4.55.19 Phase 2: Pass plat & driver dari batch stash supaya populateDoStatus pickup
+      // v4.55.20 Phase 2: Pass plat & driver dari batch stash supaya populateDoStatus pickup
       _syncDoVendorAfterAssign(docNo, vendorKode, stash ? stash.plat : '', stash ? stash.driver : '');
     } catch(err) { _rollback(); throw err; }
   } else if(actionType === 'TITIP'){
@@ -8071,7 +8112,7 @@ function _findGantungItem(docNo){
 
 // Sync item ke doVendor + tandai manual_vendor_kode supaya tab Vendor pickup.
 // Idempotent: kalau item sudah ada di doVendor, cuma update vendor_kode-nya.
-// v4.55.19 Phase 2: Accept vendor_plat & vendor_driver — disimpan di item utk doRows sync.
+// v4.55.20 Phase 2: Accept vendor_plat & vendor_driver — disimpan di item utk doRows sync.
 function _syncDoVendorAfterAssign(docNo, vendorKode, vendorPlat, vendorDriver){
   const item = _findGantungItem(docNo);
   if(!item){
@@ -8080,7 +8121,7 @@ function _syncDoVendorAfterAssign(docNo, vendorKode, vendorPlat, vendorDriver){
   }
   // Set manual_vendor_kode di item (mutate in place — semua reference dapat update)
   item.manual_vendor_kode = vendorKode;
-  // v4.55.19 Phase 2: Stash plat & driver di item supaya populateDoStatus pickup
+  // v4.55.20 Phase 2: Stash plat & driver di item supaya populateDoStatus pickup
   if(vendorPlat) item.vendor_plat = String(vendorPlat).trim().toUpperCase();
   if(vendorDriver) item.vendor_driver = String(vendorDriver).trim();
   // Fallback: kalau caller gak kasih plat/driver, coba pickup dari _gantungState
@@ -8156,7 +8197,7 @@ function _openWaSingle(docNo, vendorKode){
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// v4.55.19 Phase 1: Vendor plat+driver input modal + history (Opsi D)
+// v4.55.20 Phase 1: Vendor plat+driver input modal + history (Opsi D)
 // ═══════════════════════════════════════════════════════════════════
 function _vendorHistoryGet(vendorKode, type){
   // type: 'plat' | 'driver'
@@ -8311,7 +8352,7 @@ async function gantungAction(docNo, source, value, selectEl){
       alert('Vendor tidak ditemukan.');
       selectEl.value=''; return;
     }
-    // v4.55.19 Phase 1: Modal input plat + driver vendor (Opsi D)
+    // v4.55.20 Phase 1: Modal input plat + driver vendor (Opsi D)
     const platDriver = await _promptVendorPlatDriver(vendorKode, vendor.nama, 1);
     if(!platDriver){
       // User cancel — reset dropdown, no state change
@@ -8323,7 +8364,7 @@ async function gantungAction(docNo, source, value, selectEl){
     }
     window._gantungState[docNo] = {
       action: 'VENDOR', target: vendorKode, vendor_nama: vendor.nama,
-      vendor_plat: vPlat, vendor_driver: vDriver,  // v4.55.19 Phase 1
+      vendor_plat: vPlat, vendor_driver: vDriver,  // v4.55.20 Phase 1
       timestamp: Date.now()
     };
     try {
@@ -8331,7 +8372,7 @@ async function gantungAction(docNo, source, value, selectEl){
       // di section "Vendor Belum Konfirmasi" besok kalau belum delivered.
       await _markDoGantungReleased(docNo, 'RELEASED', 'vendor');
       // v4.55.8 Fase 2: Sync doVendor + manual_vendor_kode supaya tab Vendor auto-pickup
-      // v4.55.19 Phase 2: Pass plat & driver dari modal supaya populateDoStatus pickup
+      // v4.55.20 Phase 2: Pass plat & driver dari modal supaya populateDoStatus pickup
       _syncDoVendorAfterAssign(docNo, vendorKode, vPlat, vDriver);
       // v4.55.8 Fase 3: Auto-open WA langsung (tombol "Kirim WA Sekarang")
       const waOpened = _openWaSingle(docNo, vendor.kode);
@@ -11645,16 +11686,16 @@ function _gantungSearchApply(){
 
 // v4.55.14 Phase 4+6: Trip-2 Auto-Assigned — fetch from GAS, render section, manual cancel + WA notif
 // v4.55.15: Feature flag untuk WA notif (Fonnte deferred). Set ke true kalau Fonnte sudah ready.
-// v4.55.19: PIVOT KE MANUAL WORKFLOW — feature flags untuk disable v4.5+ otomatisasi.
+// v4.55.20: PIVOT KE MANUAL WORKFLOW — feature flags untuk disable v4.5+ otomatisasi.
 //           Code tetap dipertahankan, hanya di-skip via flag. Reaktivasi: flip flag ke true.
 const ENABLE_WA_NOTIF       = false; // ⚙ Toggle: false=hidden, true=aktifkan tombol WA + kolom Notif
-const ENABLE_TRIP2_AUTO     = false; // ⚙ v4.55.19: Trip-2 cron + section + badge + polling — DISABLED
-const ENABLE_DEDUP_PRIORITY = false; // ⚙ v4.55.19: Dedup priority hierarchy v4.55.16/17 — DISABLED (revert ke v4.55.13 behavior)
+const ENABLE_TRIP2_AUTO     = false; // ⚙ v4.55.20: Trip-2 cron + section + badge + polling — DISABLED
+const ENABLE_DEDUP_PRIORITY = false; // ⚙ v4.55.20: Dedup priority hierarchy v4.55.16/17 — DISABLED (revert ke v4.55.13 behavior)
 window._trip2Assignments = [];
 window._trip2LastFetch = 0;
 
 function loadTrip2Assignments(force){
-  // v4.55.19: Skip kalau Trip-2 auto disabled (manual workflow mode)
+  // v4.55.20: Skip kalau Trip-2 auto disabled (manual workflow mode)
   if (!ENABLE_TRIP2_AUTO) {
     window._trip2Assignments = [];
     _updateTrip2Badge();
@@ -11698,7 +11739,7 @@ function loadTrip2Assignments(force){
 function _updateTrip2Badge(){
   const badge = document.getElementById('badge-trip2');
   if (!badge) return;
-  // v4.55.19: Hide badge kalau Trip-2 auto disabled
+  // v4.55.20: Hide badge kalau Trip-2 auto disabled
   if (!ENABLE_TRIP2_AUTO) {
     badge.textContent = '';
     badge.classList.remove('show');
@@ -11720,7 +11761,7 @@ function renderTrip2Section(){
   const cntEl = document.getElementById('cnt-trip2');
   if (!sect || !tbody) return;
 
-  // v4.55.19: Hide section kalau Trip-2 auto disabled
+  // v4.55.20: Hide section kalau Trip-2 auto disabled
   if (!ENABLE_TRIP2_AUTO) {
     sect.style.display = 'none';
     tbody.innerHTML = '';
@@ -11930,7 +11971,7 @@ Hubungi dispatcher untuk konfirmasi.`;
 
 function renderLuarKotaPending(){
   // ════════════════════════════════════════════════════════════════════════════
-  // v4.55.17 PRIORITY-BASED DEDUP (FIXED) — disabled by default in v4.55.19
+  // v4.55.17 PRIORITY-BASED DEDUP (FIXED) — disabled by default in v4.55.20
   // 1 LINE ITEM hanya tampil di 1 section sesuai priority hierarchy:
   //   1. Titipan Masuk (paling tinggi — beda gudang)
   //   2. Carry Over (yesterday's pending)
@@ -11941,14 +11982,14 @@ function renderLuarKotaPending(){
   // v4.55.17 FIX: Dedup pakai SIGNATURE GABUNGAN supaya multi-line item
   //   tidak salah skip. Signature: doc_no|size|qty|total_vol|total_wt
   //
-  // v4.55.19: Pivot ke manual workflow — dedup DI-DISABLE via feature flag.
+  // v4.55.20: Pivot ke manual workflow — dedup DI-DISABLE via feature flag.
   //   Hipotesa: mutation+restore pattern berpotensi sebabkan side-effect ke
   //   routing engine state (DO routing Cikuda hilang). Untuk safety, pakai
   //   v4.55.13 behavior (no dedup, semua section tampil apa adanya).
   //   Reaktivasi: flip ENABLE_DEDUP_PRIORITY = true.
   // ════════════════════════════════════════════════════════════════════════════
 
-  // v4.55.19: Bypass dedup wrapper kalau flag disabled — call renderInner langsung
+  // v4.55.20: Bypass dedup wrapper kalau flag disabled — call renderInner langsung
   if (!ENABLE_DEDUP_PRIORITY) {
     _v416_renderInner();
     return;
