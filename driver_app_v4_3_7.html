@@ -6,7 +6,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
-<title>GST Logistics — Driver App v4.3.6</title>
+<title>GST Logistics — Driver App v4.3.7</title>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 <!-- Eruda Mobile DevTools — opt-in via ?debug=1 (sticky di localStorage HP) -->
 <!-- Cara pakai:                                                              -->
@@ -805,7 +805,7 @@ const CURRENT_BUILD = 'v3914-20260414';
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
 const GSHEET_ID_KEY  = 'gs_url';
-const APP_VERSION    = "v4.3.6";
+const APP_VERSION    = "v4.3.7";
 const POLL_INTERVAL  = 60 * 1000;   // 60 detik
 const MAX_NOTIF      = 50;
 
@@ -3282,6 +3282,7 @@ async function submitGagal() {
                    document.getElementById('nama-gudang-titip').value||
                    document.getElementById('tgl-reschedule').value||
                    document.getElementById('nama-sales-cancel').value||'',
+    vendor_code  : modalCtx.vendor_code || '',  // v4.3.7: forward vendor_code utk push Pending Besok
     gps_coords   : modalCtx.gps_coords,
     foto_gagal   : modalCtx.foto_gagal,
     timestamp    : new Date().toISOString(),
@@ -4701,6 +4702,8 @@ async function wizGagalSubmit() {
 
   // Submit per-DO di background
   for (const dn of docs) {
+    // v4.3.7: lookup vendor_code dari currentTasks utk forward ke GAS
+    const _t = (currentTasks||[]).find(x => String(x.doc_no) === String(dn)) || {};
     const payload = {
       action     : 'submitGagal',
       plat       : driverState.plat,
@@ -4709,6 +4712,7 @@ async function wizGagalSubmit() {
       date       : driverState.date,
       alasan     : wizGagalCtx.alasan,
       keterangan : wizGagalCtx.keterangan,
+      vendor_code: _t.vendor_code || '',  // v4.3.7: utk push Pending Besok flag
       gps_coords : modalCtx.gps_coords || '',
       foto_gagal : wizGagalCtx.foto_gagal,
       timestamp  : new Date().toISOString(),
